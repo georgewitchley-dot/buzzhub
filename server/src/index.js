@@ -14,8 +14,9 @@ import { db, getSettings, setSettings, audit, seedDemoData } from './db.js';
 import {
   SESSION_COOKIE, ROLE_RANK, hashPin, findUserByPin, pinInUse, pinProblem, loginBlocked, recordLoginFail,
   clearLoginFails, issueSession, clearSession, userFromToken, requireAuth, csrfGuard, newGuestToken, clientIp,
+  passwordProblem, hashPassword, checkPassword, burnCompare, issueCustomerSession, clearCustomerSession, customerFromReq, requireCustomer,
 } from './security.js';
-import { sendSms, smsEnabled } from './sms.js';
+import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -32,7 +33,7 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       'script-src': ["'self'"],
-      'img-src': ["'self'", 'data:'],
+      'img-src': ["'self'", 'data:', 'blob:'],
       'connect-src': ["'self'", 'wss:', 'ws:'],
       'worker-src': ["'self'"],
       'media-src': ["'self'", 'data:'],
@@ -40,7 +41,9 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
-app.use(express.json({ limit: '64kb' }));
+const smallJson = express.json({ limit: '64kb' });
+const logoJson = express.json({ limit: '900kb' });
+app.use((req, res, next) => (req.path === '/api/staff/logo' ? logoJson : smallJson)(req, res, next));
 app.use(cookieParser());
 app.use('/api', csrfGuard);
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -48,6 +51,7 @@ app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next
 const apiLimiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-7', legacyHeaders: false });
 const authLimiter = rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many attempts. Slow down.' } });
 const publicLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false });
+const orderLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many order changes. Please ask your server.' } });
 const joinLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 6, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many check-ins from this device. Please see the host.' } });
 app.use('/api', apiLimiter);
 
@@ -68,26 +72,53 @@ function queueFor(kind) {
   return db.prepare("SELECT id FROM guests WHERE kind = ? AND status IN ('waiting','buzzed','acknowledged') ORDER BY created_at, id").all(kind).map((r) => r.id);
 }
 
+const estFor = (pos, s) => (pos ? Math.max(1, pos * Number(s.avg_turn_minutes || 10)) : 0);
+const linkFor = (g) => `${process.env.PUBLIC_URL?.replace(/\/$/, '') || ''}/b/${g.token}`;
+
+/** Is this guest allowed to pre-order right now? */
+function preorderWindow(g, s, pos) {
+  if (s.preorder_enabled !== '1' || g.kind !== 'table') return { enabled: false, open: false };
+  if (!['waiting', 'buzzed', 'acknowledged'].includes(g.status)) return { enabled: true, open: false, closed: true };
+  const est = estFor(pos, s);
+  const open = g.preorder_open === 1 || g.status !== 'waiting' || est <= Number(s.preorder_open_minutes);
+  return { enabled: true, open, opensInMinutes: open ? 0 : Math.max(1, est - Number(s.preorder_open_minutes)) };
+}
+
+function preorderFor(guestId) {
+  const o = db.prepare("SELECT * FROM orders WHERE guest_id = ? AND source = 'guest' AND status <> 'void' ORDER BY id DESC LIMIT 1").get(guestId);
+  if (!o) return null;
+  const items = db.prepare('SELECT name, qty, price_cents, note FROM order_items WHERE order_id = ?').all(o.id);
+  return { number: o.number, status: o.status, items, subtotalCents: o.subtotal_cents, taxCents: o.tax_cents, totalCents: o.total_cents };
+}
+
 function guestPublicView(g) {
   const s = getSettings();
   const queue = queueFor(g.kind);
   const pos = queue.indexOf(g.id) + 1;
   const table = g.table_id ? db.prepare('SELECT label FROM tables WHERE id = ?').get(g.table_id) : null;
   const order = g.order_id ? db.prepare('SELECT number, status FROM orders WHERE id = ?').get(g.order_id) : null;
+  const devices = devicesForGuest(g.id).length;
   return {
     kind: g.kind,
     name: firstName(g.name),
     partySize: g.party_size,
     status: g.status,
     position: pos || null,
-    estMinutes: pos ? Math.max(1, pos * Number(s.avg_turn_minutes || 10)) : 0,
+    estMinutes: estFor(pos, s),
     lastMessage: g.last_message,
     buzzCount: g.buzz_count,
+    headsUp: Boolean(g.heads_up_at),
     tableLabel: table?.label || null,
     orderNumber: order?.number || null,
     orderStatus: order?.status || null,
     joinedAt: g.created_at,
-    business: { name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message },
+    hasEmail: Boolean(g.email),
+    emailAlerts: Boolean(g.email && g.notify_email && emailEnabled()),
+    emailAvailable: emailEnabled(),
+    customer: Boolean(g.customer_id),
+    pushDevices: devices,
+    preorder: { ...preorderWindow(g, s, pos), order: preorderFor(g.id) },
+    business: { name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : null },
   };
 }
 
@@ -95,15 +126,73 @@ function pushGuest(guestId) {
   const g = db.prepare('SELECT * FROM guests WHERE id = ?').get(guestId);
   if (g) io.to(`guest:${g.id}`).emit('guest:update', guestPublicView(g));
 }
-function pushAllWaiting() {
-  for (const { id } of db.prepare("SELECT id FROM guests WHERE status IN ('waiting','buzzed','acknowledged')").all()) pushGuest(id);
+
+/** Send a guest an alert on every channel they turned on: live page, phone notification, email. */
+async function alertGuest(g, { title, body, tag, kind }) {
+  const s = getSettings();
+  io.to(`guest:${g.id}`).emit(kind === 'buzz' ? 'buzz' : 'headsup', { message: body, at: Date.now() });
+  const push = await pushToGuest(g.id, { title, body, tag, url: `/b/${g.token}`, kind }).catch(() => ({ sent: 0 }));
+  let email = null;
+  if (g.email && g.notify_email && emailEnabled()) {
+    email = await emailGuest(g.email, { businessName: s.business_name, subject: title, message: body, link: linkFor(g), accent: s.accent }).catch((e) => { console.error('email failed', e.message); return { ok: false }; });
+  }
+  return { push, email };
 }
 
-function createGuest({ kind = 'table', name, phone, party_size = 1, notes, source = 'staff', order_id = null }) {
+/** Automatic "almost ready" heads-up once a party's estimated wait drops under the business's threshold. */
+async function sendHeadsUp(g, manual = false) {
+  const s = getSettings();
+  db.prepare('UPDATE guests SET heads_up_at = ?, preorder_open = 1 WHERE id = ?').run(now(), g.id);
+  const canOrder = s.preorder_enabled === '1' && db.prepare('SELECT COUNT(*) c FROM menu_items WHERE active=1 AND guest_orderable=1').get().c > 0;
+  const body = canOrder
+    ? `Your ${s.unit_label.toLowerCase()} is almost ready. Order drinks now and they'll be waiting when you sit down.`
+    : `Your ${s.unit_label.toLowerCase()} is almost ready. Please stay nearby.`;
+  const r = await alertGuest(g, { title: `${s.business_name}: almost your turn`, body, tag: 'headsup', kind: 'headsup' });
+  audit(null, 'guest.headsup', `${g.name} (#${g.id})${manual ? ' — sent by staff' : ''}`, null);
+  pushGuest(g.id);
+  return r;
+}
+
+let headsUpRunning = false;
+async function checkHeadsUps() {
+  if (headsUpRunning) return; headsUpRunning = true;
+  try {
+    const s = getSettings();
+    const limit = Number(s.heads_up_minutes);
+    if (!limit) return;
+    const queue = queueFor('table');
+    for (const [i, id] of queue.entries()) {
+      if (estFor(i + 1, s) > limit) break;
+      const g = db.prepare('SELECT * FROM guests WHERE id = ?').get(id);
+      if (g && g.status === 'waiting' && !g.heads_up_at) await sendHeadsUp(g);
+    }
+  } finally { headsUpRunning = false; }
+}
+
+function pushAllWaiting() {
+  for (const { id } of db.prepare("SELECT id FROM guests WHERE status IN ('waiting','buzzed','acknowledged')").all()) pushGuest(id);
+  checkHeadsUps().catch((e) => console.error('heads-up', e));
+}
+
+function createGuest({ kind = 'table', name, phone, email, notifyEmail, party_size = 1, notes, source = 'staff', order_id = null, customer_id = null, booking_id = null }) {
   const token = newGuestToken();
-  const info = db.prepare('INSERT INTO guests (kind, name, phone, party_size, notes, token, source, order_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(kind, name, phone || null, party_size, notes || null, token, source, order_id);
+  const info = db.prepare('INSERT INTO guests (kind, name, phone, email, notify_email, party_size, notes, token, source, order_id, customer_id, booking_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(kind, name, phone || null, email || null, email && notifyEmail ? 1 : 0, party_size, notes || null, token, source, order_id, customer_id, booking_id);
   return db.prepare('SELECT * FROM guests WHERE id = ?').get(info.lastInsertRowid);
+}
+
+/** Move a guest's held pre-order to the kitchen/bar and attach it to their table. */
+function fireHeldPreorder(guestId, tableId) {
+  const o = db.prepare("SELECT * FROM orders WHERE guest_id = ? AND source = 'guest' AND status = 'held' ORDER BY id DESC LIMIT 1").get(guestId);
+  if (!o) return null;
+  db.prepare("UPDATE orders SET status = 'sent', sent_at = ?, table_id = COALESCE(?, table_id) WHERE id = ?").run(now(), tableId || null, o.id);
+  io.to('staff').emit('preorder:fired', { number: o.number, table: tableId ? db.prepare('SELECT label FROM tables WHERE id=?').get(tableId)?.label : null });
+  notifyStaff('orders');
+  return o.number;
+}
+function voidHeldPreorder(guestId) {
+  const r = db.prepare("UPDATE orders SET status = 'void' WHERE guest_id = ? AND source = 'guest' AND status = 'held'").run(guestId);
+  if (r.changes) notifyStaff('orders');
 }
 
 async function buzzGuest(g, message, user, ip) {
@@ -112,15 +201,16 @@ async function buzzGuest(g, message, user, ip) {
   const order = g.order_id ? db.prepare('SELECT number FROM orders WHERE id = ?').get(g.order_id) : null;
   const msg = message?.trim() || (g.kind === 'order'
     ? `Order #${order?.number ?? ''} is ready for pickup!`
-    : `Your ${s.unit_label.toLowerCase()}${table ? ` (${table.label})` : ''} is ready — please come to the host stand.`);
+    : `Your ${s.unit_label.toLowerCase()}${table ? ` (${table.label})` : ''} is ready. Please come to the host stand.`);
   db.prepare("UPDATE guests SET status = 'buzzed', buzz_count = buzz_count + 1, buzzed_at = ?, last_message = ? WHERE id = ?").run(now(), msg, g.id);
-  io.to(`guest:${g.id}`).emit('buzz', { message: msg, at: Date.now() });
+  // their table is set: start making any drinks they pre-ordered so they're waiting when they sit
+  const fired = g.kind === 'table' && g.table_id ? fireHeldPreorder(g.id, g.table_id) : null;
+  const title = g.kind === 'order' ? `${s.business_name}: order ready` : `${s.business_name}: your ${s.unit_label.toLowerCase()} is ready`;
+  const sent = await alertGuest(g, { title, body: msg, tag: 'buzz', kind: 'buzz' });
   pushGuest(g.id);
-  audit(user, 'guest.buzz', `${g.name} (#${g.id}) — ${msg}`, ip);
-  let sms = null;
-  if (g.phone && smsEnabled()) sms = await sendSms(g.phone, `${s.business_name}: ${msg}`).catch((e) => ({ ok: false, error: e.message }));
+  audit(user, 'guest.buzz', `${g.name} (#${g.id}) — ${msg}${sent.push?.sent ? ` [phone alert to ${sent.push.sent} device(s)]` : ''}${fired ? ` [pre-order #${fired} sent]` : ''}`, ip);
   notifyStaff('guests');
-  return { message: msg, sms };
+  return { message: msg, push: sent.push, email: sent.email, preorderFired: fired };
 }
 
 /* ======================================================================
@@ -158,7 +248,7 @@ app.post('/api/setup', authLimiter, wrap(async (req, res) => {
   const problem = pinProblem(body.pin);
   if (problem) return res.status(400).json({ error: problem });
   const unit = { restaurant: 'Table', cafe: 'Order', service: 'Appointment' }[body.businessType];
-  setSettings({ business_name: body.businessName, business_type: body.businessType, unit_label: unit });
+  setSettings({ business_name: body.businessName, business_type: body.businessType, unit_label: unit, booking_enabled: body.businessType === 'service' ? '1' : '0', preorder_enabled: body.businessType === 'service' ? '0' : '1' });
   const info = db.prepare("INSERT INTO users (name, role, pin_hash) VALUES (?, 'owner', ?)").run(body.ownerName, await hashPin(body.pin));
   if (body.seed !== false) seedDemoData(body.businessType);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
@@ -208,17 +298,35 @@ app.get('/api/auth/me', (req, res) => {
    ====================================================================== */
 app.get('/api/public/business', publicLimiter, (req, res) => {
   const s = getSettings();
-  res.json({ name: s.business_name, accent: s.accent, type: s.business_type, unitLabel: s.unit_label, selfCheckin: s.self_checkin === '1', waiting: queueFor('table').length, avgTurn: Number(s.avg_turn_minutes) });
+  res.json({
+    name: s.business_name, accent: s.accent, type: s.business_type, unitLabel: s.unit_label, selfCheckin: s.self_checkin === '1',
+    waiting: queueFor('table').length, avgTurn: Number(s.avg_turn_minutes), emailAlerts: emailEnabled(),
+    preorder: s.preorder_enabled === '1', booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : null,
+  });
 });
+
+app.get('/api/public/logo', (req, res) => {
+  const a = db.prepare("SELECT mime, data FROM assets WHERE key = 'logo'").get();
+  if (!a) return res.status(404).end();
+  res.set({ 'Content-Type': a.mime, 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Security-Policy': "default-src 'none'" });
+  res.send(a.data);
+});
+
+app.get('/api/public/vapid', (req, res) => res.json({ publicKey: VAPID_PUBLIC_KEY }));
+
+const emailField = z.string().trim().max(120).email('Email looks wrong').optional().or(z.literal(''));
 
 app.post('/api/public/join', joinLimiter, wrap(async (req, res) => {
   if (getSettings().self_checkin !== '1') return res.status(403).json({ error: 'Self check-in is turned off. Please see the host.' });
   const body = parse(z.object({
     name: z.string().trim().min(1).max(40),
     phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, 'Phone looks wrong').optional().or(z.literal('')),
+    email: emailField,
+    notifyEmail: z.boolean().optional(),
     partySize: z.number().int().min(1).max(30),
   }), req.body);
-  const g = createGuest({ name: body.name, phone: body.phone, party_size: body.partySize, source: 'self' });
+  const cust = customerFromReq(req);
+  const g = createGuest({ name: body.name, phone: body.phone, email: body.email || cust?.email, notifyEmail: body.notifyEmail, party_size: body.partySize, source: 'self', customer_id: cust?.id || null });
   audit(null, 'guest.selfjoin', `${g.name} party of ${g.party_size}`, clientIp(req));
   notifyStaff('guests');
   pushAllWaiting();
@@ -227,11 +335,110 @@ app.post('/api/public/join', joinLimiter, wrap(async (req, res) => {
 
 const guestByToken = (token) => (typeof token === 'string' && /^[A-Za-z0-9_-]{20,40}$/.test(token))
   ? db.prepare('SELECT * FROM guests WHERE token = ?').get(token) : null;
+const ACTIVE = ['waiting', 'buzzed', 'acknowledged'];
 
 app.get('/api/g/:token', publicLimiter, (req, res) => {
   const g = guestByToken(req.params.token);
   if (!g) return res.status(404).json({ error: 'This buzzer link is not valid.' });
   res.json(guestPublicView(g));
+});
+
+// Per-guest install manifest so "Add to Home Screen" opens THIS buzzer (needed for iPhone notifications)
+app.get('/api/g/:token/manifest.webmanifest', publicLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g) return res.status(404).end();
+  const s = getSettings();
+  const icon = s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : '/icon-512.png';
+  res.type('application/manifest+json').json({
+    name: `${s.business_name} buzzer`, short_name: s.business_name.slice(0, 12), start_url: `/b/${g.token}`, scope: '/b/',
+    display: 'standalone', background_color: '#0f1015', theme_color: '#0f1015',
+    icons: [{ src: icon, sizes: '512x512', type: 'image/png', purpose: 'any' }],
+  });
+});
+
+app.post('/api/g/:token/push', publicLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g || !ACTIVE.includes(g.status)) return res.status(409).json({ error: 'This buzzer is no longer active' });
+  const sub = parse(z.object({
+    endpoint: z.string().url().max(800).refine((u) => u.startsWith('https://'), 'Must be https'),
+    keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
+  }), req.body);
+  saveSubscription({ guestId: g.id, customerId: g.customer_id || null }, sub);
+  audit(null, 'guest.alerts_on', `${g.name} (#${g.id}) turned on phone alerts`, clientIp(req));
+  pushGuest(g.id);
+  res.json({ ok: true });
+});
+
+app.post('/api/g/:token/push/test', publicLimiter, wrap(async (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const s = getSettings();
+  const r = await pushToGuest(g.id, { title: s.business_name, body: "Alerts are on. We'll buzz you here when it's your turn.", tag: 'test', url: `/b/${g.token}` });
+  res.json(r);
+}));
+
+app.post('/api/g/:token/email', publicLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g || !ACTIVE.includes(g.status)) return res.status(409).json({ error: 'This buzzer is no longer active' });
+  const { email, notify } = parse(z.object({ email: emailField, notify: z.boolean() }), req.body);
+  db.prepare('UPDATE guests SET email = ?, notify_email = ? WHERE id = ?').run(email || null, email && notify ? 1 : 0, g.id);
+  pushGuest(g.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/g/:token/menu', publicLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const s = getSettings();
+  const items = db.prepare('SELECT id, name, category, price_cents, color FROM menu_items WHERE active = 1 AND guest_orderable = 1 ORDER BY sort, id').all();
+  res.json({ items, currency: s.currency, taxRate: Number(s.tax_rate) });
+});
+
+app.post('/api/g/:token/preorder', orderLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const s = getSettings();
+  const win = preorderWindow(g, s, queueFor(g.kind).indexOf(g.id) + 1);
+  if (!win.open) return res.status(409).json({ error: win.enabled ? `Ordering opens in about ${win.opensInMinutes} minutes.` : 'Ordering ahead is not available.' });
+  const body = parse(z.object({ items: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(12), note: z.string().trim().max(80).optional() })).min(1).max(20) }), req.body);
+  const byId = new Map(db.prepare('SELECT * FROM menu_items WHERE active = 1 AND guest_orderable = 1').all().map((m) => [m.id, m]));
+  const lines = body.items.map((i) => { const m = byId.get(i.itemId); if (!m) { const e = new Error('An item is no longer available'); e.status = 400; throw e; } return { m, qty: i.qty, note: i.note || null }; });
+  if (lines.reduce((a, l) => a + l.qty, 0) > Math.max(12, g.party_size * 4)) return res.status(400).json({ error: 'That is a lot for one party. Please order the rest at your table.' });
+  const existing = db.prepare("SELECT * FROM orders WHERE guest_id = ? AND source = 'guest' AND status <> 'void' ORDER BY id DESC LIMIT 1").get(g.id);
+  if (existing && existing.status !== 'held') return res.status(409).json({ error: 'Your order is already being made. Please add more with your server.' });
+  const subtotal = lines.reduce((a, l) => a + l.qty * l.m.price_cents, 0);
+  const tax = Math.round(subtotal * Number(s.tax_rate) / 100);
+  const id = db.transaction(() => {
+    let orderId = existing?.id;
+    if (orderId) {
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+      db.prepare('UPDATE orders SET subtotal_cents=?, tax_cents=?, total_cents=? WHERE id=?').run(subtotal, tax, subtotal + tax, orderId);
+    } else {
+      const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE date(created_at)=date('now')").get().n || 100) + 1;
+      orderId = db.prepare("INSERT INTO orders (number, status, guest_id, customer_name, subtotal_cents, tax_cents, total_cents, source) VALUES (?, 'held', ?, ?, ?, ?, ?, 'guest')")
+        .run(number, g.id, g.name, subtotal, tax, subtotal + tax).lastInsertRowid;
+    }
+    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note) VALUES (?, ?, ?, ?, ?, ?)');
+    for (const l of lines) ins.run(orderId, l.m.id, l.m.name, l.qty, l.m.price_cents, l.note);
+    return orderId;
+  })();
+  audit(null, existing ? 'preorder.update' : 'preorder.create', `${g.name} (#${g.id}) — ${lines.map((l) => `${l.qty}× ${l.m.name}`).join(', ')}`, clientIp(req));
+  io.to('staff').emit('preorder:new', { name: g.name, count: lines.reduce((a, l) => a + l.qty, 0), updated: Boolean(existing) });
+  // if their table is already called, start it right away
+  if (g.status !== 'waiting' && g.table_id) fireHeldPreorder(g.id, g.table_id);
+  notifyStaff('orders'); notifyStaff('guests');
+  pushGuest(g.id);
+  res.json({ ok: true, orderId: id });
+});
+
+app.post('/api/g/:token/preorder/cancel', orderLimiter, (req, res) => {
+  const g = guestByToken(req.params.token);
+  if (!g) return res.status(404).json({ error: 'Not found' });
+  const r = db.prepare("UPDATE orders SET status = 'void' WHERE guest_id = ? AND source = 'guest' AND status = 'held'").run(g.id);
+  if (!r.changes) return res.status(409).json({ error: 'Your order is already being made.' });
+  audit(null, 'preorder.cancel', `${g.name} (#${g.id})`, clientIp(req));
+  notifyStaff('orders'); pushGuest(g.id);
+  res.json({ ok: true });
 });
 
 app.post('/api/g/:token/ack', publicLimiter, (req, res) => {
@@ -247,8 +454,10 @@ app.post('/api/g/:token/ack', publicLimiter, (req, res) => {
 
 app.post('/api/g/:token/leave', publicLimiter, (req, res) => {
   const g = guestByToken(req.params.token);
-  if (!g || !['waiting', 'buzzed', 'acknowledged'].includes(g.status)) return res.status(409).json({ error: 'Not on the list' });
+  if (!g || !ACTIVE.includes(g.status)) return res.status(409).json({ error: 'Not on the list' });
   db.prepare("UPDATE guests SET status = 'cancelled', closed_at = ? WHERE id = ?").run(now(), g.id);
+  voidHeldPreorder(g.id);
+  forgetGuestDevices(g.id);
   audit(null, 'guest.leave', `${g.name} (#${g.id}) left the list`, clientIp(req));
   notifyStaff('guests');
   pushAllWaiting();
@@ -262,7 +471,7 @@ app.post('/api/g/:token/leave', publicLimiter, (req, res) => {
 const staff = express.Router();
 staff.use(requireAuth('staff'));
 
-staff.get('/settings', (req, res) => res.json({ ...getSettings(), sms_enabled: smsEnabled() }));
+staff.get('/settings', (req, res) => res.json({ ...getSettings(), email_enabled: emailEnabled() }));
 staff.put('/settings', requireAuth('manager'), (req, res) => {
   const body = parse(z.object({
     business_name: z.string().trim().min(1).max(60),
@@ -275,6 +484,19 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     idle_lock_minutes: z.coerce.number().int().min(1).max(60),
     self_checkin: z.union([z.literal('0'), z.literal('1')]),
     welcome_message: z.string().trim().max(240),
+    preorder_enabled: z.union([z.literal('0'), z.literal('1')]),
+    preorder_open_minutes: z.coerce.number().int().min(0).max(240),
+    heads_up_minutes: z.coerce.number().int().min(0).max(240),
+    sign_headline: z.string().trim().min(1).max(60),
+    timezone: z.string().refine((tz) => { try { Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } }, 'Unknown time zone'),
+    booking_enabled: z.union([z.literal('0'), z.literal('1')]),
+    booking_open: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    booking_close: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    booking_days: z.string().regex(/^[01]{7}$/),
+    booking_slot_minutes: z.coerce.number().int().min(5).max(480),
+    booking_capacity: z.coerce.number().int().min(1).max(50),
+    booking_days_ahead: z.coerce.number().int().min(1).max(120),
+    booking_reminder_minutes: z.coerce.number().int().min(0).max(1440),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -301,7 +523,13 @@ staff.get('/dashboard', (req, res) => {
 
 /* ---- guests / waitlist ---- */
 staff.get('/guests', (req, res) => {
-  const active = db.prepare("SELECT g.*, t.label table_label, o.number order_number FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id WHERE g.status IN ('waiting','buzzed','acknowledged') ORDER BY g.created_at, g.id").all();
+  const active = db.prepare(`SELECT g.*, t.label table_label, o.number order_number,
+      (SELECT COUNT(*) FROM push_subs p WHERE p.guest_id = g.id OR (g.customer_id IS NOT NULL AND p.customer_id = g.customer_id)) devices,
+      (SELECT po.status || ':' || po.number || ':' || (SELECT COALESCE(SUM(qty),0) FROM order_items WHERE order_id = po.id) FROM orders po WHERE po.guest_id = g.id AND po.source = 'guest' AND po.status <> 'void' ORDER BY po.id DESC LIMIT 1) preorder,
+      b.start_local booking_start, b.service_name booking_service
+    FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN bookings b ON b.id = g.booking_id
+    WHERE g.status IN ('waiting','buzzed','acknowledged') ORDER BY g.created_at, g.id`).all()
+    .map(({ token, ...g }) => g);
   const recent = db.prepare("SELECT g.*, t.label table_label FROM guests g LEFT JOIN tables t ON t.id=g.table_id WHERE g.status NOT IN ('waiting','buzzed','acknowledged') AND date(g.created_at)=date('now') ORDER BY g.id DESC LIMIT 30").all();
   res.json({ active, recent });
 });
@@ -312,9 +540,10 @@ staff.post('/guests', wrap(async (req, res) => {
     phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/).optional().or(z.literal('')),
     partySize: z.number().int().min(1).max(50),
     notes: z.string().trim().max(200).optional(),
+    email: emailField,
     kind: z.enum(['table', 'order']).optional(),
   }), req.body);
-  const g = createGuest({ name: body.name, phone: body.phone, party_size: body.partySize, notes: body.notes, kind: body.kind || 'table' });
+  const g = createGuest({ name: body.name, phone: body.phone, email: body.email, notifyEmail: Boolean(body.email), party_size: body.partySize, notes: body.notes, kind: body.kind || 'table' });
   audit(req.user, 'guest.add', `${g.name} party of ${g.party_size}`, clientIp(req));
   notifyStaff('guests');
   pushAllWaiting();
@@ -331,7 +560,37 @@ staff.get('/guests/:id/qr', wrap(async (req, res) => {
 
 staff.get('/join-qr', wrap(async (req, res) => {
   const link = `${publicBase(req)}/join`;
-  res.json({ link, svg: await QRCode.toString(link, { type: 'svg', margin: 1 }) });
+  res.json({ link, svg: await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0b0b12', light: '#ffffff' } }) });
+}));
+
+/* ---- logo (PNG/JPEG/WebP only — never SVG, which can carry script) ---- */
+staff.put('/logo', requireAuth('manager'), (req, res) => {
+  const { dataUrl } = parse(z.object({ dataUrl: z.string().max(900_000) }), req.body);
+  const m = /^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!m) return res.status(400).json({ error: 'Upload a PNG, JPG or WebP image' });
+  const buf = Buffer.from(m[3], 'base64');
+  const sig = { png: [0x89, 0x50, 0x4e, 0x47], jpeg: [0xff, 0xd8, 0xff], webp: [0x52, 0x49, 0x46, 0x46] }[m[2]];
+  if (buf.length > 600_000 || !sig.every((b, i) => buf[i] === b)) return res.status(400).json({ error: 'That file is not a valid image (max 600 KB)' });
+  db.prepare("INSERT INTO assets (key, mime, data) VALUES ('logo', ?, ?) ON CONFLICT(key) DO UPDATE SET mime=excluded.mime, data=excluded.data, updated_at=datetime('now')").run(m[1], buf);
+  setSettings({ logo_version: String(Date.now()) });
+  audit(req.user, 'settings.logo', `${Math.round(buf.length / 1024)} KB`, clientIp(req));
+  io.emit('settings', getSettings());
+  res.json({ ok: true, logo: `/api/public/logo?v=${getSettings().logo_version}` });
+});
+staff.delete('/logo', requireAuth('manager'), (req, res) => {
+  db.prepare("DELETE FROM assets WHERE key='logo'").run();
+  setSettings({ logo_version: '0' });
+  audit(req.user, 'settings.logo_removed', null, clientIp(req));
+  io.emit('settings', getSettings());
+  res.json({ ok: true });
+});
+
+staff.post('/guests/:id/headsup', wrap(async (req, res) => {
+  const g = db.prepare('SELECT * FROM guests WHERE id = ?').get(idParam(req));
+  if (!g || g.status !== 'waiting') return res.status(409).json({ error: 'Guest is not waiting' });
+  const r = await sendHeadsUp(g, true);
+  notifyStaff('guests');
+  res.json(r);
 }));
 
 staff.post('/guests/:id/buzz', wrap(async (req, res) => {
@@ -364,10 +623,12 @@ staff.post('/guests/:id/seat', (req, res) => {
       .run(g.kind === 'order' ? 'done' : 'seated', tid || null, now(), now(), id);
   });
   tx();
+  const fired = g.kind === 'table' ? fireHeldPreorder(id, tid) : null;
+  if (g.booking_id) db.prepare("UPDATE bookings SET status='done' WHERE id=?").run(g.booking_id);
   audit(req.user, g.kind === 'order' ? 'guest.pickedup' : 'guest.seat', `${g.name}${tid ? ` → table ${tid}` : ''}`, clientIp(req));
   notifyStaff('guests'); notifyStaff('tables');
   pushGuest(id); pushAllWaiting();
-  res.json({ ok: true });
+  res.json({ ok: true, preorderFired: fired });
 });
 
 staff.post('/guests/:id/remove', (req, res) => {
@@ -377,6 +638,9 @@ staff.post('/guests/:id/remove', (req, res) => {
   if (!g) return res.status(404).json({ error: 'Not found' });
   db.prepare('UPDATE guests SET status=?, closed_at=? WHERE id=?').run(reason, now(), id);
   db.prepare("UPDATE tables SET status='open', guest_id=NULL WHERE guest_id=? AND status='reserved'").run(id);
+  voidHeldPreorder(id);
+  forgetGuestDevices(id);
+  if (g.booking_id) db.prepare('UPDATE bookings SET status=? WHERE id=?').run(reason === 'noshow' ? 'noshow' : 'cancelled', g.booking_id);
   audit(req.user, `guest.${reason}`, g.name, clientIp(req));
   notifyStaff('guests'); notifyStaff('tables');
   pushGuest(id); pushAllWaiting();
@@ -411,18 +675,18 @@ staff.delete('/tables/:id', requireAuth('manager'), (req, res) => {
 
 /* ---- menu ---- */
 staff.get('/menu', (req, res) => res.json(db.prepare('SELECT * FROM menu_items ORDER BY sort, id').all()));
-const menuSchema = z.object({ name: z.string().trim().min(1).max(40), category: z.string().trim().min(1).max(24), price_cents: z.number().int().min(0).max(10_000_000), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), active: z.boolean().optional() });
+const menuSchema = z.object({ name: z.string().trim().min(1).max(40), category: z.string().trim().min(1).max(24), price_cents: z.number().int().min(0).max(10_000_000), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), active: z.boolean().optional(), guest_orderable: z.boolean().optional() });
 staff.post('/menu', requireAuth('manager'), (req, res) => {
   const b = parse(menuSchema, req.body);
-  db.prepare('INSERT INTO menu_items (name, category, price_cents, color) VALUES (?, ?, ?, ?)').run(b.name, b.category, b.price_cents, b.color || '#7c5cff');
+  db.prepare('INSERT INTO menu_items (name, category, price_cents, color, guest_orderable) VALUES (?, ?, ?, ?, ?)').run(b.name, b.category, b.price_cents, b.color || '#ffb020', b.guest_orderable ? 1 : 0);
   audit(req.user, 'menu.add', b.name, clientIp(req)); notifyStaff('menu'); res.json({ ok: true });
 });
 staff.put('/menu/:id', requireAuth('manager'), (req, res) => {
   const id = idParam(req); const b = parse(menuSchema.partial(), req.body);
   const cur = db.prepare('SELECT * FROM menu_items WHERE id=?').get(id);
   if (!cur) return res.status(404).json({ error: 'Not found' });
-  const m = { ...cur, ...b, active: b.active === undefined ? cur.active : (b.active ? 1 : 0) };
-  db.prepare('UPDATE menu_items SET name=?, category=?, price_cents=?, color=?, active=? WHERE id=?').run(m.name, m.category, m.price_cents, m.color, m.active, id);
+  const m = { ...cur, ...b, active: b.active === undefined ? cur.active : (b.active ? 1 : 0), guest_orderable: b.guest_orderable === undefined ? cur.guest_orderable : (b.guest_orderable ? 1 : 0) };
+  db.prepare('UPDATE menu_items SET name=?, category=?, price_cents=?, color=?, active=?, guest_orderable=? WHERE id=?').run(m.name, m.category, m.price_cents, m.color, m.active, m.guest_orderable, id);
   audit(req.user, 'menu.update', m.name, clientIp(req)); notifyStaff('menu'); res.json({ ok: true });
 });
 staff.delete('/menu/:id', requireAuth('manager'), (req, res) => {
@@ -478,36 +742,46 @@ staff.post('/orders', wrap(async (req, res) => {
 }));
 
 staff.get('/orders', (req, res) => {
-  const scope = req.query.scope === 'paid' ? "o.status IN ('paid','void') AND date(o.created_at)=date('now')" : "o.status IN ('open','sent','ready')";
-  const orders = db.prepare(`SELECT o.*, t.label table_label, u.name staff_name FROM orders o LEFT JOIN tables t ON t.id=o.table_id LEFT JOIN users u ON u.id=o.created_by WHERE ${scope} ORDER BY o.id DESC LIMIT 100`).all();
+  const scope = req.query.scope === 'paid' ? "o.status IN ('paid','void') AND date(o.created_at)=date('now')" : "o.status IN ('held','open','sent','ready')";
+  const orders = db.prepare(`SELECT o.*, t.label table_label, u.name staff_name, g.status guest_status, g.kind guest_kind FROM orders o LEFT JOIN guests g ON g.id=o.guest_id LEFT JOIN tables t ON t.id=o.table_id LEFT JOIN users u ON u.id=o.created_by WHERE ${scope} ORDER BY o.id DESC LIMIT 100`).all();
   const items = db.prepare(`SELECT * FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',') || 0})`).all();
   res.json(orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id) })));
 });
 
 staff.post('/orders/:id/ready', wrap(async (req, res) => {
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
-  if (!o || !['open', 'sent'].includes(o.status)) return res.status(409).json({ error: 'Order not in progress' });
+  if (!o || !['held', 'open', 'sent'].includes(o.status)) return res.status(409).json({ error: 'Order not in progress' });
   db.prepare("UPDATE orders SET status='ready', ready_at=? WHERE id=?").run(now(), o.id);
   audit(req.user, 'order.ready', `#${o.number}`, clientIp(req));
   let buzz = null;
-  if (o.guest_id) {
+  if (o.guest_id && o.source !== 'guest') {
     const g = db.prepare('SELECT * FROM guests WHERE id=?').get(o.guest_id);
-    if (g && ['waiting', 'buzzed', 'acknowledged'].includes(g.status)) buzz = await buzzGuest(g, null, req.user, clientIp(req));
+    if (g && g.kind === 'order' && ACTIVE.includes(g.status)) buzz = await buzzGuest(g, null, req.user, clientIp(req));
   }
   notifyStaff('orders');
   res.json({ ok: true, buzz });
 }));
+
+staff.post('/orders/:id/fire', (req, res) => {
+  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
+  if (!o || o.status !== 'held') return res.status(409).json({ error: 'Only waiting pre-orders can be started' });
+  db.prepare("UPDATE orders SET status='sent', sent_at=? WHERE id=?").run(now(), o.id);
+  audit(req.user, 'preorder.fire', `#${o.number}`, clientIp(req));
+  notifyStaff('orders'); if (o.guest_id) pushGuest(o.guest_id);
+  res.json({ ok: true });
+});
 
 staff.post('/orders/:id/pay', (req, res) => {
   const id = idParam(req);
   const b = parse(z.object({ method: z.enum(['cash', 'card', 'other']), tipCents: z.number().int().min(0).max(1_000_000).optional(), tenderedCents: z.number().int().min(0).optional() }), req.body);
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(id);
   if (!o || ['paid', 'void'].includes(o.status)) return res.status(409).json({ error: 'Order already closed' });
+  if (o.guest_id) setTimeout(() => pushGuest(o.guest_id), 0);
   const tip = b.tipCents || 0;
   const total = o.subtotal_cents - o.discount_cents + o.tax_cents + tip;
   if (b.method === 'cash' && b.tenderedCents !== undefined && b.tenderedCents < total) return res.status(400).json({ error: 'Not enough cash tendered' });
   db.prepare("UPDATE orders SET status='paid', tip_cents=?, total_cents=?, payment_method=?, paid_at=? WHERE id=?").run(tip, total, b.method, now(), id);
-  if (o.guest_id) { db.prepare("UPDATE guests SET status='done', closed_at=? WHERE id=? AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); pushGuest(o.guest_id); }
+  if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='done', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); pushGuest(o.guest_id); }
   audit(req.user, 'order.pay', `#${o.number} ${b.method} ${(total / 100).toFixed(2)}`, clientIp(req));
   notifyStaff('orders'); notifyStaff('guests');
   res.json({ ok: true, totalCents: total, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - total : 0 });
@@ -517,7 +791,8 @@ staff.post('/orders/:id/void', requireAuth('manager'), (req, res) => {
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
   if (!o || o.status === 'void') return res.status(409).json({ error: 'Cannot void' });
   db.prepare("UPDATE orders SET status='void' WHERE id=?").run(o.id);
-  if (o.guest_id) { db.prepare("UPDATE guests SET status='cancelled', closed_at=? WHERE id=? AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); pushGuest(o.guest_id); }
+  if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='cancelled', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); }
+  if (o.guest_id) pushGuest(o.guest_id);
   audit(req.user, 'order.void', `#${o.number}`, clientIp(req));
   notifyStaff('orders'); notifyStaff('guests');
   res.json({ ok: true });
@@ -572,12 +847,230 @@ staff.get('/audit', requireAuth('manager'), (req, res) => {
   res.json(db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT 300').all());
 });
 
+
+/* ======================================================================
+   CUSTOMER ACCOUNTS + BOOKING
+   ====================================================================== */
+/** Current wall-clock time in the business's timezone, as 'YYYY-MM-DD' + minutes since midnight. */
+function localNow(tz) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date()).map((p) => [p.type, p.value]));
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return { date, minutes, stamp: `${date} ${parts.hour}:${parts.minute}` };
+}
+const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const minutesUntil = (startLocal, tz) => (Date.parse(`${startLocal.replace(' ', 'T')}:00Z`) - Date.parse(`${localNow(tz).stamp.replace(' ', 'T')}:00Z`)) / 60000;
+const addDays = (date, n) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const dow = (date) => new Date(`${date}T12:00:00Z`).getUTCDay();
+
+function slotsFor(date, s) {
+  const { date: today, minutes: nowMin } = localNow(s.timezone);
+  if (s.booking_enabled !== '1' || s.booking_days[dow(date)] !== '1') return [];
+  if (date < today || date > addDays(today, Number(s.booking_days_ahead))) return [];
+  const step = Number(s.booking_slot_minutes); const cap = Number(s.booking_capacity);
+  const taken = Object.fromEntries(db.prepare("SELECT substr(start_local, 12, 5) t, COUNT(*) c FROM bookings WHERE substr(start_local,1,10) = ? AND status IN ('booked','checked_in') GROUP BY t").all(date).map((r) => [r.t, r.c]));
+  const out = [];
+  for (let m = toMin(s.booking_open); m + step <= toMin(s.booking_close); m += step) {
+    if (date === today && m <= nowMin + 5) continue;
+    const t = fromMin(m);
+    out.push({ time: t, left: Math.max(0, cap - (taken[t] || 0)) });
+  }
+  return out;
+}
+
+const customerAttempts = new Map();
+const custLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many attempts. Try again in a few minutes.' } });
+
+app.get('/api/c/me', (req, res) => {
+  const c = customerFromReq(req);
+  if (!c) return res.status(401).json({ error: 'Please sign in' });
+  res.json({ customer: c });
+});
+
+app.post('/api/c/register', custLimiter, wrap(async (req, res) => {
+  const b = parse(z.object({
+    name: z.string().trim().min(1).max(40),
+    email: z.string().trim().toLowerCase().max(120).email('Email looks wrong'),
+    phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, 'Phone looks wrong').optional().or(z.literal('')),
+    password: z.string(),
+  }), req.body);
+  const problem = passwordProblem(b.password); if (problem) return res.status(400).json({ error: problem });
+  if (db.prepare('SELECT 1 FROM customers WHERE email = ?').get(b.email)) return res.status(409).json({ error: 'That email already has an account. Sign in instead.' });
+  const id = db.prepare('INSERT INTO customers (name, email, phone, pw_hash) VALUES (?, ?, ?, ?)').run(b.name, b.email, b.phone || null, await hashPassword(b.password)).lastInsertRowid;
+  const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+  issueCustomerSession(res, c);
+  audit(null, 'customer.register', `${c.name} <${c.email}>`, clientIp(req));
+  res.json({ customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } });
+}));
+
+app.post('/api/c/login', custLimiter, wrap(async (req, res) => {
+  const b = parse(z.object({ email: z.string().trim().toLowerCase().max(120), password: z.string().max(128) }), req.body);
+  const key = `${b.email}`;
+  const a = customerAttempts.get(key);
+  if (a && a.until > Date.now()) return res.status(429).json({ error: `Too many wrong passwords. Try again in ${Math.ceil((a.until - Date.now()) / 60000)} min.` });
+  const c = db.prepare('SELECT * FROM customers WHERE email = ?').get(b.email);
+  const ok = c ? await checkPassword(b.password, c.pw_hash) : (await burnCompare(b.password), false);
+  if (!ok) {
+    const n = (a?.n || 0) + 1;
+    customerAttempts.set(key, { n: n >= 8 ? 0 : n, until: n >= 8 ? Date.now() + 15 * 60_000 : 0 });
+    return res.status(401).json({ error: 'Email or password is wrong' });
+  }
+  customerAttempts.delete(key);
+  db.prepare('UPDATE customers SET last_login_at = ? WHERE id = ?').run(now(), c.id);
+  issueCustomerSession(res, c);
+  res.json({ customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } });
+}));
+
+app.post('/api/c/logout', (req, res) => { clearCustomerSession(res); res.json({ ok: true }); });
+
+app.post('/api/c/push', requireCustomer, (req, res) => {
+  const sub = parse(z.object({
+    endpoint: z.string().url().max(800).refine((u) => u.startsWith('https://'), 'Must be https'),
+    keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
+  }), req.body);
+  saveSubscription({ customerId: req.customer.id }, sub);
+  res.json({ ok: true });
+});
+
+app.get('/api/c/booking-info', (req, res) => {
+  const s = getSettings();
+  const { date: today } = localNow(s.timezone);
+  const days = [];
+  for (let i = 0; i <= Number(s.booking_days_ahead); i++) { const d = addDays(today, i); if (s.booking_days[dow(d)] === '1') days.push(d); }
+  const services = s.business_type === 'service' ? db.prepare('SELECT id, name, category, price_cents FROM menu_items WHERE active = 1 ORDER BY sort, id').all() : [];
+  res.json({ enabled: s.booking_enabled === '1', days, services, slotMinutes: Number(s.booking_slot_minutes), currency: s.currency, unitLabel: s.unit_label, type: s.business_type });
+});
+
+app.get('/api/c/slots', publicLimiter, (req, res) => {
+  const date = String(req.query.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Bad date' });
+  res.json({ date, slots: slotsFor(date, getSettings()) });
+});
+
+app.get('/api/c/bookings', requireCustomer, (req, res) => {
+  const s = getSettings();
+  const rows = db.prepare("SELECT b.*, g.token FROM bookings b LEFT JOIN guests g ON g.id = b.guest_id WHERE b.customer_id = ? AND (b.status IN ('booked','checked_in') OR b.created_at > datetime('now','-30 days')) ORDER BY b.start_local DESC LIMIT 30").all(req.customer.id);
+  res.json(rows.map((b) => {
+    const until = minutesUntil(b.start_local, s.timezone);
+    return { id: b.id, start: b.start_local, service: b.service_name, partySize: b.party_size, notes: b.notes, status: b.status,
+      buzzer: b.status === 'checked_in' && b.token ? `/b/${b.token}` : null,
+      canCheckIn: b.status === 'booked' && until <= 60 && until >= -60, minutesUntil: Math.round(until) };
+  }));
+});
+
+app.post('/api/c/bookings', requireCustomer, custLimiter, (req, res) => {
+  const s = getSettings();
+  if (s.booking_enabled !== '1') return res.status(403).json({ error: 'Online booking is turned off.' });
+  const b = parse(z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/),
+    serviceId: z.number().int().optional(), partySize: z.number().int().min(1).max(20).optional(), notes: z.string().trim().max(200).optional(),
+  }), req.body);
+  const mine = db.prepare("SELECT COUNT(*) c FROM bookings WHERE customer_id = ? AND status = 'booked'").get(req.customer.id).c;
+  if (mine >= 3) return res.status(409).json({ error: 'You already have 3 upcoming bookings. Cancel one to book another.' });
+  const service = b.serviceId ? db.prepare('SELECT id, name FROM menu_items WHERE id = ? AND active = 1').get(b.serviceId) : null;
+  const start = `${b.date} ${b.time}`;
+  const id = db.transaction(() => {
+    const slot = slotsFor(b.date, s).find((x) => x.time === b.time);
+    if (!slot || slot.left < 1) { const e = new Error('That time was just taken. Please pick another.'); e.status = 409; throw e; }
+    return db.prepare('INSERT INTO bookings (customer_id, service_id, service_name, party_size, start_local, notes) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(req.customer.id, service?.id || null, service?.name || null, b.partySize || 1, start, b.notes || null).lastInsertRowid;
+  }).immediate();
+  audit(null, 'booking.create', `${req.customer.name} — ${start}${service ? ` (${service.name})` : ''}`, clientIp(req));
+  notifyStaff('bookings');
+  res.json({ ok: true, id });
+});
+
+app.post('/api/c/bookings/:id/cancel', requireCustomer, (req, res) => {
+  const r = db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND customer_id = ? AND status = 'booked'").run(idParam(req), req.customer.id);
+  if (!r.changes) return res.status(409).json({ error: 'That booking can no longer be cancelled here.' });
+  audit(null, 'booking.cancel', `${req.customer.name} #${req.params.id}`, clientIp(req));
+  notifyStaff('bookings');
+  res.json({ ok: true });
+});
+
+function checkInBooking(bk, customer, by = null) {
+  const [h, m] = bk.start_local.slice(11).split(':').map(Number);
+  const time = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  const g = createGuest({ name: customer.name, phone: customer.phone, email: customer.email, notifyEmail: true, party_size: bk.party_size,
+    notes: bk.notes || null, source: 'booking', customer_id: customer.id, booking_id: bk.id });
+  db.prepare("UPDATE bookings SET status = 'checked_in', guest_id = ? WHERE id = ?").run(g.id, bk.id);
+  audit(by, 'booking.checkin', `${customer.name} — ${bk.start_local}`, null);
+  io.to('staff').emit('booking:arrived', { name: customer.name, time });
+  notifyStaff('guests'); notifyStaff('bookings'); pushAllWaiting();
+  return g;
+}
+
+app.post('/api/c/bookings/:id/checkin', requireCustomer, (req, res) => {
+  const s = getSettings();
+  const bk = db.prepare('SELECT * FROM bookings WHERE id = ? AND customer_id = ?').get(idParam(req), req.customer.id);
+  if (!bk || bk.status !== 'booked') return res.status(409).json({ error: 'This booking is not open for check-in.' });
+  const until = minutesUntil(bk.start_local, s.timezone);
+  if (until > 60) return res.status(409).json({ error: 'Check-in opens 60 minutes before your time.' });
+  if (until < -60) return res.status(409).json({ error: 'This booking time has passed. Please see the front desk.' });
+  const g = checkInBooking(bk, req.customer);
+  res.json({ ok: true, buzzer: `/b/${g.token}` });
+});
+
+// Reminders before appointments (phone notification + optional email)
+setInterval(async () => {
+  try {
+    const s = getSettings();
+    const lead = Number(s.booking_reminder_minutes);
+    if (s.booking_enabled !== '1' || !lead) return;
+    const { date } = localNow(s.timezone);
+    const due = db.prepare("SELECT b.*, c.name, c.email FROM bookings b JOIN customers c ON c.id = b.customer_id WHERE b.status = 'booked' AND b.reminded_at IS NULL AND substr(b.start_local,1,10) BETWEEN ? AND ?").all(date, addDays(date, 1));
+    for (const b of due) {
+      const until = minutesUntil(b.start_local, s.timezone);
+      if (until > lead || until < 0) continue;
+      db.prepare('UPDATE bookings SET reminded_at = ? WHERE id = ?').run(now(), b.id);
+      const when = new Date(`${b.start_local.replace(' ', 'T')}:00Z`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+      const body = `See you at ${when}${b.service_name ? ` for ${b.service_name}` : ''}. When you arrive, open the app and tap "I'm here" to check in.`;
+      await pushToCustomer(b.customer_id, { title: `${s.business_name}: appointment reminder`, body, tag: `booking-${b.id}`, url: '/account' }).catch(() => {});
+      if (emailEnabled()) await emailGuest(b.email, { businessName: s.business_name, subject: 'Appointment reminder', message: body, link: `${process.env.PUBLIC_URL || ''}/account`, accent: s.accent }).catch(() => {});
+    }
+  } catch (e) { console.error('reminders', e); }
+}, 60_000).unref();
+
+/* ---- staff side of bookings ---- */
+staff.get('/bookings', (req, res) => {
+  const s = getSettings();
+  const { date } = localNow(s.timezone);
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : date;
+  const rows = db.prepare(`SELECT b.*, c.name, c.email, c.phone FROM bookings b JOIN customers c ON c.id = b.customer_id
+    WHERE substr(b.start_local,1,10) BETWEEN ? AND ? ORDER BY b.start_local`).all(from, addDays(from, 6));
+  res.json({ today: date, from, bookings: rows, capacity: Number(s.booking_capacity) });
+});
+staff.post('/bookings/:id/checkin', (req, res) => {
+  const bk = db.prepare('SELECT * FROM bookings WHERE id = ?').get(idParam(req));
+  if (!bk || bk.status !== 'booked') return res.status(409).json({ error: 'Not open for check-in' });
+  const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(bk.customer_id);
+  checkInBooking(bk, c, req.user);
+  res.json({ ok: true });
+});
+staff.post('/bookings/:id/status', (req, res) => {
+  const { status } = parse(z.object({ status: z.enum(['cancelled', 'noshow', 'done']) }), req.body);
+  const bk = db.prepare('SELECT * FROM bookings WHERE id = ?').get(idParam(req));
+  if (!bk) return res.status(404).json({ error: 'Not found' });
+  db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, bk.id);
+  audit(req.user, `booking.${status}`, `#${bk.id} ${bk.start_local}`, clientIp(req));
+  notifyStaff('bookings');
+  res.json({ ok: true });
+});
+staff.get('/customers', requireAuth('manager'), (req, res) => {
+  res.json(db.prepare(`SELECT c.id, c.name, c.email, c.phone, c.created_at, c.last_login_at,
+    (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id) bookings,
+    (SELECT COUNT(*) FROM guests g WHERE g.customer_id = c.id AND g.status IN ('seated','done')) visits
+    FROM customers c ORDER BY c.id DESC LIMIT 500`).all());
+});
+
 app.use('/api/staff', staff);
 
 /* ---------- static client ---------- */
 const DIST = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(DIST)) {
-  app.use(express.static(DIST, { index: false, maxAge: IS_PROD ? '1h' : 0, setHeaders: (res, p) => { if (p.includes('/assets/')) res.set('Cache-Control', 'public, max-age=31536000, immutable'); } }));
+  app.use(express.static(DIST, { index: false, maxAge: IS_PROD ? '1h' : 0, setHeaders: (res, p) => { if (p.includes('/assets/')) res.set('Cache-Control', 'public, max-age=31536000, immutable'); if (p.endsWith('sw.js') || p.endsWith('.webmanifest')) res.set('Cache-Control', 'no-cache'); } }));
   app.get(/^\/(?!api|socket\.io).*/, (req, res) => res.sendFile(path.join(DIST, 'index.html')));
 }
 

@@ -10,6 +10,7 @@ import Floor from './Floor.jsx';
 import Register from './Register.jsx';
 import Orders from './Orders.jsx';
 import { MenuAdmin, StaffAdmin, SettingsAdmin, AuditLog } from './Admin.jsx';
+import Bookings from './Bookings.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -35,7 +36,8 @@ export function useLive(scopes, fetcher, deps = []) {
 const NAV = [
   { to: '/', icon: 'home', label: 'Overview', end: true },
   { to: '/waitlist', icon: 'list', label: 'Waitlist', count: true },
-  { to: '/floor', icon: 'floor', label: 'Floor' },
+  { to: '/bookings', icon: 'calendar', label: 'Bookings', when: (s) => s?.booking_enabled === '1' },
+  { to: '/floor', icon: 'floor', label: 'Floor', when: (s) => s?.business_type !== 'service' },
   { to: '/register', icon: 'register', label: 'Register' },
   { to: '/orders', icon: 'ticket', label: 'Orders' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
@@ -99,6 +101,9 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('connect_error', () => setOnline(false));
     s.on('force-lock', () => { toast('Your access changed. Enter your PIN again.', 'err'); onLock(); });
     s.on('guest:ack', ({ name }) => { playChime(); toast(`${name} is on the way`, 'ok'); });
+    s.on('preorder:new', ({ name, count, updated }) => { playChime(); toast(`${name} ${updated ? 'changed their order' : `ordered ${count} item${count === 1 ? '' : 's'} ahead`}`, 'ok'); });
+    s.on('preorder:fired', ({ number, table }) => toast(`Pre-order #${number} sent to make${table ? ` for ${table}` : ''}`, 'ok'));
+    s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
     s.on('security', ({ type, ip }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
     s.on('sync', ({ scope }) => { if (scope === 'guests') loadCount(); });
@@ -117,7 +122,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     return () => { evts.forEach((e) => window.removeEventListener(e, bump)); clearInterval(t); };
   }, [idleMin, onLock]);
 
-  const nav = NAV.filter((n) => !n.min || RANK[user.role] >= RANK[n.min]);
+  const nav = NAV.filter((n) => (!n.min || RANK[user.role] >= RANK[n.min]) && (!n.when || n.when(settings)));
   const can = (min) => RANK[user.role] >= RANK[min];
 
   return (
@@ -149,6 +154,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route index element={<Dashboard />} />
                   <Route path="waitlist" element={<Waitlist />} />
                   <Route path="floor" element={<Floor />} />
+                  <Route path="bookings" element={<Bookings />} />
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

@@ -4,7 +4,7 @@ import { Icon, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PayModal } from './Register.jsx';
 
-const LABEL = { open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
+const LABEL = { held: 'Ordered ahead, waiting for table', open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
 
 export default function Orders() {
   const { settings, can } = useCC();
@@ -35,17 +35,19 @@ export default function Orders() {
               {o.guest_id && <Puck state={o.status === 'ready' ? 'buzzed' : 'waiting'} size={26} />}
             </header>
             <div className="row wrap" style={{ gap: 6 }}>
-              <span className={`chip ${o.status === 'ready' ? 'teal' : o.status === 'void' ? 'rose' : o.status === 'paid' ? '' : 'amber'}`}>{LABEL[o.status]}</span>
+              <span className={`chip ${o.status === 'ready' ? 'teal' : o.status === 'void' ? 'rose' : o.status === 'paid' ? '' : o.status === 'held' ? 'blue' : 'amber'}`}>{LABEL[o.status]}</span>
+              {o.source === 'guest' && o.status !== 'held' && <span className="chip blue">Ordered ahead</span>}
               <span className="dim" style={{ fontSize: 13 }}>{scope === 'open' ? `${minutesSince(o.created_at)} min ago` : timeOf(o.paid_at || o.created_at)}{o.staff_name ? `, by ${o.staff_name}` : ''}</span>
             </div>
-            <ul>{o.items.map((i) => <li key={i.id} className="row"><b className="num" style={{ width: 24 }}>{i.qty}</b><span className="grow">{i.name}</span></li>)}</ul>
+            <ul>{o.items.map((i) => <li key={i.id} className="row"><b className="num" style={{ width: 24 }}>{i.qty}</b><span className="grow">{i.name}{i.note && <span className="dim"> ({i.note})</span>}</span></li>)}</ul>
             <div className="row" style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
               <span className="grow muted">{o.payment_method ? `Paid by ${o.payment_method}` : 'Unpaid'}</span>
               <b className="num">{money(o.total_cents, cur)}</b>
             </div>
             {scope === 'open' && (
               <div className="row wrap">
-                {o.status !== 'ready' && <button className="btn sm primary grow" onClick={() => act(`/staff/orders/${o.id}/ready`, `Order #${o.number} ready`)}><Icon name="bell" size={16} />Ready</button>}
+                {o.status === 'held' && <button className="btn sm primary grow" onClick={() => act(`/staff/orders/${o.id}/fire`, `Pre-order #${o.number} started`)}>Start now</button>}
+                {o.status !== 'ready' && o.status !== 'held' && <button className="btn sm primary grow" onClick={() => act(`/staff/orders/${o.id}/ready`, `Order #${o.number} ready`)}><Icon name="bell" size={16} />Ready</button>}
                 <button className="btn sm grow" onClick={() => setPaying(o)}>Take payment</button>
                 {can('manager') && <button className="btn sm ghost danger" onClick={() => confirm(`Void order #${o.number}?`) && act(`/staff/orders/${o.id}/void`, `Order #${o.number} voided`)}>Void</button>}
               </div>

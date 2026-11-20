@@ -75,7 +75,7 @@ setInterval(() => {
 
 /* ---------- Sessions ---------- */
 export function issueSession(res, user) {
-  const token = jwt.sign({ uid: user.id, sv: user.session_version }, JWT_SECRET, { expiresIn: `${SESSION_HOURS}h` });
+  const token = jwt.sign({ typ: 's', uid: user.id, sv: user.session_version }, JWT_SECRET, { expiresIn: `${SESSION_HOURS}h` });
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: IS_PROD,
@@ -93,6 +93,7 @@ export function userFromToken(token) {
   if (!token) return null;
   try {
     const p = jwt.verify(token, JWT_SECRET);
+    if (p.typ && p.typ !== 's') return null;
     const u = db.prepare('SELECT id, name, role, session_version, active FROM users WHERE id = ?').get(p.uid);
     if (!u || !u.active || u.session_version !== p.sv) return null;
     return { id: u.id, name: u.name, role: u.role };
@@ -125,3 +126,43 @@ export function csrfGuard(req, res, next) {
 
 export const newGuestToken = () => crypto.randomBytes(18).toString('base64url');
 export const clientIp = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
+
+/* ---------- Customer accounts (separate cookie + token type) ---------- */
+export const CUSTOMER_COOKIE = 'bh_customer';
+const CUSTOMER_DAYS = 60;
+
+export function passwordProblem(pw) {
+  if (typeof pw !== 'string' || pw.length < 8) return 'Use at least 8 characters';
+  if (pw.length > 128) return 'Password is too long';
+  if (/^(.)\1+$/.test(pw) || ['password', '12345678', 'qwertyui', '11111111'].includes(pw.toLowerCase())) return 'Pick a harder password';
+  return null;
+}
+export const hashPassword = (pw) => bcrypt.hash(pw, 12);
+export const checkPassword = (pw, hash) => bcrypt.compare(pw, hash);
+// Equalise timing when the email doesn't exist
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
+export const burnCompare = (pw) => bcrypt.compare(pw, DUMMY_HASH);
+
+export function issueCustomerSession(res, c) {
+  const token = jwt.sign({ typ: 'c', cid: c.id, sv: c.session_version }, JWT_SECRET, { expiresIn: `${CUSTOMER_DAYS}d` });
+  res.cookie(CUSTOMER_COOKIE, token, { httpOnly: true, secure: IS_PROD, sameSite: 'lax', maxAge: CUSTOMER_DAYS * 86400 * 1000, path: '/' });
+}
+export function clearCustomerSession(res) {
+  res.clearCookie(CUSTOMER_COOKIE, { httpOnly: true, secure: IS_PROD, sameSite: 'lax', path: '/' });
+}
+export function customerFromReq(req) {
+  const token = req.cookies?.[CUSTOMER_COOKIE];
+  if (!token) return null;
+  try {
+    const p = jwt.verify(token, JWT_SECRET);
+    if (p.typ !== 'c') return null;
+    const c = db.prepare('SELECT id, name, email, phone, session_version FROM customers WHERE id = ?').get(p.cid);
+    if (!c || c.session_version !== p.sv) return null;
+    return { id: c.id, name: c.name, email: c.email, phone: c.phone };
+  } catch { return null; }
+}
+export function requireCustomer(req, res, next) {
+  const c = customerFromReq(req);
+  if (!c) return res.status(401).json({ error: 'Please sign in' });
+  req.customer = c; next();
+}

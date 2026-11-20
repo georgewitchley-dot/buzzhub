@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api, money, timeOf } from '../lib.js';
-import { Modal, useToast } from '../ui.jsx';
+import { api, imageToPng, money, timeOf } from '../lib.js';
+import { Icon, Modal, useToast } from '../ui.jsx';
+import { PrintSign } from './PrintSign.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 
 /* ================= Menu ================= */
@@ -33,17 +34,19 @@ export function MenuAdmin() {
   const [menu] = useLive(['menu'], () => api('/staff/menu'));
   const [edit, setEdit] = useState(undefined);
   const toggle = (m) => api(`/staff/menu/${m.id}`, { method: 'PUT', body: { active: !m.active } }).catch((e) => toast(e.message, 'err'));
+  const toggleAhead = (m) => api(`/staff/menu/${m.id}`, { method: 'PUT', body: { guest_orderable: !m.guest_orderable } }).catch((e) => toast(e.message, 'err'));
   const del = (m) => confirm(`Delete ${m.name}?`) && api(`/staff/menu/${m.id}`, { method: 'DELETE' }).catch((e) => toast(e.message, 'err'));
   return (
     <>
-      <PageHead title="Menu" sub="What shows on the register. Turn items off when you run out."><button className="btn primary" onClick={() => setEdit(null)}>Add an item</button></PageHead>
+      <PageHead title="Menu" sub="What shows on the register. Items set to order ahead show on the guest's phone while they wait."><button className="btn primary" onClick={() => setEdit(null)}>Add an item</button></PageHead>
       <section className="panel"><table className="list">
-        <thead><tr><th>Item</th><th>Category</th><th>Price</th><th>On register</th><th /></tr></thead>
+        <thead><tr><th>Item</th><th>Category</th><th>Price</th><th>On register</th><th>Guests can order ahead</th><th /></tr></thead>
         <tbody>{(menu || []).map((m) => (
           <tr key={m.id} style={{ opacity: m.active ? 1 : 0.5 }}>
             <td><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: m.color, marginRight: 10 }} />{m.name}</td>
             <td className="muted">{m.category}</td><td className="num">{money(m.price_cents, settings.currency)}</td>
             <td><button className={`btn sm ${m.active ? '' : 'ghost'}`} onClick={() => toggle(m)}>{m.active ? 'On' : 'Sold out'}</button></td>
+            <td><button className={`btn sm ${m.guest_orderable ? 'primary' : 'ghost'}`} onClick={() => toggleAhead(m)} aria-pressed={Boolean(m.guest_orderable)}>{m.guest_orderable ? 'Yes' : 'No'}</button></td>
             <td style={{ textAlign: 'right' }}><button className="btn sm ghost" onClick={() => setEdit(m)}>Edit</button><button className="btn sm ghost danger" onClick={() => del(m)}>Delete</button></td>
           </tr>
         ))}</tbody>
@@ -123,21 +126,58 @@ export function StaffAdmin() {
 const PRESETS = {
   restaurant: { unit_label: 'Table' }, cafe: { unit_label: 'Order' }, service: { unit_label: 'Appointment' },
 };
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'America/Toronto', 'America/Puerto_Rico', 'Europe/London', 'Europe/Paris', 'Australia/Sydney'];
+
+function LogoBox({ settings, onChange }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try { const dataUrl = await imageToPng(file); await api('/staff/logo', { method: 'PUT', body: { dataUrl } }); toast('Logo saved', 'ok'); onChange(); }
+    catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
+  };
+  const remove = async () => { await api('/staff/logo', { method: 'DELETE' }); onChange(); };
+  const has = settings.logo_version && settings.logo_version !== '0';
+  return (
+    <div className="row" style={{ alignItems: 'center' }}>
+      <div className="logo-box">{has ? <img src={`/api/public/logo?v=${settings.logo_version}`} alt="Your logo" /> : <span className="dim">No logo</span>}</div>
+      <div className="stack grow" style={{ gap: 8 }}>
+        <label className="btn" style={{ cursor: 'pointer' }}>{busy ? 'Uploading…' : has ? 'Replace logo' : 'Upload logo'}
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr" onChange={(e) => upload(e.target.files?.[0])} disabled={busy} />
+        </label>
+        {has && <button type="button" className="btn ghost sm" onClick={remove}>Remove</button>}
+        <span className="dim" style={{ fontSize: 12.5 }}>PNG, JPG or WebP. A square logo looks best in the QR code.</span>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsAdmin() {
   const { settings, reloadSettings } = useCC();
   const toast = useToast();
   const [f, setF] = useState(settings);
+  const [printing, setPrinting] = useState(false);
   useEffect(() => setF(settings), [settings]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const flag = (k) => (e) => setF({ ...f, [k]: e.target.checked ? '1' : '0' });
   const save = async (e) => {
-    e.preventDefault();
-    const keys = ['business_name', 'business_type', 'unit_label', 'accent', 'currency', 'tax_rate', 'avg_turn_minutes', 'idle_lock_minutes', 'self_checkin', 'welcome_message'];
+    e?.preventDefault();
+    const keys = ['business_name', 'business_type', 'unit_label', 'accent', 'currency', 'tax_rate', 'avg_turn_minutes', 'idle_lock_minutes', 'self_checkin', 'welcome_message',
+      'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
+      'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
   };
+  const toggleDay = (i) => setF({ ...f, booking_days: f.booking_days.split('').map((c, j) => (j === i ? (c === '1' ? '0' : '1') : c)).join('') });
+
   return (
     <>
-      <PageHead title="Settings" sub="Make the command center and the guest buzzer fit your business." />
-      <form className="grid-2" onSubmit={save}>
+      <PageHead title="Settings" sub="Make the command center and the guest's phone fit your business.">
+        <button className="btn" onClick={() => setPrinting(true)}><Icon name="print" size={17} />Print door sign</button>
+        <button className="btn primary" onClick={save}>Save settings</button>
+      </PageHead>
+      <form className="settings-grid" onSubmit={save}>
         <section className="panel"><div className="panel-h"><h3>Business</h3></div><div className="panel-b stack">
           <label className="field"><span>Name guests see</span><input className="input" value={f.business_name} onChange={set('business_name')} maxLength={60} /></label>
           <div className="row">
@@ -153,18 +193,58 @@ export function SettingsAdmin() {
             <label className="field grow"><span>Currency</span><input className="input" value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase().slice(0, 3) })} /></label>
             <label className="field grow"><span>Sales tax %</span><input className="input" inputMode="decimal" value={f.tax_rate} onChange={set('tax_rate')} /></label>
           </div>
-          <label className="field"><span>Message on the guest's buzzer screen</span><textarea className="input" rows={3} value={f.welcome_message} onChange={set('welcome_message')} maxLength={240} /></label>
-        </div></section>
-        <section className="panel"><div className="panel-h"><h3>Waitlist and security</h3></div><div className="panel-b stack">
-          <label className="field"><span>Average minutes per party in line (used for quoted waits)</span><input className="input" type="number" min={1} max={240} value={f.avg_turn_minutes} onChange={set('avg_turn_minutes')} /></label>
-          <label className="field"><span>Guests can add themselves by scanning the door code</span>
-            <select className="input" value={f.self_checkin} onChange={set('self_checkin')}><option value="1">Yes</option><option value="0">No, staff only</option></select>
+          <label className="field"><span>Time zone</span>
+            <select className="input" value={f.timezone} onChange={set('timezone')}>{[...new Set([f.timezone, ...ZONES])].map((z) => <option key={z} value={z}>{z.replace('_', ' ')}</option>)}</select>
           </label>
+        </div></section>
+
+        <section className="panel"><div className="panel-h"><h3>Logo and door sign</h3></div><div className="panel-b stack">
+          <LogoBox settings={settings} onChange={reloadSettings} />
+          <label className="field"><span>Headline on the printed sign</span><input className="input" value={f.sign_headline} onChange={set('sign_headline')} maxLength={60} /></label>
+          <label className="field"><span>Message on the guest's phone after they join</span><textarea className="input" rows={2} value={f.welcome_message} onChange={set('welcome_message')} maxLength={240} /></label>
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.self_checkin === '1'} onChange={flag('self_checkin')} /> Guests can join the line by scanning the door sign</label>
+          <button type="button" className="btn block" onClick={() => setPrinting(true)}><Icon name="print" size={17} />Preview and print the sign</button>
+        </div></section>
+
+        <section className="panel"><div className="panel-h"><h3>Waitlist and ordering ahead</h3></div><div className="panel-b stack">
+          <label className="field"><span>Average minutes per party in line (for quoted waits)</span><input className="input" type="number" min={1} max={240} value={f.avg_turn_minutes} onChange={set('avg_turn_minutes')} /></label>
+          <label className="field"><span>Send an "almost ready" alert when the wait is this many minutes or less</span><input className="input" type="number" min={0} max={240} value={f.heads_up_minutes} onChange={set('heads_up_minutes')} /><span className="dim" style={{ fontSize: 12.5 }}>0 turns it off. You can always send it by hand from the waitlist.</span></label>
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.preorder_enabled === '1'} onChange={flag('preorder_enabled')} /> Let waiting guests order ahead from their phone</label>
+          {f.preorder_enabled === '1' && (
+            <label className="field"><span>Open ordering when the wait is this many minutes or less</span><input className="input" type="number" min={0} max={240} value={f.preorder_open_minutes} onChange={set('preorder_open_minutes')} /><span className="dim" style={{ fontSize: 12.5 }}>Orders wait until you call the party, then go to the bar or kitchen. Choose which items in Menu.</span></label>
+          )}
+        </div></section>
+
+        <section className="panel"><div className="panel-h"><h3>Online booking</h3></div><div className="panel-b stack">
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.booking_enabled === '1'} onChange={flag('booking_enabled')} /> Customers can book a time from their account</label>
+          {f.booking_enabled === '1' && (
+            <>
+              <div className="field"><span>Open days</span><div className="row wrap">{DAYS.map((d, i) => <button type="button" key={d} className={`btn sm ${f.booking_days[i] === '1' ? 'primary' : ''}`} onClick={() => toggleDay(i)} aria-pressed={f.booking_days[i] === '1'}>{d}</button>)}</div></div>
+              <div className="row">
+                <label className="field grow"><span>First booking</span><input className="input" type="time" value={f.booking_open} onChange={set('booking_open')} /></label>
+                <label className="field grow"><span>Closing time</span><input className="input" type="time" value={f.booking_close} onChange={set('booking_close')} /></label>
+              </div>
+              <div className="row">
+                <label className="field grow"><span>Minutes per booking</span><input className="input" type="number" min={5} max={480} value={f.booking_slot_minutes} onChange={set('booking_slot_minutes')} /></label>
+                <label className="field grow"><span>Bookings at the same time</span><input className="input" type="number" min={1} max={50} value={f.booking_capacity} onChange={set('booking_capacity')} /></label>
+              </div>
+              <div className="row">
+                <label className="field grow"><span>Days ahead customers can book</span><input className="input" type="number" min={1} max={120} value={f.booking_days_ahead} onChange={set('booking_days_ahead')} /></label>
+                <label className="field grow"><span>Remind them this many minutes before</span><input className="input" type="number" min={0} max={1440} value={f.booking_reminder_minutes} onChange={set('booking_reminder_minutes')} /></label>
+              </div>
+              <span className="dim" style={{ fontSize: 12.5 }}>"Bookings at the same time" is how many chairs, rooms or tables you can give out per time slot.</span>
+            </>
+          )}
+        </div></section>
+
+        <section className="panel"><div className="panel-h"><h3>Security and alerts</h3></div><div className="panel-b stack">
           <label className="field"><span>Lock the terminal after this many idle minutes</span><input className="input" type="number" min={1} max={60} value={f.idle_lock_minutes} onChange={set('idle_lock_minutes')} /></label>
-          <p className="muted" style={{ margin: 0, fontSize: 14 }}>Text message alerts are {settings.sms_enabled ? 'on' : 'off'}. {settings.sms_enabled ? 'Guests with a phone number also get a text when buzzed.' : 'Add Twilio credentials to the server to turn them on.'}</p>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>Phone notifications are built in and free. Guests allow them once on their phone.</p>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>Email alerts are {settings.email_enabled ? 'on' : 'off'}. {settings.email_enabled ? '' : 'To turn them on for free, add your own mailbox (for example a Gmail app password) to the server settings.'}</p>
           <button className="btn primary lg block">Save settings</button>
         </div></section>
       </form>
+      {printing && <PrintSign settings={{ ...settings, sign_headline: f.sign_headline }} onClose={() => setPrinting(false)} />}
     </>
   );
 }

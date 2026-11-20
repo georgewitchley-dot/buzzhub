@@ -100,3 +100,84 @@ export function playChime() {
     o.connect(g).connect(c.destination); o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.45);
   });
 }
+
+/* ---------- phone notifications (Web Push) ---------- */
+export const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+export const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+export async function registerSW() {
+  if (!('serviceWorker' in navigator)) return null;
+  try { return await navigator.serviceWorker.register('/sw.js', { scope: '/' }); } catch { return null; }
+}
+
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+/**
+ * Ask permission and subscribe this phone. `endpoint` is where to save it:
+ * '/g/<token>/push' for a waitlist visit, '/c/push' for a signed-in customer.
+ * Returns 'on' | 'denied' | 'needs-install' | 'unsupported'.
+ */
+/** Is this phone already subscribed? If so, re-link it to `endpoint` (cheap) and return true. */
+export async function pushIsOn(endpoint) {
+  try {
+    if (!pushSupported() || Notification.permission !== 'granted') return false;
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return false;
+    if (endpoint) await api(endpoint, { method: 'POST', body: sub.toJSON() }).catch(() => {});
+    return true;
+  } catch { return false; }
+}
+
+export async function enablePush(endpoint) {
+  if (isIOS() && !isStandalone()) return 'needs-install';
+  if (!pushSupported()) return 'unsupported';
+  const perm = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+  if (perm !== 'granted') return 'denied';
+  const reg = (await registerSW()) || (await navigator.serviceWorker.ready);
+  await navigator.serviceWorker.ready;
+  const { publicKey } = await api('/public/vapid');
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+  await api(endpoint, { method: 'POST', body: sub.toJSON() });
+  return 'on';
+}
+
+/** Point "Add to Home Screen" at a specific page (iPhone only delivers notifications to installed web apps). */
+export function setManifest(href) {
+  let link = document.querySelector('link[rel="manifest"]');
+  if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
+  link.href = href;
+}
+
+/** Downscale an uploaded image to a PNG data URL (max 512px) so only clean pixels reach the server. */
+export function imageToPng(file, max = 512) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
+    img.src = url;
+  });
+}
+
+export function fmtSlot(startLocal) {
+  const [d, t] = startLocal.split(' ');
+  const date = new Date(`${d}T${t}:00Z`);
+  return {
+    day: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }),
+    time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }),
+  };
+}

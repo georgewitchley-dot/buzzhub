@@ -32,6 +32,14 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 4. Open the live URL. The owner enters the setup code, business name, type and an owner PIN.
 5. Smoke test: add a guest, scan the QR code on a phone, Buzz, tap "I'm on my way", ring up a sale, take payment, lock, then unlock with the PIN.
 
+## 3b. Features added on 2026-11-20 (round 2)
+- No SMS or Twilio (removed). Free Web Push via `web-push` and `client/public/sw.js`. Keys are auto-generated in `DATA_DIR/.vapid.json`.
+- Logo upload (`PUT /api/staff/logo`, stored in the `assets` table) and a printable door sign (`PrintSign.jsx`) with the logo centred in a QR code with high error correction.
+- Order ahead: `menu_items.guest_orderable`, orders `status='held'` + `source='guest'`. Held orders fire on buzz-with-table or on seat. Settings `preorder_open_minutes` and `heads_up_minutes`, plus automatic "almost ready" alerts.
+- Customer accounts (`customers`, cookie `bh_customer`), bookings (`bookings`, times stored as local 'YYYY-MM-DD HH:MM' in the setting `timezone`), reminders, check-in into the queue, staff Bookings page and Customers tab.
+- Optional SMTP email alerts (`notify.js`).
+- Migrations in `db.js` are idempotent and rebuild `orders` to allow 'held'. Tested against an older database.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

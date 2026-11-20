@@ -51,6 +51,7 @@ h3 { font-size: 1.0625rem; }
 
 /* ---------- controls ---------- */
 .btn {
+  color: var(--text);
   text-decoration: none;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 42px; padding: 0 16px; border-radius: var(--r-sm);
@@ -306,3 +307,50 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .facts div { background: rgba(27,30,38,.9); padding: 12px 8px; display: grid; gap: 2px; }
 .facts b { font-family: var(--display); font-size: 1.375rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 .facts span { font-size: 12.5px; color: var(--muted); }
+
+/* ---------- guest app additions ---------- */
+.guest-logo { max-width: 180px; max-height: 72px; object-fit: contain; }
+.banner { border-color: rgba(var(--accent-rgb), .45); color: var(--text); font-weight: 600; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+.steps b { color: var(--text); }
+.sheet-wrap { place-items: end center; padding: 0; }
+.sheet { width: min(560px, 100%); max-height: 88vh; overflow: auto; background: var(--panel); border: 1px solid var(--line-2); border-bottom: 0; border-radius: 24px 24px 0 0; padding: 10px 20px calc(20px + env(safe-area-inset-bottom)); display: grid; gap: 12px; }
+.sheet-grip { width: 44px; height: 5px; border-radius: 3px; background: var(--line-2); margin: 0 auto 4px; }
+.sheet-list { display: grid; gap: 14px; }
+.sheet-cat { font-family: var(--ui); font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+.menu-line { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.menu-line b { display: block; font-weight: 600; }
+.menu-line .muted { font-size: 14px; }
+.day-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.day { flex: none; width: 60px; padding: 8px 0; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg); display: grid; justify-items: center; gap: 0; }
+.day b { font-family: var(--display); font-size: 1.375rem; line-height: 1.1; }
+.day small { font-size: 11.5px; color: var(--muted); }
+.day.on { border-color: var(--accent); background: rgba(var(--accent-rgb), .12); }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.booking-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.booking-row:last-of-type { border-bottom: 0; }
+
+/* ---------- printable door sign ---------- */
+.sign { background: #fff; color: #111; border-radius: 18px; padding: 36px 32px; display: grid; gap: 18px; justify-items: center; text-align: center; width: 100%; max-width: 520px; margin: 0 auto; }
+.sign h2 { font-family: var(--display); font-size: 2.25rem; letter-spacing: -0.03em; color: #111; }
+.sign p { margin: 0; color: #444; font-size: 16px; max-width: 34ch; }
+.sign-logo-top { max-height: 80px; max-width: 240px; object-fit: contain; }
+.sign-qr { position: relative; width: 300px; }
+.sign-qr svg { display: block; width: 100%; height: auto; }
+.sign-qr .mark { position: absolute; left: 50%; top: 50%; width: 22%; aspect-ratio: 1; transform: translate(-50%, -50%); background: #fff; border-radius: 14px; padding: 6px; display: grid; place-items: center; box-shadow: 0 0 0 4px #fff; }
+.sign-qr .mark img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sign small { color: #666; font-size: 13px; }
+@media print {
+  @page { margin: 12mm; }
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area { position: fixed; inset: 0; display: grid; place-items: center; background: #fff; }
+  .sign { box-shadow: none; max-width: 640px; }
+  .sign-qr { width: 380px; }
+}
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 18px; align-items: start; }
+@media (max-width: 500px) { .settings-grid { grid-template-columns: 1fr; } }
+.logo-box { width: 96px; height: 96px; border-radius: var(--r-md); border: 1px dashed var(--line-2); display: grid; place-items: center; background: #fff; overflow: hidden; flex: none; }
+.logo-box img { max-width: 88%; max-height: 88%; object-fit: contain; }
+.logo-box .dim { color: #888; font-size: 13px; }
+.chip svg { flex: none; }

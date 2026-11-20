@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import { api, minutesSince, timeOf, useTick } from '../lib.js';
+import { api, fmtSlot, minutesSince, timeOf, useTick } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 
 const STATE_TEXT = { waiting: 'Waiting', buzzed: 'Buzzed', acknowledged: 'On the way' };
+const PRE = { held: 'Pre-order waiting', sent: 'Pre-order making', ready: 'Pre-order ready', open: 'Pre-order making', paid: 'Pre-order paid' };
 
 export function QrModal({ guestId, src, link: givenLink, svg: givenSvg, title, note, onClose }) {
   const [qr, setQr] = useState(givenSvg ? { link: givenLink, svg: givenSvg } : null);
@@ -26,7 +27,7 @@ export function QrModal({ guestId, src, link: givenLink, svg: givenSvg, title, n
 }
 
 function AddGuest({ onClose, onAdded, unit }) {
-  const [f, setF] = useState({ name: '', phone: '', partySize: 2, notes: '' });
+  const [f, setF] = useState({ name: '', phone: '', email: '', partySize: 2, notes: '' });
   const [err, setErr] = useState('');
   const submit = async (e) => {
     e.preventDefault(); setErr('');
@@ -41,7 +42,10 @@ function AddGuest({ onClose, onAdded, unit }) {
             <button type="button" key={n} className={`btn sm ${Number(f.partySize) === n ? 'primary' : ''}`} onClick={() => setF({ ...f, partySize: n })} style={{ width: 44 }}>{n}</button>
           ))}<input className="input" type="number" min={1} max={50} value={f.partySize} onChange={(e) => setF({ ...f, partySize: e.target.value })} style={{ width: 80 }} aria-label="Custom party size" /></div>
         </div>
-        <label className="field"><span>Mobile number (optional, for text alerts)</span><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={20} /></label>
+        <div className="row">
+          <label className="field grow"><span>Mobile (optional, to call them)</span><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={20} /></label>
+          <label className="field grow"><span>Email (optional)</span><input className="input" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} maxLength={120} /></label>
+        </div>
         <label className="field"><span>Notes</span><input className="input" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={200} placeholder={`Booth, high chair, outdoor ${unit.toLowerCase()}…`} /></label>
         {err && <div className="lock-msg">{err}</div>}
         <button className="btn primary lg block">Add and show buzzer code</button>
@@ -61,7 +65,7 @@ function BuzzModal({ guest, onClose, onDone, unit }) {
     setBusy(true);
     try {
       const r = await api(`/staff/guests/${guest.id}/buzz`, { method: 'POST', body: { message: message || undefined, tableId: tableId ? Number(tableId) : undefined } });
-      toast(`Buzzed ${guest.name}${r.sms?.ok ? ' and sent a text' : ''}`, 'ok'); onDone();
+      toast(`Buzzed ${guest.name}${r.push?.sent ? ' on their phone' : ''}${r.preorderFired ? `. Pre-order #${r.preorderFired} is being made` : ''}`, 'ok'); onDone();
     } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
   };
   return (
@@ -130,14 +134,18 @@ export default function Waitlist() {
                 <div className="wl-name">{g.name} <span className="muted" style={{ fontWeight: 500 }}>{g.kind === 'order' ? `order #${g.order_number}` : `party of ${g.party_size}`}</span></div>
                 <div className="wl-meta">
                   <span className={`chip ${g.status === 'buzzed' ? 'amber' : g.status === 'acknowledged' ? 'teal' : ''}`}>{STATE_TEXT[g.status]}{g.buzz_count > 1 ? ` ×${g.buzz_count}` : ''}</span>
+                  {g.devices > 0 ? <span className="chip teal" title="Gets phone notifications"><Icon name="phone" size={13} />Alerts on</span> : <span className="chip" title="Has not turned on phone alerts">No alerts</span>}
+                  {g.preorder && <span className="chip amber"><Icon name="glass" size={13} />{PRE[g.preorder.split(':')[0]] || 'Pre-order'} ({g.preorder.split(':')[2]})</span>}
+                  {g.booking_start && <span className="chip blue">Booked {fmtSlot(g.booking_start).time}{g.booking_service ? `, ${g.booking_service}` : ''}</span>}
                   {g.table_label && <span>{unit} {g.table_label}</span>}
-                  <span>Joined {timeOf(g.created_at)}{g.source === 'self' ? ' by self check-in' : ''}</span>
+                  <span>Joined {timeOf(g.created_at)}{g.source === 'self' ? ' by self check-in' : g.source === 'booking' ? ' from a booking' : ''}</span>
                   {g.notes && <span>{g.notes}</span>}
                 </div>
               </div>
               <div className={`wl-wait ${waited > quoted + 5 && g.kind === 'table' ? 'late' : ''}`}>{waited}m<small>{g.kind === 'table' ? `quoted ${quoted}m` : 'waiting'}</small></div>
               <div className="wl-actions">
                 <button className="btn sm" onClick={() => setQr({ guestId: g.id })} aria-label={`Show buzzer code for ${g.name}`}><Icon name="qr" size={16} /></button>
+                {g.status === 'waiting' && g.kind === 'table' && !g.heads_up_at && <button className="btn sm" onClick={() => act(`/staff/guests/${g.id}/headsup`, undefined, `Sent ${g.name} an almost-ready alert`)}>Almost ready</button>}
                 <button className="btn sm primary" onClick={() => setBuzzing(g)}><Icon name="bell" size={16} />{g.buzz_count ? 'Buzz again' : 'Buzz'}</button>
                 <button className="btn sm" onClick={() => act(`/staff/guests/${g.id}/seat`, {}, g.kind === 'order' ? `${g.name} picked up` : `${g.name} seated`)}><Icon name="check" size={16} />{g.kind === 'order' ? 'Picked up' : 'Seat'}</button>
                 <button className="btn sm ghost danger" onClick={() => act(`/staff/guests/${g.id}/remove`, { reason: g.status === 'buzzed' ? 'noshow' : 'cancelled' }, `${g.name} removed`)} aria-label={`Remove ${g.name}`}><Icon name="x" size={16} /></button>

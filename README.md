@@ -20,7 +20,15 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - When buzzed: alarm sound, vibration (Android), screen flash, a notification, and a repeat every 20s until they tap "I'm on my way"
 - Keeps the screen awake while waiting, and lets the guest leave the list
 
-**Self check-in** (`/join`): print the door code and guests add themselves.
+**Self check-in** (`/join`): guests scan the printed door sign (with your logo in the middle of the QR code) and add themselves.
+
+**Phone notifications, free**: guests tap "Turn on alerts" and allow notifications. Their phone then gets a real notification when they're almost up and when they're buzzed, even with the page closed. This uses standard Web Push, so there's no SMS and no paid service. On iPhone (iOS 16.4+) the guest adds the page to their Home Screen first; the page walks them through it.
+
+**Order ahead**: when the wait drops under the number of minutes you set, guests get an "almost ready" alert and can order drinks or sides from their phone. The order waits until you call the party, then goes to the bar or kitchen attached to their table. You choose which menu items can be ordered ahead.
+
+**Customer accounts and booking** (`/account`): customers create a free account with email and password, book a time slot, get a reminder before it, and tap "I'm here" when they arrive. That puts them in the queue, and they get buzzed when their chair, room or table is ready. You set the open days, hours, slot length and how many bookings fit per slot.
+
+**Email (optional, free)**: add your own mailbox (for example a Gmail app password) as `SMTP_*` variables, and guests who give an email also get alerts by email.
 
 ## Security
 
@@ -33,6 +41,9 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Validation**: every input is checked with zod. Helmet sets a strict CSP and security headers. JSON bodies are capped at 64 KB.
 - **Guest links**: 144-bit random tokens. Guests only see their first name and their own status, and they can't reach any staff data.
 - **First-run claim**: setup needs a one-time code printed to the server logs, so a fresh deploy can't be claimed by a stranger.
+- **Customer accounts**: passwords are bcrypt-hashed, and a separate `SameSite=Lax` cookie that can never act as a staff session. 8 wrong passwords locks that email for 15 minutes, and a booking is checked against capacity in a write transaction so a slot can't be double-booked.
+- **Uploads**: logos are re-encoded to PNG in the browser and checked by file signature on the server. SVG is never accepted, so a logo can't carry script.
+- **Guest pre-orders**: prices come from the server, only items you mark as order-ahead can be ordered, quantities are capped per party size, and there's a rate limit.
 - **Audit log**: every unlock, failed PIN, sale, void, buzz and settings change, with the person and IP address.
 
 ## Stack
@@ -59,10 +70,11 @@ For development, run `npm run dev:server` (port 8080) and `npm run dev:client` (
 4. Generate a domain and set `PUBLIC_URL` to it so QR codes point to the right place.
 5. Open the deploy logs, copy the setup code and finish setup in the browser.
 
-Optional text alerts: set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM`.
+Optional email alerts: set `SMTP_HOST` (e.g. smtp.gmail.com), `SMTP_PORT` (587), `SMTP_USER`, `SMTP_PASS` (a Gmail app password) and optionally `SMTP_FROM`. Web Push keys are generated automatically and stored on the volume; you can pin them with `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`.
 
 ## Limits worth knowing
 
-- iPhones don't let websites vibrate. On iOS the buzz is sound, a screen flash and the on-screen alert. The guest has to tap "Turn on sound and alerts" once, and keep the page open (the app keeps the screen awake).
+- iPhones only deliver web notifications to pages added to the Home Screen (iOS 16.4+), and websites can't vibrate on iOS. Guests who skip that step still get the alarm, flash and on-screen alert while the page is open.
+- There's no password reset by email unless SMTP is configured. Staff can see customers under Bookings → Customers.
 - Card payments are recorded, not processed. Run cards on your existing terminal. A Stripe Terminal integration would be the next step.
 - SQLite on one volume means one server instance. That's plenty for a single location.

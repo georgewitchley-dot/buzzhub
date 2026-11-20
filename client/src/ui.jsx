@@ -19,6 +19,10 @@ const P = {
   x: 'M6 6l12 12M18 6L6 18',
   check: 'M5 12l5 5L20 7',
   back: 'M15 18l-6-6 6-6',
+  calendar: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4',
+  phone: 'M8 2h8a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM11 18h2',
+  print: 'M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z',
+  glass: 'M7 3h10l-1 8a4 4 0 0 1-8 0zM12 15v6M8 21h8',
 };
 export function Icon({ name, size }) {
   return (

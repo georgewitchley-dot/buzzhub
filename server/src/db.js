@@ -107,6 +107,97 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 `);
 
+/* ---------- migrations (idempotent, safe on an existing database) ---------- */
+const hasCol = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+const addCol = (table, col, def) => { if (!hasCol(table, col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); };
+
+addCol('guests', 'email', 'TEXT');
+addCol('guests', 'notify_email', 'INTEGER NOT NULL DEFAULT 0');
+addCol('guests', 'heads_up_at', 'TEXT');
+addCol('guests', 'preorder_open', 'INTEGER NOT NULL DEFAULT 0');
+if (!hasCol('menu_items', 'guest_orderable')) {
+  addCol('menu_items', 'guest_orderable', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec("UPDATE menu_items SET guest_orderable = 1 WHERE category IN ('Drinks','Sides','Coffee','Tea','Bakery','Beverages','Appetizers')");
+}
+addCol('orders', 'source', "TEXT NOT NULL DEFAULT 'staff'");
+addCol('guests', 'customer_id', 'INTEGER');
+addCol('guests', 'booking_id', 'INTEGER');
+
+// orders.status needs a new 'held' state (guest pre-orders waiting for their table)
+const ordersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get()?.sql || '';
+if (!ordersSql.includes("'held'")) {
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE orders_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        number INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('held','open','sent','ready','paid','void')),
+        table_id INTEGER, guest_id INTEGER, customer_name TEXT,
+        subtotal_cents INTEGER NOT NULL DEFAULT 0, tax_cents INTEGER NOT NULL DEFAULT 0,
+        tip_cents INTEGER NOT NULL DEFAULT 0, discount_cents INTEGER NOT NULL DEFAULT 0,
+        total_cents INTEGER NOT NULL DEFAULT 0, payment_method TEXT, created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), sent_at TEXT, ready_at TEXT, paid_at TEXT,
+        source TEXT NOT NULL DEFAULT 'staff'
+      );
+      INSERT INTO orders_new (id, number, status, table_id, guest_id, customer_name, subtotal_cents, tax_cents, tip_cents, discount_cents, total_cents, payment_method, created_by, created_at, sent_at, ready_at, paid_at, source)
+        SELECT id, number, status, table_id, guest_id, customer_name, subtotal_cents, tax_cents, tip_cents, discount_cents, total_cents, payment_method, created_by, created_at, sent_at, ready_at, paid_at, source FROM orders;
+      DROP TABLE orders;
+      ALTER TABLE orders_new RENAME TO orders;
+    `);
+  })();
+  db.pragma('foreign_keys = ON');
+}
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS push_subs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  guest_id INTEGER,
+  customer_id INTEGER,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_push_guest ON push_subs(guest_id);
+CREATE TABLE IF NOT EXISTS customers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  phone TEXT,
+  pw_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS bookings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  service_id INTEGER,
+  service_name TEXT,
+  party_size INTEGER NOT NULL DEFAULT 1,
+  start_local TEXT NOT NULL,           -- 'YYYY-MM-DD HH:MM' in the business timezone
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked','checked_in','done','cancelled','noshow')),
+  guest_id INTEGER,
+  reminded_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bookings_start ON bookings(start_local);
+CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customer_id);
+CREATE TABLE IF NOT EXISTS assets (key TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+`);
+
+/** Web Push VAPID keys: env vars, else generated once and kept in the data dir. */
+export function getVapidKeys(generate) {
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) return { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
+  const file = path.join(DATA_DIR, '.vapid.json');
+  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  const keys = generate();
+  fs.writeFileSync(file, JSON.stringify(keys), { mode: 0o600 });
+  return keys;
+}
+
 const DEFAULTS = {
   business_name: 'My Business',
   business_type: 'restaurant',
@@ -117,7 +208,21 @@ const DEFAULTS = {
   avg_turn_minutes: '12',
   idle_lock_minutes: '5',
   self_checkin: '1',
-  welcome_message: "You're on the list! Keep this page open — we'll buzz you the moment we're ready.",
+  welcome_message: "You're on the list! Turn on alerts and we'll buzz your phone the moment we're ready.",
+  preorder_enabled: '1',
+  preorder_open_minutes: '20',
+  heads_up_minutes: '15',
+  sign_headline: 'Scan to join the waitlist',
+  logo_version: '0',
+  timezone: process.env.TZ_DEFAULT || 'America/New_York',
+  booking_enabled: '0',
+  booking_open: '09:00',
+  booking_close: '17:00',
+  booking_days: '0111110', // Sun..Sat
+  booking_slot_minutes: '30',
+  booking_capacity: '1',
+  booking_days_ahead: '14',
+  booking_reminder_minutes: '60',
 };
 
 export function getSettings() {
@@ -161,7 +266,8 @@ export function seedDemoData(businessType) {
   }
   const menuCount = db.prepare('SELECT COUNT(*) c FROM menu_items').get().c;
   if (!menuCount) {
-    const ins = db.prepare('INSERT INTO menu_items (name, category, price_cents, color, sort) VALUES (?, ?, ?, ?, ?)');
+    const ins = db.prepare('INSERT INTO menu_items (name, category, price_cents, color, sort, guest_orderable) VALUES (?, ?, ?, ?, ?, ?)');
+    const guestCats = new Set(['Drinks', 'Sides', 'Coffee', 'Tea', 'Bakery']);
     const menus = {
       restaurant: [
         ['Smash Burger', 'Mains', 1450, '#ff6b4a'], ['Chicken Sandwich', 'Mains', 1350, '#ff6b4a'], ['Caesar Salad', 'Mains', 1100, '#3ddc97'],
@@ -180,6 +286,6 @@ export function seedDemoData(businessType) {
       ],
     };
     const list = menus[businessType] || menus.restaurant;
-    list.forEach((m, i) => ins.run(m[0], m[1], m[2], m[3], i));
+    list.forEach((m, i) => ins.run(m[0], m[1], m[2], m[3], i, guestCats.has(m[1]) ? 1 : 0));
   }
 }
