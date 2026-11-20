@@ -1,0 +1,185 @@
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+export const db = new Database(path.join(DATA_DIR, 'buzzhub.db'));
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('owner','manager','staff')),
+  pin_hash TEXT NOT NULL,
+  session_version INTEGER NOT NULL DEFAULT 1,
+  active INTEGER NOT NULL DEFAULT 1,
+  last_login_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tables (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  seats INTEGER NOT NULL DEFAULT 4,
+  zone TEXT NOT NULL DEFAULT 'Main',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','reserved','seated','dirty')),
+  guest_id INTEGER,
+  seated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS guests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL DEFAULT 'table' CHECK (kind IN ('table','order')),
+  name TEXT NOT NULL,
+  phone TEXT,
+  party_size INTEGER NOT NULL DEFAULT 2,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting','buzzed','acknowledged','seated','done','cancelled','noshow')),
+  token TEXT NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT 'staff',
+  buzz_count INTEGER NOT NULL DEFAULT 0,
+  last_message TEXT,
+  table_id INTEGER,
+  order_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  buzzed_at TEXT,
+  acknowledged_at TEXT,
+  seated_at TEXT,
+  closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_guests_status ON guests(status);
+
+CREATE TABLE IF NOT EXISTS menu_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'General',
+  price_cents INTEGER NOT NULL,
+  color TEXT NOT NULL DEFAULT '#7c5cff',
+  active INTEGER NOT NULL DEFAULT 1,
+  sort INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  number INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','sent','ready','paid','void')),
+  table_id INTEGER,
+  guest_id INTEGER,
+  customer_name TEXT,
+  subtotal_cents INTEGER NOT NULL DEFAULT 0,
+  tax_cents INTEGER NOT NULL DEFAULT 0,
+  tip_cents INTEGER NOT NULL DEFAULT 0,
+  discount_cents INTEGER NOT NULL DEFAULT 0,
+  total_cents INTEGER NOT NULL DEFAULT 0,
+  payment_method TEXT,
+  created_by INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  sent_at TEXT,
+  ready_at TEXT,
+  paid_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  item_id INTEGER,
+  name TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  price_cents INTEGER NOT NULL,
+  note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL DEFAULT (datetime('now')),
+  user_id INTEGER,
+  user_name TEXT,
+  action TEXT NOT NULL,
+  detail TEXT,
+  ip TEXT
+);
+`);
+
+const DEFAULTS = {
+  business_name: 'My Business',
+  business_type: 'restaurant',
+  unit_label: 'Table',
+  accent: '#ffb020',
+  currency: 'USD',
+  tax_rate: '8.875',
+  avg_turn_minutes: '12',
+  idle_lock_minutes: '5',
+  self_checkin: '1',
+  welcome_message: "You're on the list! Keep this page open — we'll buzz you the moment we're ready.",
+};
+
+export function getSettings() {
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const out = { ...DEFAULTS };
+  for (const r of rows) out[r.key] = r.value;
+  return out;
+}
+
+export function setSettings(obj) {
+  const stmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+  const tx = db.transaction((o) => { for (const [k, v] of Object.entries(o)) stmt.run(k, String(v)); });
+  tx(obj);
+}
+
+/** JWT signing secret: env var, else generated once and persisted in the data dir. */
+export function getJwtSecret() {
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length >= 32) return process.env.JWT_SECRET;
+  const file = path.join(DATA_DIR, '.jwt_secret');
+  if (fs.existsSync(file)) return fs.readFileSync(file, 'utf8').trim();
+  const s = crypto.randomBytes(48).toString('hex');
+  fs.writeFileSync(file, s, { mode: 0o600 });
+  return s;
+}
+
+export function audit(user, action, detail, ip) {
+  db.prepare('INSERT INTO audit (user_id, user_name, action, detail, ip) VALUES (?, ?, ?, ?, ?)')
+    .run(user?.id ?? null, user?.name ?? null, action, detail ? String(detail).slice(0, 500) : null, ip ?? null);
+}
+
+export function seedDemoData(businessType) {
+  const tableCount = db.prepare('SELECT COUNT(*) c FROM tables').get().c;
+  if (!tableCount) {
+    const ins = db.prepare('INSERT INTO tables (label, seats, zone) VALUES (?, ?, ?)');
+    const layout = [
+      ['1', 2, 'Main'], ['2', 2, 'Main'], ['3', 4, 'Main'], ['4', 4, 'Main'], ['5', 4, 'Main'], ['6', 6, 'Main'],
+      ['B1', 2, 'Bar'], ['B2', 2, 'Bar'], ['B3', 2, 'Bar'],
+      ['P1', 4, 'Patio'], ['P2', 4, 'Patio'], ['P3', 8, 'Patio'],
+    ];
+    for (const t of layout) ins.run(...t);
+  }
+  const menuCount = db.prepare('SELECT COUNT(*) c FROM menu_items').get().c;
+  if (!menuCount) {
+    const ins = db.prepare('INSERT INTO menu_items (name, category, price_cents, color, sort) VALUES (?, ?, ?, ?, ?)');
+    const menus = {
+      restaurant: [
+        ['Smash Burger', 'Mains', 1450, '#ff6b4a'], ['Chicken Sandwich', 'Mains', 1350, '#ff6b4a'], ['Caesar Salad', 'Mains', 1100, '#3ddc97'],
+        ['Fries', 'Sides', 500, '#ffc845'], ['Onion Rings', 'Sides', 600, '#ffc845'], ['Wings (8)', 'Sides', 1200, '#ffc845'],
+        ['Soda', 'Drinks', 300, '#4cc9f0'], ['Iced Tea', 'Drinks', 350, '#4cc9f0'], ['Craft Beer', 'Drinks', 800, '#4cc9f0'],
+        ['Brownie', 'Dessert', 700, '#c77dff'], ['Milkshake', 'Dessert', 750, '#c77dff'],
+      ],
+      cafe: [
+        ['Espresso', 'Coffee', 325, '#b5835a'], ['Latte', 'Coffee', 525, '#b5835a'], ['Cold Brew', 'Coffee', 495, '#b5835a'],
+        ['Matcha', 'Tea', 575, '#3ddc97'], ['Chai', 'Tea', 525, '#3ddc97'],
+        ['Croissant', 'Bakery', 425, '#ffc845'], ['Bagel', 'Bakery', 375, '#ffc845'], ['Avocado Toast', 'Food', 1100, '#ff6b4a'],
+      ],
+      service: [
+        ['Basic Service', 'Services', 3500, '#7c5cff'], ['Premium Service', 'Services', 6500, '#7c5cff'],
+        ['Consultation', 'Services', 2500, '#4cc9f0'], ['Add-on', 'Extras', 1000, '#ffc845'], ['Product', 'Retail', 1800, '#3ddc97'],
+      ],
+    };
+    const list = menus[businessType] || menus.restaurant;
+    list.forEach((m, i) => ins.run(m[0], m[1], m[2], m[3], i));
+  }
+}
