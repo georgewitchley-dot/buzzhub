@@ -29,6 +29,7 @@ import { registerPeople } from './people.js';
 import { registerExtras } from './extras.js';
 import { registerHouse } from './house.js';
 import { registerPlus } from './plus.js';
+import { registerMore } from './more.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -566,6 +567,14 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     screen_message: z.string().trim().max(120),
     sales_goals: z.string().max(200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 7 && a.every((x) => Number.isInteger(Number(x)) && Number(x) >= 0); } catch { return false; } }, 'Goals must be a list of 7 amounts'),
     table_long_minutes: z.coerce.number().int().min(0).max(600),
+    labor_target_pct: z.coerce.number().int().min(5).max(80),
+    labor_alerts: z.union([z.literal('0'), z.literal('1')]),
+    online_schedule: z.union([z.literal('0'), z.literal('1')]),
+    online_schedule_days: z.coerce.number().int().min(1).max(60),
+    booking_duration_minutes: z.coerce.number().int().min(15).max(600),
+    kitchen_stations: z.string().max(400).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length >= 1 && a.length <= 8 && a.every((x) => typeof x === 'string' && x.trim().length > 0 && x.length <= 20); } catch { return false; } }, 'Stations must be 1 to 8 names'),
+    station_map: z.string().max(4000).refine((v) => { try { const o = JSON.parse(v); return o && typeof o === 'object' && !Array.isArray(o); } catch { return false; } }, 'Bad station map'),
+    label_shelf_days: z.coerce.number().int().min(0).max(365),
     kitchen_slow_minutes: z.coerce.number().int().min(0).max(240),
     price_watch_pct: z.coerce.number().int().min(1).max(100),
     prep_buffer_pct: z.coerce.number().int().min(0).max(100),
@@ -1204,6 +1213,7 @@ registerPeople({ app, staff, io, h: G });
 registerExtras({ app, staff, io, h: G });
 registerHouse({ app, staff, io, h: G });
 registerPlus({ app, staff, io, h: G });
+registerMore({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

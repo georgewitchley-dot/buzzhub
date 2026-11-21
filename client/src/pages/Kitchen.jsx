@@ -5,6 +5,7 @@ import { Icon, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { FireButton, RecipeCard } from './Plus.jsx';
+import { StationPicker, stationOf } from './More.jsx';
 
 export default function Kitchen() {
   const { settings } = useCC();
@@ -12,6 +13,7 @@ export default function Kitchen() {
   const [data] = useLive(['orders'], () => api('/staff/kitchen'));
   const seen = useRef(null);
   const [card, setCard] = useState(null);
+  const [myStation, setMyStation] = useState(() => localStorage.getItem('bh_station') || '');
   const [station, setStation] = useState(() => localStorage.getItem('bh_print_station') === '1');
   const [toPrint, setToPrint] = useState([]);
   const stationRef = useRef(station); stationRef.current = station;
@@ -37,13 +39,17 @@ export default function Kitchen() {
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
   if (!data) return null;
   const late = data.lateMinutes;
-  const cooking = data.orders.filter((o) => o.status !== 'ready' && o.status !== 'paid');
+  const mine = (i) => !myStation || stationOf(settings, i) === myStation;
+  const cooking = data.orders.filter((o) => o.status !== 'ready' && o.status !== 'paid')
+    .map((o) => (myStation ? { ...o, items: o.items.filter((i) => mine(i) && !i.done_at) } : o)).filter((o) => o.items.length);
+  const stationDone = async (o) => { try { const r = await api(`/staff/kitchen/${o.id}/station`, { method: 'POST', body: { itemIds: o.items.filter((i) => !(i.course > 1 && !i.fired_at)).map((i) => i.id) } }); if (r.allDone) await act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`); else toast(`#${o.number}: ${myStation} done`, 'ok'); } catch (e) { toast(e.message, 'err'); } };
   const done = data.orders.filter((o) => o.status === 'ready' || o.status === 'paid');
 
   return (
     <>
       <PageHead title="Kitchen" sub={`${cooking.length} ticket${cooking.length === 1 ? '' : 's'} to make${data.held ? `, ${data.held} pre-order${data.held === 1 ? '' : 's'} waiting for a table` : ''}. Tickets turn red after ${late} minutes.`}>
         <label className="btn" title="Prints each new ticket on this device's printer. In Chrome, start with --kiosk-printing to skip the print dialog."><input type="checkbox" checked={station} onChange={(e) => { setStation(e.target.checked); localStorage.setItem('bh_print_station', e.target.checked ? '1' : '0'); }} />Print new tickets here</label>
+        <StationPicker value={myStation} onChange={(v) => { setMyStation(v); localStorage.setItem('bh_station', v); }} />
         <button className="btn" onClick={full}><Icon name="expand" size={17} />Full screen</button>
       </PageHead>
       {cooking.length === 0 && <div className="panel empty"><b>All caught up</b><span>New orders from the register and pre-orders from called parties show up here.</span></div>}
@@ -70,7 +76,8 @@ export default function Kitchen() {
               {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
               <ul>{o.items.map((i, k) => <li key={k} className={i.course > 1 && !i.fired_at ? 'held' : ''}><b className="num">{i.qty}</b><span><button type="button" className="linkish" onClick={() => i.item_id && setCard(i.item_id)}>{i.name}</button>{i.course > 1 && !i.fired_at && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{i.mods?.length > 0 && <em>{i.mods.map((m) => m.name).join(', ')}</em>}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
               <FireButton orderId={o.id} held={o.items.filter((i) => i.course > 1 && !i.fired_at).length} />
-              <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>
+              {myStation ? <button className="btn primary lg block" onClick={() => stationDone(o)}><Icon name="check" size={18} />{myStation} done</button>
+                : <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>}
             </article>
           );
         })}

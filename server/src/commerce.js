@@ -249,10 +249,11 @@ export function registerCommerce({ app, staff, io, h }) {
     const b = parse(z.object({ amountCents: z.number().int().min(100).max(100000), method: z.enum(['cash', 'card', 'other', 'comp']), name: z.string().trim().max(40).optional(), email: z.string().trim().email().max(120).optional().or(z.literal('')) }), req.body);
     if (b.method === 'comp' && !['manager', 'owner'].includes(req.user.role)) return res.status(403).json({ error: 'Only a manager can give a free gift card' });
     const card = issueCard({ cents: b.amountCents, name: b.name, email: b.email, source: 'staff', userId: req.user.id, method: b.method });
+    const bonus = b.method !== 'comp' ? h.giftBonus?.({ cents: b.amountCents, name: b.name, email: b.email, userId: req.user.id }) : null;
     if (b.method === 'cash') { const cs = db.prepare('SELECT id FROM cash_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1').get(); if (cs) db.prepare("INSERT INTO cash_moves (session_id, kind, amount_cents, reason, user_id) VALUES (?, 'in', ?, ?, ?)").run(cs.id, b.amountCents, `Gift card ${card.code.slice(-4)}`, req.user.id); }
     await emailCard({ ...card, email: b.email }, b.amountCents);
     audit(req.user, 'gift.sell', `$${(b.amountCents / 100).toFixed(2)} ${b.method} …${card.code.slice(-4)}`, clientIp(req));
-    notifyStaff('cash'); res.json({ ok: true, code: card.code });
+    notifyStaff('cash'); res.json({ ok: true, code: card.code, bonus });
   }));
   staff.get('/giftcards/check', (req, res) => {
     const c = db.prepare('SELECT code, balance_cents, initial_cents, status, name FROM gift_cards WHERE code = ?').get(normCode(req.query.code));
@@ -272,6 +273,7 @@ export function registerCommerce({ app, staff, io, h }) {
       const c = db.prepare("SELECT * FROM gift_cards WHERE code = ? AND status = 'active'").get(normCode(code));
       if (!c) throw err('That gift card code is not valid', 404);
       if (c.balance_cents <= 0) throw err('That gift card is empty', 409);
+      h.giftUsable?.(c);
       const use = Math.min(c.balance_cents, dueOf(o));
       if (use <= 0) throw err('Nothing left to pay on this order', 409);
       db.prepare('UPDATE gift_cards SET balance_cents = balance_cents - ? WHERE id = ?').run(use, c.id);
@@ -359,7 +361,7 @@ export function registerCommerce({ app, staff, io, h }) {
         const tip = i === 0 ? tips : 0;
         const total = o.subtotal_cents - o.discount_cents + o.tax_cents + (o.fee_cents || 0) + tip;
         if (['ready'].includes(o.status) || (o.status === 'open' && o.source === 'staff')) db.prepare("UPDATE orders SET status='paid', tip_cents=?, total_cents=?, payment_method=?, paid_at=? WHERE id=?").run(tip, total, method, t, o.id);
-        else db.prepare("UPDATE orders SET status = CASE WHEN status = 'held' AND source = 'online' THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, ?), prepaid=1, tip_cents=?, total_cents=?, payment_method=?, paid_at=? WHERE id=?").run(t, tip, total, method, t, o.id);
+        else db.prepare("UPDATE orders SET status = CASE WHEN status = 'held' AND source = 'online' AND scheduled_for IS NULL THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, ?), prepaid=1, tip_cents=?, total_cents=?, payment_method=?, paid_at=? WHERE id=?").run(t, tip, total, method, t, o.id);
       });
       db.prepare("UPDATE bills SET status='paid', closed_at=? WHERE id=?").run(t, bill.id);
     })();
@@ -445,6 +447,7 @@ export function registerCommerce({ app, staff, io, h }) {
       db.prepare('UPDATE payments SET meta = ? WHERE id = ?').run(JSON.stringify({ ...meta, code: card.code, amountCents: p.amount_cents }), p.id);
       audit(null, 'gift.online', `$${(p.amount_cents / 100).toFixed(2)} for ${meta.name}`, null);
       emailCard({ ...card, email: meta.email }, p.amount_cents);
+      h.giftBonus?.({ cents: p.amount_cents, name: meta.name, email: meta.email });
       return;
     }
     const bill = db.prepare('SELECT * FROM bills WHERE id = ?').get(p.bill_id);
@@ -522,7 +525,7 @@ export function registerCommerce({ app, staff, io, h }) {
       enabled: s.online_enabled === '1', pickup: s.online_pickup === '1', delivery: s.online_delivery === '1',
       deliveryFeeCents: Number(s.delivery_fee_cents), deliveryMinCents: Number(s.delivery_min_cents), deliveryArea: s.delivery_area,
       readyInMinutes: Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
-      taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1',
+      taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1', schedule: s.online_schedule === '1', scheduleDays: Number(s.online_schedule_days || 7), prepMinutes: Number(s.online_prep_minutes),
       business: { name: s.business_name, accent: s.accent, type: s.business_type, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
     };
   }
@@ -538,7 +541,9 @@ export function registerCommerce({ app, staff, io, h }) {
       name: z.string().trim().min(1).max(40), phone: z.string().trim().min(7).max(20).regex(/^[+\d\s()-]+$/, 'Phone looks wrong'),
       email: z.string().trim().email().max(120).optional().or(z.literal('')), address: z.string().trim().max(200).optional(), notes: z.string().trim().max(200).optional(),
       payNow: z.boolean(), tipCents: z.number().int().min(0).max(100000).default(0), promoCode: z.string().trim().max(30).optional(),
+      scheduledFor: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/).optional(),
     }), req.body);
+    if (b.scheduledFor) h.checkSchedule?.(b.scheduledFor);
     if (b.fulfillment === 'delivery' && (!info.delivery || !b.address || b.address.length < 8)) return res.status(400).json({ error: info.delivery ? 'Enter a delivery address' : 'Delivery is not available' });
     if (b.fulfillment === 'pickup' && !info.pickup) return res.status(400).json({ error: 'Pickup is not available' });
     if (b.payNow && !info.payOnline) return res.status(400).json({ error: 'Paying online is not available' });
@@ -548,9 +553,10 @@ export function registerCommerce({ app, staff, io, h }) {
     if (b.fulfillment === 'delivery' && subtotal < info.deliveryMinCents) return res.status(400).json({ error: `Delivery orders need at least $${(info.deliveryMinCents / 100).toFixed(2)} of food` });
     const promo = b.promoCode && h.promoDiscount ? h.promoDiscount(b.promoCode, subtotal) : null;
     const g = createGuest({ kind: 'order', name: b.name, phone: b.phone, email: b.email, notifyEmail: Boolean(b.email), party_size: 1, source: 'online' });
-    const o = insertOrder({ lines, status: b.payNow ? 'held' : 'sent', source: 'online', guestId: g.id, customerName: b.name, fulfillment: b.fulfillment, address: b.fulfillment === 'delivery' ? b.address : null,
+    const o = insertOrder({ lines, status: b.payNow || b.scheduledFor ? 'held' : 'sent', source: 'online', guestId: g.id, customerName: b.name, fulfillment: b.fulfillment, address: b.fulfillment === 'delivery' ? b.address : null,
       phone: b.phone, email: b.email || null, notes: b.notes || null, feeCents: b.fulfillment === 'delivery' ? info.deliveryFeeCents : 0, discountCents: promo?.cents || 0, promoCode: promo?.code || null });
     db.prepare('UPDATE guests SET order_id = ? WHERE id = ?').run(o.id, g.id);
+    if (b.scheduledFor) db.prepare('UPDATE orders SET scheduled_for = ?, sched_pay = ? WHERE id = ?').run(b.scheduledFor, b.payNow ? 'now' : 'later', o.id);
     const buzzer = `/b/${g.token}`;
     if (!b.payNow) {
       audit(null, 'online.order', `#${o.number} ${b.fulfillment} for ${b.name}, pay at ${b.fulfillment === 'pickup' ? 'pickup' : 'door'}`, clientIp(req));

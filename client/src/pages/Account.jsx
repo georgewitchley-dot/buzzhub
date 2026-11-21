@@ -5,6 +5,7 @@ import { api, applyAccent, enablePush, fmtSlot, isIOS, isStandalone, money, push
 import { Puck } from '../ui.jsx';
 import { AccountClub } from './Club.jsx';
 import { ReferralCard } from './House.jsx';
+import { AccountPunches } from './More.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
@@ -164,6 +165,7 @@ export default function Account() {
               <select className="input" style={{ width: 70 }} value={bday.slice(3)} disabled={!bday} onChange={(e) => saveBirthday(`${bday.slice(0, 2)}-${e.target.value}`)} aria-label="Birth day">{Array.from({ length: 31 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{i + 1}</option>)}</select></label>
 
             <ReferralCard />
+            <AccountPunches />
             <AccountClub />
 
             {offers !== null && (

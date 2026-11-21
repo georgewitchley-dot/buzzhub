@@ -4,6 +4,7 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { CartLines, GuestMenu, PairsHint, useCart, useCombos } from '../order-ui.jsx';
+import { WhenPicker } from './More.jsx';
 import { LangSwitch, getLang, useLang } from '../i18n.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
@@ -52,7 +53,7 @@ export function OrderOnline() {
     setBusy(true); setErr('');
     try {
       try { localStorage.setItem('bh_online_profile', JSON.stringify({ name: f.name, phone: f.phone, email: f.email, address: f.address })); } catch { /* ignore */ }
-      const r = await api('/o/checkout', { method: 'POST', body: { items: cart.payload, ...f, payNow, tipCents: payNow ? tip : 0, promoCode: promoRes?.ok ? promo : undefined } });
+      const r = await api('/o/checkout', { method: 'POST', body: { items: cart.payload, ...f, scheduledFor: f.scheduledFor || undefined, payNow, tipCents: payNow ? tip : 0, promoCode: promoRes?.ok ? promo : undefined } });
       if (r.url) window.location.href = r.url; else nav(r.buzzer, { replace: true });
     } catch (e) { setErr(e.message); setBusy(false); }
   };
@@ -73,6 +74,7 @@ export function OrderOnline() {
             <label className="field"><span>Your name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={40} autoComplete="name" /></label>
             <label className="field"><span>Mobile number</span><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={20} autoComplete="tel" /></label>
             <label className="field"><span>Email for the receipt (optional)</span><input className="input" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} maxLength={120} autoComplete="email" /></label>
+            <WhenPicker info={d} value={f.scheduledFor || ''} onChange={(v) => setF({ ...f, scheduledFor: v })} t={t} />
             {f.fulfillment === 'delivery' && <label className="field"><span>Delivery address</span><textarea className="input" rows={2} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} maxLength={200} autoComplete="street-address" /></label>}
             <label className="field"><span>Notes (optional)</span><input className="input" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={200} placeholder={f.fulfillment === 'delivery' ? 'Gate code, leave at door…' : 'Anything we should know'} /></label>
             <input className="input" placeholder="Promo code (optional)" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} maxLength={30} aria-label="Promo code" />

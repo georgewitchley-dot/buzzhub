@@ -55,7 +55,7 @@ export function registerOps({ app, staff, io, h }) {
       FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
       WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-10 minutes'))
       ORDER BY CASE WHEN o.status IN ('open','sent') THEN 0 ELSE 1 END, COALESCE(o.sent_at, o.created_at)`).all();
-    const items = orders.length ? db.prepare(`SELECT id, order_id, item_id, name, qty, note, mods, course, fired_at FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',')})`).all() : [];
+    const items = orders.length ? db.prepare(`SELECT oi.id, oi.order_id, oi.item_id, oi.name, oi.qty, oi.note, oi.mods, oi.course, oi.fired_at, oi.done_at, m.category FROM order_items oi LEFT JOIN menu_items m ON m.id = oi.item_id WHERE oi.order_id IN (${orders.map((o) => o.id).join(',')})`).all() : [];
     const held = db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'held'").get().c;
     res.json({ orders: orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id).map((i) => ({ ...i, mods: JSON.parse(i.mods || '[]') })) })), held, lateMinutes: Number(getSettings().kds_late_minutes || 12) });
   });

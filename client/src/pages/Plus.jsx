@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, applyAccent, imageToPng, money } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { GiftBonuses, MenuSchedules, PunchPlans } from './More.jsx';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
@@ -24,11 +25,14 @@ export function Deals() {
   return (
     <>
       <PageHead title="Deals" sub="Happy hour prices, daily specials and combos. They show on the register, online, on the kiosk and on table QR menus.">
-        <div className="seg">{[['happy', 'Happy hour'], ['specials', 'Daily specials'], ['combos', 'Combos']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+        <div className="seg">{[['happy', 'Happy hour'], ['specials', 'Specials'], ['combos', 'Combos'], ['menus', 'Menu times'], ['punch', 'Punch cards'], ['bonus', 'Gift bonuses']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
       </PageHead>
       {tab === 'happy' && <HappyHour />}
       {tab === 'specials' && <Specials />}
       {tab === 'combos' && <Combos />}
+      {tab === 'menus' && <MenuSchedules />}
+      {tab === 'punch' && <PunchPlans />}
+      {tab === 'bonus' && <GiftBonuses />}
     </>
   );
 }
@@ -386,7 +390,7 @@ export function FloorPanel({ f, setF }) {
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const startDisplay = async () => { try { const r = await api('/staff/display/start', { method: 'POST' }); localStorage.setItem('bh_display_token', r.token); location.href = `/display${r.loc && r.loc !== 'main' ? `?l=${r.loc}` : ''}`; } catch (e) { toast(e.message, 'err'); } };
   return (
-    <section className="panel"><div className="panel-h"><h3>Customer display, table timers and price alerts</h3></div><div className="panel-b stack">
+    <section className="panel"><div className="panel-h"><h3>Customer display, timers, labor and scheduling</h3></div><div className="panel-b stack">
       <span className="muted" style={{ fontSize: 14 }}>A customer display is a second screen (a tablet or monitor) facing the customer. It shows the order as you ring it up and lets them pick a tip. Open this on that screen, then type its code on the register.</span>
       <div className="row"><button className="btn primary grow" onClick={startDisplay}>Make this device a customer display</button><button className="btn grow" onClick={() => api('/staff/display/signout-all', { method: 'POST' }).then(() => toast('All customer displays signed out', 'ok'))}>Sign out all displays</button></div>
       <div className="row">
@@ -394,6 +398,12 @@ export function FloorPanel({ f, setF }) {
         <label className="field grow"><span>Alert when an order is cooking longer than (minutes, 0 = off)</span><input className="input" type="number" min={0} max={240} value={f.kitchen_slow_minutes} onChange={set('kitchen_slow_minutes')} /></label>
       </div>
       <label className="field"><span>Alert when an ingredient's cost goes up by (%)</span><input className="input" type="number" min={1} max={100} value={f.price_watch_pct} onChange={set('price_watch_pct')} /></label>
+      <div className="row"><label className="field grow"><span>Labor target (% of sales)</span><input className="input" type="number" min={5} max={80} value={f.labor_target_pct} onChange={set('labor_target_pct')} /></label>
+        <label className="field grow"><span>Each booking holds a table for (minutes)</span><input className="input" type="number" min={15} max={600} value={f.booking_duration_minutes} onChange={set('booking_duration_minutes')} /></label></div>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.labor_alerts === '1'} onChange={(e) => setF({ ...f, labor_alerts: e.target.checked ? '1' : '0' })} /> Alert managers when labor runs well over target</label>
+      <div className="row"><label className="row grow" style={{ fontSize: 14 }}><input type="checkbox" checked={f.online_schedule === '1'} onChange={(e) => setF({ ...f, online_schedule: e.target.checked ? '1' : '0' })} /> Let online customers order for a later time</label>
+        <label className="field"><span>Up to (days ahead)</span><input className="input" style={{ width: 90 }} type="number" min={1} max={60} value={f.online_schedule_days} onChange={set('online_schedule_days')} /></label>
+        <label className="field"><span>Labels: items keep (days)</span><input className="input" style={{ width: 90 }} type="number" min={0} max={365} value={f.label_shelf_days} onChange={set('label_shelf_days')} /></label></div>
     </div></section>
   );
 }

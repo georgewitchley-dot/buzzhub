@@ -27,6 +27,7 @@ import { Catering, Memberships } from './Club.jsx';
 import { Chats, MyShifts, Performance, useUnreadChats } from './People.jsx';
 import { Checklists, Deposits, Events, Prep } from './House.jsx';
 import { Deals, Goals, Training } from './Plus.jsx';
+import { Labels, Waste } from './More.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -64,6 +65,8 @@ const NAV = [
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/checklists', icon: 'list', label: 'Checklists' },
   { to: '/training', icon: 'star', label: 'Training' },
+  { to: '/waste', icon: 'box', label: 'Waste' },
+  { to: '/labels', icon: 'print', label: 'Labels' },
   { to: '/prep', icon: 'flame', label: 'Prep list', when: (s) => s?.business_type !== 'service' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
   { to: '/my-shifts', icon: 'calendar', label: 'My shifts' },
@@ -239,6 +242,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="chats" element={<Chats />} />
                   <Route path="checklists" element={<Checklists />} />
                   <Route path="training" element={<Training />} />
+                  <Route path="waste" element={<Waste />} />
+                  <Route path="labels" element={<Labels />} />
                   {can('manager') && <Route path="deals" element={<Deals />} />}
                   {can('manager') && <Route path="goals" element={<Goals />} />}
                   <Route path="prep" element={<Prep />} />

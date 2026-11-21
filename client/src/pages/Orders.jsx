@@ -3,6 +3,7 @@ import { ReceiptModal } from '../pro-ui.jsx';
 import { api, minutesSince, money, timeOf, useTick } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { ScheduledList } from './More.jsx';
 import { PayModal } from './Register.jsx';
 
 const LABEL = { held: 'Waiting',  open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
@@ -45,6 +46,7 @@ export default function Orders() {
           <button aria-pressed={scope === 'paid'} onClick={() => setScope('paid')}>Closed today</button>
         </div>
       </PageHead>
+      {scope === 'open' && <ScheduledList />}
       {orders && orders.length === 0 && <div className="panel empty"><b>No {scope === 'open' ? 'open' : 'closed'} orders</b><span>New sales from the register land here.</span></div>}
       <div className="board">
         {(orders || []).map((o) => (

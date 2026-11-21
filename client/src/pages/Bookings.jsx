@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, fmtSlot } from '../lib.js';
 import { useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { Timeline } from './More.jsx';
 import { useCustomerModal } from './Field.jsx';
 
 const STATUS = { booked: ['Booked', 'blue'], checked_in: ['Here now', 'teal'], done: ['Done', ''], cancelled: ['Cancelled', 'rose'], noshow: ['No-show', 'rose'] };
@@ -9,7 +10,7 @@ const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).
 
 export default function Bookings() {
   const [customerModal, openCustomer] = useCustomerModal();
-  const { can } = useCC();
+  const { can, settings } = useCC();
   const toast = useToast();
   const [from, setFrom] = useState('');
   const [tab, setTab] = useState('bookings');
@@ -24,7 +25,7 @@ export default function Bookings() {
   return (
     <>
       <PageHead title="Bookings" sub={data ? `${todayCount} booked today. Customers book from the door sign or ${location.host}/account.` : ''}>
-        {can('manager') && <div className="seg"><button aria-pressed={tab === 'bookings'} onClick={() => setTab('bookings')}>Bookings</button><button aria-pressed={tab === 'customers'} onClick={() => setTab('customers')}>Customers</button></div>}
+        <div className="seg"><button aria-pressed={tab === 'bookings'} onClick={() => setTab('bookings')}>Bookings</button>{settings.business_type !== 'service' && <button aria-pressed={tab === 'timeline'} onClick={() => setTab('timeline')}>Timeline</button>}{can('manager') && <button aria-pressed={tab === 'customers'} onClick={() => setTab('customers')}>Customers</button>}</div>
         {tab === 'bookings' && start && (
           <div className="row">
             <button className="btn sm" onClick={() => setFrom(addDays(start, -7))} disabled={start <= data?.today}>Earlier</button>
@@ -34,7 +35,7 @@ export default function Bookings() {
         )}
       </PageHead>
 
-      {tab === 'customers' ? (
+      {tab === 'timeline' ? <Timeline /> : tab === 'customers' ? (
         <section className="panel"><table className="list">
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Bookings</th><th>Visits</th><th>Joined</th></tr></thead>
           <tbody>{(customers || []).map((c) => (

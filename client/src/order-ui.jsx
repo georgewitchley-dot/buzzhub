@@ -172,12 +172,13 @@ export function PairsHint({ cart, items, currency, onPick, label = 'Goes great w
   const byId = Object.fromEntries(items.map((i) => [i.id, i]));
   const ids = [];
   for (const l of cart.lines) for (const id of pairs[l.itemId] || []) if (!inCart.has(id) && !ids.includes(id) && byId[id] && !byId[id].soldOut) ids.push(id);
-  if (!ids.length) return null;
+  const shown = ids.filter((id) => onPick || !byId[id].groups?.length).slice(0, 3);
+  if (!shown.length) return null;
   const pick = (m) => (onPick ? onPick(m) : m.groups?.length ? null : cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents }));
   return (
     <div className="pairs" aria-label={label}>
       <span className="dim" style={{ fontSize: 12.5 }}>{label}</span>
-      {ids.slice(0, 3).filter((id) => onPick || !byId[id].groups?.length).map((id) => <button key={id} className="btn sm" onClick={() => pick(byId[id])}>+ {byId[id].name} <span className="dim">{money(byId[id].price_cents, currency)}</span></button>)}
+      {shown.map((id) => <button key={id} className="btn sm" onClick={() => pick(byId[id])}>+ {byId[id].name} <span className="dim">{money(byId[id].price_cents, currency)}</span></button>)}
     </div>
   );
 }

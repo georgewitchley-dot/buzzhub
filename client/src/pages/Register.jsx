@@ -8,6 +8,7 @@ import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { CartLines, ComboPicker, ModPicker, PairsHint, PriceTag, useCart } from '../order-ui.jsx';
 import { GoalBar, PairDisplay, useDisplayPush, useLiveCombos } from './Plus.jsx';
+import { PunchUse, SellPunch, applyPunches } from './More.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { QrModal, RedeemModal } from './Waitlist.jsx';
 import { queueSale, attachPayment, isNetworkError } from '../offline.js';
@@ -167,6 +168,7 @@ export function PayModal({ order, currency, onClose, onPaid }) {
 }
 
 function SellGiftModal({ currency, canComp, onClose }) {
+  const [bonus, setBonus] = useState(null);
   const toast = useToast();
   const [amount, setAmount] = useState(25);
   const [custom, setCustom] = useState('');
@@ -175,13 +177,14 @@ function SellGiftModal({ currency, canComp, onClose }) {
   const [email, setEmail] = useState('');
   const [done, setDone] = useState(null);
   const cents = custom ? dollars(custom) : amount * 100;
-  const sell = async () => { try { const r = await api('/staff/giftcards', { method: 'POST', body: { amountCents: cents, method, name: name || undefined, email: email || undefined } }); setDone(r.code); } catch (e) { toast(e.message, 'err'); } };
+  const sell = async () => { try { const r = await api('/staff/giftcards', { method: 'POST', body: { amountCents: cents, method, name: name || undefined, email: email || undefined } }); setDone(r.code); setBonus(r.bonus || null); } catch (e) { toast(e.message, 'err'); } };
   return (
     <Modal title="Sell a gift card" onClose={onClose}>
       {done ? (
         <>
           <p className="muted" style={{ margin: 0 }}>Write this code on a card or give it to the customer. {email ? 'We also emailed it if email is set up.' : ''}</p>
           <div className="reward-code num">{done}</div>
+          {bonus && <><p className="muted" style={{ margin: 0 }}>{bonus.promo}: they also get a {money(bonus.cents, currency)} bonus card{bonus.validFrom ? `, good from ${bonus.validFrom}` : ''}{bonus.validUntil ? ` until ${bonus.validUntil}` : ''}.</p><div className="reward-code num">{bonus.code}</div></>}
           <button className="btn primary block" onClick={onClose}>Done</button>
         </>
       ) : (
@@ -222,6 +225,8 @@ export default function Register() {
   const [combo, setCombo] = useState(null);
   const [hold, setHold] = useState(false);
   const [pair, setPair] = useState(false);
+  const [punchPicks, setPunchPicks] = useState({});
+  const [sellPunch, setSellPunch] = useState(false);
   const [thanks, setThanks] = useState(false);
   const combos = useLiveCombos();
   const totalRef = useRef(null);
@@ -254,7 +259,9 @@ export default function Register() {
     const body = { items: cart.payload, tableId: tableId ? Number(tableId) : null, customerName: customer || cust?.name || undefined, discountPct: discount || undefined, customerId: cust?.id, allergies: allergies.length ? allergies : undefined, attachBuzzer: buzzer, phone, promoCode: promo || undefined, clientKey };
     try {
       const r = await api('/staff/orders', { method: 'POST', body });
-      const order = { id: r.id, number: r.number, subtotal_cents: cart.subtotal, discount_cents: r.discountCents ?? disc, tax_cents: tax, lines: cart.lines.map((l) => ({ name: l.name, qty: l.qty, cents: l.qty * l.unitCents })) };
+      const pu = Object.values(punchPicks).some((n) => n > 0) ? await applyPunches(r.id, punchPicks) : null;
+      if (pu?.error) toast(pu.error, 'err'); else if (pu?.used.length) toast(`Punch card used for ${pu.used.join(', ')}`, 'ok');
+      const order = { id: r.id, number: r.number, subtotal_cents: cart.subtotal, discount_cents: pu?.last ? pu.last.discountCents : r.discountCents ?? disc, tax_cents: pu?.last ? pu.last.taxCents : tax, lines: cart.lines.map((l) => ({ name: l.name, qty: l.qty, cents: l.qty * l.unitCents })) };
       reset();
       if (r.buzzer) setQr({ link: r.buzzer.link, svg: r.buzzer.svg, title: `Buzzer for order #${r.number}`, note: 'The customer scans this. Their phone buzzes when you mark the order ready.' });
       if (payNow) setPaying(order); else toast(`Order #${r.number} sent`, 'ok');
@@ -273,6 +280,7 @@ export default function Register() {
     <>
       <PageHead title="Register" sub="Tap items to add them to the ticket.">
         <button className="btn" onClick={() => setSellGift(true)}><Icon name="gift" size={17} />Sell gift card</button>
+        <button className="btn" onClick={() => setSellPunch(true)}>Sell punch card</button>
         {settings.loyalty_enabled === '1' && <button className="btn" onClick={() => setRedeem(true)}>Redeem reward</button>}
         <button className="btn" onClick={() => setPair(true)}>{displayCode ? `Display ${displayCode}` : 'Customer display'}</button>
       </PageHead>
@@ -311,6 +319,7 @@ export default function Register() {
               )}
             </div>
             <CustomerPicker value={cust} onChange={setCust} allergies={allergies} setAllergies={setAllergies} currency={cur} />
+            <PunchUse customer={cust} picks={punchPicks} setPicks={setPunchPicks} />
             <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={buzzer} onChange={(e) => setBuzzer(e.target.checked)} /> Give the customer a phone buzzer for pickup</label>
             {buzzer && <input className="input" type="tel" placeholder="Mobile number (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} aria-label="Mobile number" />}
             {settings.business_type !== 'service' && <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} /> Hold the next items until I fire them (mains after starters)</label>}
@@ -333,6 +342,7 @@ export default function Register() {
       {picking && <ModPicker item={picking} currency={cur} onClose={() => setPicking(null)} onAdd={(l) => { addLine(l); setPicking(null); }} />}
       {combo && <ComboPicker combo={combo} items={items} currency={cur} onClose={() => setCombo(null)} onAdd={(l) => { addLine(l); setCombo(null); }} />}
       {pair && <PairDisplay onClose={() => setPair(false)} />}
+      {sellPunch && <SellPunch onClose={() => setSellPunch(false)} />}
       {redeem && <RedeemModal onClose={() => setRedeem(false)} />}
       {sellGift && <SellGiftModal currency={cur} canComp={can('manager')} onClose={() => setSellGift(false)} />}
       {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => { setPaying(null); setThanks(true); setTimeout(() => setThanks(false), 6000); }} />}

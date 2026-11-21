@@ -600,3 +600,36 @@ li.held { opacity: .5; }
 .cdisp-tips .btn { height: auto; padding: 2vh; display: grid; gap: .4vh; font-size: 3.2vh; }
 .cdisp-tips small { font-size: 2vh; opacity: .7; }
 @media (max-width: 700px) { .cdisp-grid { grid-template-columns: 1fr; } }
+
+/* ---- round 9: timeline, punches, labels ---- */
+.timeline { position: relative; padding: 0 0 8px; overflow-x: auto; user-select: none; touch-action: none; }
+.tl-head { position: relative; height: 32px; margin-left: 120px; border-bottom: 1px solid var(--line, rgba(255,255,255,.08)); }
+.tl-head span { position: absolute; top: 8px; font-size: 12px; color: var(--muted, #999); transform: translateX(-50%); white-space: nowrap; }
+.tl-row { display: flex; height: 44px; border-bottom: 1px solid var(--line, rgba(255,255,255,.06)); }
+.tl-label { width: 120px; flex: none; padding: 12px 10px; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-label small { color: var(--muted, #999); }
+.tl-track { position: relative; flex: 1; min-width: 600px; background: repeating-linear-gradient(90deg, transparent 0 calc(100%/12 - 1px), rgba(255,255,255,.04) calc(100%/12 - 1px) calc(100%/12)); }
+.tl-b { position: absolute; top: 5px; bottom: 5px; border: 0; border-radius: 8px; padding: 0 8px; background: color-mix(in srgb, var(--accent) 30%, #1b1a22); color: var(--text); font-size: 12.5px; text-align: left; overflow: hidden; white-space: nowrap; cursor: grab; }
+.tl-b.checked_in { background: color-mix(in srgb, var(--seated, #3cb4a0) 40%, #1b1a22); }
+.tl-b.noshow, .tl-b.done { opacity: .5; }
+.tl-b small { opacity: .7; }
+.tl-ghost { position: absolute; pointer-events: none; padding: 6px 10px; border-radius: 8px; background: var(--accent); color: #111; font-size: 12.5px; font-weight: 700; }
+.punches { display: flex; flex-wrap: wrap; gap: 6px; }
+.punches i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--accent); }
+.punches i.used { background: var(--accent); }
+.label-sheet { display: none; }
+@media print {
+  .no-print, .panel.no-print, .page-head:has(~ .label-sheet), .claims-bar { display: none !important; }
+  .label-sheet { display: grid; gap: 0; }
+  .label-sheet.size-2x1 { grid-template-columns: 2in; }
+  .label-sheet.size-4x2 { grid-template-columns: 4in; }
+  .label-sheet.size-sheet { grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; column-gap: .125in; padding: .5in .19in; }
+  .glabel { box-sizing: border-box; overflow: hidden; color: #000; background: #fff; display: grid; align-content: start; gap: 1px; padding: .06in .08in; font-family: system-ui, sans-serif; break-inside: avoid; page-break-inside: avoid; }
+  .size-2x1 .glabel { width: 2in; height: 1in; font-size: 7pt; page-break-after: always; }
+  .size-4x2 .glabel { width: 4in; height: 2in; font-size: 11pt; page-break-after: always; }
+  .size-sheet .glabel { width: 2.625in; height: 1in; font-size: 7.5pt; }
+  .gl-name { font-size: 1.35em; line-height: 1.1; }
+  .gl-price { font-weight: 700; }
+  .gl-al { font-weight: 700; }
+  .gl-biz { opacity: .7; }
+}
