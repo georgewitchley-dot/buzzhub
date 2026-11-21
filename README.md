@@ -127,6 +127,17 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Course firing**: hold mains until the server fires them.
 - **Sales goals and contests**: a daily target on the register and staff leaderboards.
 
+## Round 9: menus, kitchen and back office
+- **Menu schedules**: brunch, lunch and dinner menus switch on their own.
+- **Kitchen stations**: a bar screen sees drinks, the kitchen sees food; the order is ready when both are done.
+- **Gift card bonuses**: buy $50, get a $10 bonus card, usable in the dates you choose.
+- **Punch cards**: sell 10 coffees up front; used one at a time from the customer's account.
+- **Scheduled orders**: customers order online for a later day and time.
+- **Live labor**: labor against sales on the overview, with who could go home early.
+- **Reservation timeline**: bookings by table, drag to move.
+- **Waste tracker**: what's thrown out, why and what it cost.
+- **Grab-and-go labels**: price, allergens, made-on and use-by dates.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.

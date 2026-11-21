@@ -5,7 +5,7 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
-## 2. Current status (2026-11-21, round 8 deployed)
+## 2. Current status (2026-11-21, round 9 deployed)
 | Item | Status |
 |---|---|
 | App code (server + client) | ✅ Done, builds cleanly, end-to-end browser test passed |
@@ -116,6 +116,18 @@ Server: `server/src/plus.js`. Client: `client/src/pages/Plus.jsx`; `ComboPicker`
 - **Price watch**: `ingredient_costs` history, scanned every minute and on page load; alerts at `price_watch_pct`.
 - **Table timers**: `table_long_minutes`, `kitchen_slow_minutes`; once-only alerts in `plus_alerts`; floor outlines long tables.
 - **Goals and contests**: `sales_goals` (JSON of 7 cents values, Sun..Sat), `contests` ranked by `orders.created_by`.
+
+## 3i. Round 9 (2026-11-21)
+Server: `server/src/more.js`. Client: `client/src/pages/More.jsx`. House accounts are still not built (owner skipped them twice).
+- **Menu schedules**: `menu_schedules`; a `menuHooks.adjust` filter hides items on a schedule outside its window (items on no schedule always show). Deals → Menu times.
+- **Kitchen stations**: settings `kitchen_stations` (JSON list) and `station_map` (category → station). The kitchen query now returns `category` and `done_at`. A station screen bumps its items with `POST /staff/kitchen/:id/station`; when nothing is left the client calls `/orders/:id/ready`.
+- **Gift bonuses**: `gift_promos`; `h.giftBonus` runs after staff and online gift sales (not comps or deposits) and issues a `source='bonus'` card with `gift_cards.valid_from/valid_until`; `h.giftUsable` blocks redemption outside that window.
+- **Punch cards**: `punch_plans`, `punch_cards`, `punch_uses`. Sold at the register as a paid order with a null item line, or online (pay kind `punch`). Each use adds the eligible item's price to `orders.discount_cents` and recomputes tax.
+- **Scheduled orders**: checkout accepts `scheduledFor` (local 'YYYY-MM-DD HH:MM'), checked by `h.checkSchedule`; the order is `held` with `orders.scheduled_for` and `sched_pay`. A one-minute job sends it to the kitchen `online_prep_minutes` before the time; unpaid pay-now holds are voided after 2 hours.
+- **Live labor**: `/staff/labor-now` (open shifts × hourly rate vs paid sales), `labor_target_pct`, hourly alert when well over target.
+- **Reservation timeline**: `bookings.table_id`, `duration_minutes` (default `booking_duration_minutes`); `PUT /staff/bookings/:id/place` with clash and seat checks (`force` to override).
+- **Waste**: `waste_log`; logging deducts item stock and recipe ingredients (or the ingredient) and costs it.
+- **Labels**: `menu_items.shelf_days` (default `label_shelf_days`); printed client-side with print CSS for 2×1, 4×2 and a 30-up letter sheet.
 
 ## 4. Architecture
 ```
