@@ -17,6 +17,7 @@ import {
   passwordProblem, hashPassword, checkPassword, burnCompare, issueCustomerSession, clearCustomerSession, customerFromReq, requireCustomer,
 } from './security.js';
 import { registerOps } from './ops.js';
+import { registerTeam } from './team.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -517,6 +518,12 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     online_prep_minutes: z.coerce.number().int().min(1).max(180),
     online_pay_later: z.union([z.literal('0'), z.literal('1')]),
     table_ordering: z.union([z.literal('0'), z.literal('1')]),
+    tip_pool_enabled: z.union([z.literal('0'), z.literal('1')]),
+    tip_pool_managers: z.union([z.literal('0'), z.literal('1')]),
+    forecast_city: z.string().trim().max(80),
+    forecast_rain_pct: z.coerce.number().int().min(-60).max(60),
+    staff_sales_per_hour_cents: z.coerce.number().int().min(1000).max(1000000),
+    staff_min: z.coerce.number().int().min(0).max(20),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -920,10 +927,12 @@ app.post('/api/c/register', custLimiter, wrap(async (req, res) => {
     email: z.string().trim().toLowerCase().max(120).email('Email looks wrong'),
     phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, 'Phone looks wrong').optional().or(z.literal('')),
     password: z.string(),
+    marketingOptIn: z.boolean().optional(),
   }), req.body);
   const problem = passwordProblem(b.password); if (problem) return res.status(400).json({ error: problem });
   if (db.prepare('SELECT 1 FROM customers WHERE email = ?').get(b.email)) return res.status(409).json({ error: 'That email already has an account. Sign in instead.' });
   const id = db.prepare('INSERT INTO customers (name, email, phone, pw_hash) VALUES (?, ?, ?, ?)').run(b.name, b.email, b.phone || null, await hashPassword(b.password)).lastInsertRowid;
+  if (b.marketingOptIn) db.prepare('UPDATE customers SET marketing_opt_in = 1 WHERE id = ?').run(id);
   const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
   issueCustomerSession(res, c);
   audit(null, 'customer.register', `${c.name} <${c.email}>`, clientIp(req));
@@ -1095,6 +1104,7 @@ registerFloorPay({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, n
 registerLocations({ app, staff, h: { parse, clientIp, requireAuth, issueSession, wrap, seedDemoData } });
 registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
 registerGrowth({ app, staff, io, h: Object.assign(G, { parse, idParam, now, clientIp, requireAuth, notifyStaff, requireCustomer, publicLimiter }) });
+registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 
 app.use('/api/staff', staff);

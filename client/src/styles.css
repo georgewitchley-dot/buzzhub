@@ -443,3 +443,14 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .cat-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
 .sticky-cta { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 5; }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; max-height: 200px; overflow: auto; }
+
+/* ---------- staffing forecast ---------- */
+.fc-bars { display: flex; gap: 6px; align-items: end; height: 170px; overflow-x: auto; }
+.fc-col { flex: 1 0 38px; display: grid; gap: 3px; justify-items: center; height: 100%; grid-template-rows: 1fr auto auto; }
+.fc-col small { font-size: 11px; color: var(--muted); }
+.fc-stack { width: 100%; display: flex; gap: 2px; align-items: end; height: 100%; }
+.fc-stack i { flex: 1; border-radius: 4px 4px 0 0; min-height: 2px; }
+.fc-stack i.need, .fc-key.need { background: rgba(var(--accent-rgb), .35); }
+.fc-stack i.sched, .fc-key.sched { background: var(--seated); }
+.fc-stack i.sched.short, .fc-key.short { background: var(--dirty); }
+.fc-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-left: 10px; }

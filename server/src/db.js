@@ -308,6 +308,8 @@ const DEFAULTS = {
   online_prep_minutes: '15',
   online_pay_later: '1',
   table_ordering: '0',
+  tip_pool_enabled: '0', tip_pool_managers: '0',
+  forecast_city: '', forecast_rain_pct: '-10', staff_sales_per_hour_cents: '15000', staff_min: '1',
 };
 
 /* ---------- business-local dates (per location) ---------- */

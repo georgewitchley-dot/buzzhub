@@ -63,17 +63,18 @@ export const emailEnabled = () => Boolean(mailer);
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export async function emailGuest(to, { businessName, subject, message, link, accent = '#ffb020' }) {
+export async function emailGuest(to, { businessName, subject, message, link, accent = '#ffb020', button = 'Open my buzzer', unsubscribe = null }) {
   if (!mailer || !to) return { ok: false };
   await mailer.sendMail({
     from: SMTP_FROM || `"${businessName.replace(/"/g, '')}" <${SMTP_USER}>`,
     to,
     subject: `${businessName}: ${subject}`,
-    text: `${message}\n\nOpen your buzzer: ${link}`,
+    text: `${message}\n\n${button}: ${link}${unsubscribe ? `\n\nNo longer want offers? Unsubscribe: ${unsubscribe}` : ''}`,
     html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:auto;padding:24px">
       <h2 style="margin:0 0 8px">${esc(subject)}</h2><p style="font-size:16px;color:#333">${esc(message)}</p>
-      <p><a href="${esc(link)}" style="display:inline-block;background:${esc(accent)};color:#1a1406;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">Open my buzzer</a></p>
-      <p style="color:#888;font-size:12px">${esc(businessName)}</p></div>`,
+      <p><a href="${esc(link)}" style="display:inline-block;background:${esc(accent)};color:#1a1406;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700">${esc(button)}</a></p>
+      <p style="color:#888;font-size:12px">${esc(businessName)}${unsubscribe ? ` · <a href="${esc(unsubscribe)}" style="color:#888">Unsubscribe from offers</a>` : ''}</p></div>`,
+    ...(unsubscribe ? { headers: { 'List-Unsubscribe': `<${unsubscribe}>` } } : {}),
   });
   return { ok: true };
 }

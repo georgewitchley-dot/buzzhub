@@ -26,21 +26,28 @@ export function OrderOnline() {
   const [step, setStep] = useState('menu');
   const [f, setF] = useState(() => { try { return { fulfillment: 'pickup', name: '', phone: '', email: '', address: '', notes: '', ...JSON.parse(localStorage.getItem('bh_online_profile') || '{}') }; } catch { return { fulfillment: 'pickup' }; } });
   const [pct, setPct] = useState(15);
-  const [promo, setPromo] = useState('');
+  const [promo, setPromo] = useState(() => (new URLSearchParams(location.search).get('promo') || '').toUpperCase().slice(0, 30));
+  const [promoRes, setPromoRes] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { api('/o/menu').then((x) => { setD(x); applyAccent(x.business.accent); document.title = `Order from ${x.business.name}`; if (!x.pickup && x.delivery) setF((p) => ({ ...p, fulfillment: 'delivery' })); }).catch((e) => setErr(e.message)); }, []);
+  useEffect(() => {
+    if (!promo) { setPromoRes(null); return undefined; }
+    const id = setTimeout(() => api(`/public/promo?code=${encodeURIComponent(promo)}&subtotal=${cart.subtotal}`).then(setPromoRes).catch(() => setPromoRes(null)), 350);
+    return () => clearTimeout(id);
+  }, [promo, cart.subtotal]);
   if (err && !d) return <div className="guest"><main className="guest-in"><h1>Ordering unavailable</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   if (!d.enabled) return <Shell biz={d.business}><h1 style={{ textAlign: 'center' }}>Online ordering is closed</h1><p style={{ textAlign: 'center', margin: '0 auto' }}>Please call or visit {d.business.name}.</p></Shell>;
   const fee = f.fulfillment === 'delivery' ? d.deliveryFeeCents : 0;
-  const tax = Math.round(cart.subtotal * d.taxRate / 100);
+  const off = promoRes?.ok ? promoRes.cents : 0;
+  const tax = Math.round((cart.subtotal - off) * d.taxRate / 100);
   const tip = Math.round(cart.subtotal * pct / 100);
   const short = f.fulfillment === 'delivery' && cart.subtotal < d.deliveryMinCents;
   const place = async (payNow) => {
     setBusy(true); setErr('');
     try {
       try { localStorage.setItem('bh_online_profile', JSON.stringify({ name: f.name, phone: f.phone, email: f.email, address: f.address })); } catch { /* ignore */ }
-      const r = await api('/o/checkout', { method: 'POST', body: { items: cart.payload, ...f, payNow, tipCents: payNow ? tip : 0, promoCode: promo || undefined } });
+      const r = await api('/o/checkout', { method: 'POST', body: { items: cart.payload, ...f, payNow, tipCents: payNow ? tip : 0, promoCode: promoRes?.ok ? promo : undefined } });
       if (r.url) window.location.href = r.url; else nav(r.buzzer, { replace: true });
     } catch (e) { setErr(e.message); setBusy(false); }
   };
@@ -64,14 +71,16 @@ export function OrderOnline() {
             {f.fulfillment === 'delivery' && <label className="field"><span>Delivery address</span><textarea className="input" rows={2} value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} maxLength={200} autoComplete="street-address" /></label>}
             <label className="field"><span>Notes (optional)</span><input className="input" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} maxLength={200} placeholder={f.fulfillment === 'delivery' ? 'Gate code, leave at door…' : 'Anything we should know'} /></label>
             <input className="input" placeholder="Promo code (optional)" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} maxLength={30} aria-label="Promo code" />
+            {promo && promoRes && !promoRes.ok && <span className="dim" style={{ fontSize: 13 }}>{promoRes.error}</span>}
           </div>
           {d.payOnline && <div className="card"><b>Tip the team</b><div className="row wrap">{[0, 10, 15, 20].map((p) => <button key={p} className={`btn sm ${pct === p ? 'primary' : ''}`} onClick={() => setPct(p)}>{p ? `${p}%` : 'No tip'}</button>)}</div></div>}
           <div className="card totals">
             <div><span>Subtotal</span><span>{money(cart.subtotal, d.currency)}</span></div>
+            {off > 0 && <div><span>Promo {promoRes.code}</span><span>−{money(off, d.currency)}</span></div>}
             <div><span>Tax</span><span>{money(tax, d.currency)}</span></div>
             {fee > 0 && <div><span>Delivery fee</span><span>{money(fee, d.currency)}</span></div>}
             {d.payOnline && tip > 0 && <div><span>Tip</span><span>{money(tip, d.currency)}</span></div>}
-            <div className="grand"><span>Total</span><span>{money(cart.subtotal + tax + fee + (d.payOnline ? tip : 0), d.currency)}</span></div>
+            <div className="grand"><span>Total</span><span>{money(cart.subtotal - off + tax + fee + (d.payOnline ? tip : 0), d.currency)}</span></div>
           </div>
           {short && <div className="lock-msg">Delivery needs at least {money(d.deliveryMinCents, d.currency)} of food.</div>}
           {err && <div className="lock-msg">{err}</div>}

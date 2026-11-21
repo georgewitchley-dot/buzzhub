@@ -20,6 +20,7 @@ import Security from './Security.jsx';
 import { FeedbackAdmin } from './Feedback.jsx';
 import Locations, { switchLocation } from './Locations.jsx';
 import { GiftCards, Inventory } from './Commerce.jsx';
+import { Marketing, Tips } from './Team.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -58,6 +59,8 @@ const NAV = [
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
   { to: '/inventory', icon: 'box', label: 'Inventory', min: 'manager' },
   { to: '/giftcards', icon: 'gift', label: 'Gift cards', min: 'manager' },
+  { to: '/marketing', icon: 'bell', label: 'Marketing', min: 'manager' },
+  { to: '/tips', icon: 'cash', label: 'Tips', min: 'manager' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
@@ -201,6 +204,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('manager') && <Route path="locations" element={<Locations />} />}
                   {can('manager') && <Route path="inventory" element={<Inventory />} />}
                   {can('manager') && <Route path="giftcards" element={<GiftCards />} />}
+                  {can('manager') && <Route path="marketing" element={<Marketing />} />}
+                  {can('manager') && <Route path="tips" element={<Tips />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

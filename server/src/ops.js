@@ -27,7 +27,10 @@ if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'hourly
 });
 /* ---------- time helpers (business timezone) ---------- */
 function tzOffsetMin(tz, at = new Date()) {
-  const f = (zone) => Date.parse(at.toLocaleString('en-US', { timeZone: zone, hour12: false }).replace(/(\d+)\/(\d+)\/(\d+), (\d+):(\d+):(\d+)/, '$3-$1-$2T$4:$5:$6Z').replace('T24:', 'T00:'));
+  const f = (zone) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(at).map((x) => [x.type, x.value]));
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  };
   return (f(tz) - f('UTC')) / 60000;
 }
 /** UTC 'YYYY-MM-DD HH:MM:SS' bounds of a local business day. */

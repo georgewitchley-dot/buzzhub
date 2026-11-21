@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, fmtSlot, minutesSince, money, timeOf, useTick } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { Forecast } from './Team.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -117,6 +118,7 @@ export default function Shifts() {
           )}
         </div>
       </div>
+      {mgr && <Forecast />}
       {adding && <AddSchedule people={(people || []).filter((p) => p.active)} date={adding} onClose={() => setAdding(null)} />}
       {editing && <EditShift shift={editing} onClose={() => setEditing(null)} />}
     </>

@@ -6,7 +6,7 @@ import { Puck } from '../ui.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
-  const [f, setF] = useState({ name: '', email: '', phone: '', password: '' });
+  const [f, setF] = useState({ name: '', email: '', phone: '', password: '', marketingOptIn: false });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
@@ -26,6 +26,7 @@ function AuthForm({ onIn }) {
       {mode === 'register' && <label className="field"><span>Your name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={40} autoComplete="name" required /></label>}
       <label className="field"><span>Email</span><input className="input" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} maxLength={120} autoComplete="email" required /></label>
       {mode === 'register' && <label className="field"><span>Mobile number (optional)</span><input className="input" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} maxLength={20} autoComplete="tel" /></label>}
+      {mode === 'register' && <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.marketingOptIn} onChange={(e) => setF({ ...f, marketingOptIn: e.target.checked })} />Send me offers and news (you can turn this off any time)</label>}
       <label className="field"><span>Password {mode === 'register' && '(at least 8 characters)'}</span><input className="input" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} minLength={mode === 'register' ? 8 : 1} maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required /></label>
       {err && <div className="lock-msg">{err}</div>}
       <button className="btn primary lg block" disabled={busy}>{busy ? 'One moment…' : mode === 'register' ? 'Create account' : 'Sign in'}</button>
@@ -99,6 +100,7 @@ export default function Account() {
   const [alerts, setAlerts] = useState('off');
   const [msg, setMsg] = useState('');
   const [loyal, setLoyal] = useState(null);
+  const [offers, setOffers] = useState(null);
   useLenis();
 
   const loadBookings = useCallback(() => api('/c/bookings').then(setBookings).catch(() => {}), []);
@@ -108,7 +110,7 @@ export default function Account() {
     api('/c/booking-info').then(setInfo);
     api('/c/me').then(({ customer }) => setMe(customer)).catch(() => setMe(null));
   }, []);
-  useEffect(() => { if (me) { api('/c/loyalty').then(setLoyal).catch(() => {}); loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
+  useEffect(() => { if (me) { api('/c/marketing').then((r) => setOffers(r.optIn)).catch(() => {}); api('/c/loyalty').then(setLoyal).catch(() => {}); loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
 
   const turnOn = async () => { try { const r = await enablePush('/c/push'); setAlerts(r); } catch { setAlerts('unsupported'); } };
   const checkIn = async (b) => { try { const r = await api(`/c/bookings/${b.id}/checkin`, { method: 'POST' }); nav(r.buzzer); } catch (e) { setMsg(e.message); } };
@@ -145,6 +147,10 @@ export default function Account() {
                 </>
               )}
             </div>
+
+            {offers !== null && (
+              <label className="card row" style={{ fontSize: 14.5 }}><input type="checkbox" checked={offers} onChange={(e) => api('/c/marketing', { method: 'PUT', body: { optIn: e.target.checked } }).then((r) => setOffers(r.optIn))} /><span className="grow"><b>Offers and news</b><br /><span className="muted">{offers ? "You'll get the occasional deal on this phone and by email." : 'Off. You still get booking reminders and buzzes.'}</span></span></label>
+            )}
 
             {msg && <div className="card banner" role="alert">{msg}</div>}
 

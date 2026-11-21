@@ -18,19 +18,19 @@ export function setLoc(slug) { try { if (slug && slug !== 'main') localStorage.s
 export const withLoc = (path, slug) => { const l = slug ?? currentLoc(); return l && l !== 'main' ? `${path}${path.includes('?') ? '&' : '?'}l=${l}` : path; };
 export const logoUrl = (version, slug) => withLoc(`/api/public/logo?v=${version}`, slug);
 
-export async function api(path, { method = 'GET', body, approval } = {}) {
+export async function api(path, { method = 'GET', body, approval, headers: extra } = {}) {
   const loc = currentLoc();
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
-    headers: { 'X-BuzzHub': '1', ...(loc ? { 'X-Location': loc } : {}), ...(approval ? { 'X-Approval': approval } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { 'X-BuzzHub': '1', ...(loc ? { 'X-Location': loc } : {}), ...(approval ? { 'X-Approval': approval } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(extra || {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
   // A manager has to OK this: ask for their PIN, then retry once with the approval
   if (res.status === 403 && data.needsApproval && !approval && window.__bhApprove) {
     const token = await window.__bhApprove(data.needsApproval);
-    if (token) return api(path, { method, body, approval: token });
+    if (token) return api(path, { method, body, approval: token, headers: extra });
     throw new ApiError('Not approved', 403, data);
   }
   if (res.status === 401 && path.startsWith('/staff')) window.dispatchEvent(new Event('bh:locked'));
