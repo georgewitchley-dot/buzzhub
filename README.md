@@ -163,6 +163,16 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 15: the line runs itself
+- **Print at each area**, **recipe cards** and **86** right on the area screens.
+- **Remakes** with reasons and their cost.
+- **Temperature logs** on area screens.
+- **Smart pickup times** from the live kitchen speed.
+- **Rush mode**: pushes pickup times back, then pauses online orders, automatically or by hand.
+- **Shift pulse** at clock-out.
+- **Labor by area.**
+- **Tip-out at clock-out.**
+
 ## Round 14: a faster, safer kitchen
 - **Bump bars and keyboard keys** on area screens.
 - **Curbside "I'm here"** with car details on the packing screen.

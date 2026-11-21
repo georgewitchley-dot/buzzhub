@@ -15,6 +15,7 @@ import { DeskPanel } from './Desk.jsx';
 import { MenuBoardPanel } from './Areas.jsx';
 import { CrewPanel } from './Crew.jsx';
 import { PacePanel } from './Pace.jsx';
+import { LinePanel } from './Line.jsx';
 
 /* ================= Menu ================= */
 function ItemModal({ item, onClose, currency }) {
@@ -202,7 +203,7 @@ export function SettingsAdmin() {
       'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
       'online_enabled', 'online_pickup', 'online_delivery', 'delivery_fee_cents', 'delivery_min_cents', 'delivery_area', 'online_prep_minutes', 'online_pay_later', 'table_ordering',
       'tip_pool_enabled', 'tip_pool_managers', 'forecast_city', 'forecast_rain_pct', 'staff_sales_per_hour_cents', 'staff_min',
-      'booking_deposit_cents', 'deposit_refund_hours', 'ot_weekly_hours', 'payroll_week_start', 'ot_alerts', 'break_after_hours', 'food_cost_target', 'insights_summary', 'insights_hour', 'insights_alerts', 'insights_void_limit', 'insights_refund_cents', 'kiosk_reader_id', 'kiosk_message', 'chat_enabled', 'chat_quick', 'table_long_minutes', 'kitchen_slow_minutes', 'price_watch_pct', 'labor_target_pct', 'labor_alerts', 'clock_message', 'app_punch', 'curbside', 'curbside_prompt', 'declare_tips', 'break_minutes_planned', 'ot_guard', 'punch_geofence', 'punch_radius_m', 'biz_lat', 'biz_lng', 'punch_photo', 'handoff_notes', 'adp_company_code', 'rooms_online', 'rooms_lead_days', 'board_categories', 'board_title', 'board_rotate_seconds', 'board_cols', 'board_photos', 'catering_followup', 'pay_bank_enabled', 'pay_bank_min_cents', 'menu_photos', 'catering_online', 'catering_lead_hours', 'catering_deposit_pct', 'catering_delivery_cents', 'catering_min_cents', 'safe_log_enabled', 'safe_two_person', 'languages', 'loyalty_tiers', 'table_calls', 'auto_reorder', 'weekly_report', 'weekly_report_hour', 'report_email', 'online_schedule', 'online_schedule_days', 'booking_duration_minutes', 'label_shelf_days', 'screen_message', 'upsell_enabled', 'prep_buffer_pct', 'referral_enabled', 'referral_reward_cents', 'referral_min_cents', 'recovery_enabled', 'recovery_max_rating', 'recovery_kind', 'recovery_value', 'recovery_days', 'recovery_message', 'pay_handles_enabled', 'pay_cashapp', 'pay_venmo', 'pay_paypalme', 'pay_zelle', 'card_provider', 'cash_discount_pct', 'fee_rates',
+      'booking_deposit_cents', 'deposit_refund_hours', 'ot_weekly_hours', 'payroll_week_start', 'ot_alerts', 'break_after_hours', 'food_cost_target', 'insights_summary', 'insights_hour', 'insights_alerts', 'insights_void_limit', 'insights_refund_cents', 'kiosk_reader_id', 'kiosk_message', 'chat_enabled', 'chat_quick', 'table_long_minutes', 'kitchen_slow_minutes', 'price_watch_pct', 'labor_target_pct', 'labor_alerts', 'clock_message', 'app_punch', 'smart_quotes', 'kitchen_parallel', 'rush_mode', 'rush_busy_tickets', 'rush_busy_late', 'rush_pause_tickets', 'rush_pause_late', 'rush_extra_minutes', 'shift_pulse', 'pulse_anonymous', 'tipout_at_clockout', 'curbside', 'curbside_prompt', 'declare_tips', 'break_minutes_planned', 'ot_guard', 'punch_geofence', 'punch_radius_m', 'biz_lat', 'biz_lng', 'punch_photo', 'handoff_notes', 'adp_company_code', 'rooms_online', 'rooms_lead_days', 'board_categories', 'board_title', 'board_rotate_seconds', 'board_cols', 'board_photos', 'catering_followup', 'pay_bank_enabled', 'pay_bank_min_cents', 'menu_photos', 'catering_online', 'catering_lead_hours', 'catering_deposit_pct', 'catering_delivery_cents', 'catering_min_cents', 'safe_log_enabled', 'safe_two_person', 'languages', 'loyalty_tiers', 'table_calls', 'auto_reorder', 'weekly_report', 'weekly_report_hour', 'report_email', 'online_schedule', 'online_schedule_days', 'booking_duration_minutes', 'label_shelf_days', 'screen_message', 'upsell_enabled', 'prep_buffer_pct', 'referral_enabled', 'referral_reward_cents', 'referral_min_cents', 'recovery_enabled', 'recovery_max_rating', 'recovery_kind', 'recovery_value', 'recovery_days', 'recovery_message', 'pay_handles_enabled', 'pay_cashapp', 'pay_venmo', 'pay_paypalme', 'pay_zelle', 'card_provider', 'cash_discount_pct', 'fee_rates',
       'smart_waits', 'loyalty_enabled', 'loyalty_visits', 'loyalty_reward', 'feedback_enabled', 'feedback_delay_minutes', 'feedback_review_threshold', 'review_url',
       'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
@@ -322,6 +323,8 @@ export function SettingsAdmin() {
         <CrewPanel f={f} setF={setF} />
 
         <PacePanel f={f} setF={setF} />
+
+        <LinePanel f={f} setF={setF} />
 
         <MenuBoardPanel f={f} setF={setF} />
 

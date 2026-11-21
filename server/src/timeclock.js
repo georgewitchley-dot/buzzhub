@@ -99,24 +99,25 @@ export function registerTimeClock({ app, staff, h }) {
     clockAuth(req); const s = getSettings();
     res.json({ business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null }, tz: currentTz(), message: s.clock_message || '',
       on: whosOn().map((p) => ({ name: p.name.split(' ')[0], position: p.position, since: p.since, onBreak: p.onBreak, breakSince: p.breakSince })),
-      breakReminderHours: Number(s.break_after_hours || 0), declareTips: s.declare_tips === '1', punchPhoto: s.punch_photo === '1', handoff: s.handoff_notes !== '0', otGuard: s.ot_guard === '1' });
+      breakReminderHours: Number(s.break_after_hours || 0), declareTips: s.declare_tips === '1', pulse: s.shift_pulse !== '0', punchPhoto: s.punch_photo === '1', handoff: s.handoff_notes !== '0', otGuard: s.ot_guard === '1' });
   });
   // Step 1: PIN → who you are and what you can do. Step 2: PIN + action.
   app.post('/api/clock/punch', wrap(async (req, res) => {
     clockAuth(req);
     const ip = clientIp(req); const wait = loginBlocked(ip);
     if (wait) return res.status(429).json({ error: `Too many wrong PINs. Try again in ${wait}s.` });
-    const b = parse(z.object({ pin: z.string().regex(/^\d{4,8}$/, 'Enter your PIN'), action: z.enum(['check', 'in', 'out', 'break_start', 'break_end', 'note']).default('check'), managerPin: z.string().regex(/^\d{4,8}$/).optional(), photo: z.string().max(130000).optional(), note: z.string().max(600).optional(), tipsCents: z.number().int().min(0).max(1_000_000).optional() }), req.body);
+    const b = parse(z.object({ pin: z.string().regex(/^\d{4,8}$/, 'Enter your PIN'), action: z.enum(['check', 'in', 'out', 'break_start', 'break_end', 'note', 'pulse']).default('check'), managerPin: z.string().regex(/^\d{4,8}$/).optional(), photo: z.string().max(130000).optional(), note: z.string().max(600).optional(), tipsCents: z.number().int().min(0).max(1_000_000).optional(), rating: z.number().int().min(1).max(4).optional() }), req.body);
     const user = await findUserByPin(b.pin);
     if (!user) { const r = recordLoginFail(ip); audit(null, 'auth.fail', 'bad PIN at time clock screen', ip); return res.status(401).json({ error: r.lockedFor ? `Too many wrong PINs. Locked for ${r.lockedFor}s.` : 'Wrong PIN' }); }
     clearLoginFails(ip);
     let result = null; let approval = null;
     if (b.action === 'note') { h.addHandoff?.(user, b.note, ip); return res.json({ ok: true, firstName: user.name.split(' ')[0] }); }
+    if (b.action === 'pulse') { if (b.rating) h.addPulse?.(user, b.rating, b.note); return res.json({ ok: true, firstName: user.name.split(' ')[0] }); }
     if (b.action === 'in') approval = await h.punchGuard?.({ user, action: 'in', managerPin: b.managerPin, ip, where: 'time clock' });
     if (b.action !== 'check') { result = punch(user, b.action, ip, 'clock'); h.afterPunch?.({ user, result, photo: b.photo }); if (result.action === 'out' && b.tipsCents !== undefined) h.declareTips?.(user.id, b.tipsCents); notifyStaff('shifts'); }
     const card = timeCard(user.id);
     let otWarn = null; if (b.action === 'check' && !card.clockedIn) { try { await h.punchGuard?.({ user, action: 'in', ip, where: 'check' }); } catch (e) { if (e.needsManager) otWarn = e.message; } }
-    res.json({ name: user.name, firstName: user.name.split(' ')[0], result, card, approval, otWarn, notes: result?.action === 'in' ? (h.handoffFor?.(user.id) || []) : [],
+    res.json({ name: user.name, firstName: user.name.split(' ')[0], result, card, approval, otWarn, tipout: result?.action === 'out' ? (h.shiftTipout?.(user.id) || null) : null, notes: result?.action === 'in' ? (h.handoffFor?.(user.id) || []) : [],
       choices: card.clockedIn ? (card.onBreak ? ['break_end', 'out'] : ['out', 'break_start']) : ['in'] });
   }));
 

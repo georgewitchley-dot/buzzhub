@@ -38,6 +38,7 @@ import { registerDesk } from './desk.js';
 import { registerKds } from './kds.js';
 import { registerCrew } from './crew.js';
 import { registerPace } from './pace.js';
+import { registerLine } from './line.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -592,7 +593,7 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), ot_guard: z.enum(['0', '1']), punch_geofence: z.enum(['0', '1']), punch_radius_m: z.string().regex(/^\d{2,4}$/), biz_lat: z.string().regex(/^-?\d{1,2}(\.\d+)?$|^$/), biz_lng: z.string().regex(/^-?\d{1,3}(\.\d+)?$|^$/),
     punch_photo: z.enum(['0', '1']), handoff_notes: z.enum(['0', '1']), adp_company_code: z.string().trim().max(10), kds_expo: z.enum(['0', '1']), kds_pack: z.enum(['0', '1']),
     board_categories: z.string().max(2000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), board_title: z.string().trim().max(60), board_rotate_seconds: z.string().regex(/^\d{1,3}$/), board_cols: z.enum(['1', '2', '3', '4']), board_photos: z.enum(['0', '1']),
-    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
+    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), smart_quotes: z.enum(['0', '1']), kitchen_parallel: z.string().regex(/^\d{1,2}$/), rush_mode: z.enum(['off', 'auto']), rush_busy_tickets: z.string().regex(/^\d{1,3}$/), rush_busy_late: z.string().regex(/^\d{1,3}$/), rush_pause_tickets: z.string().regex(/^\d{1,3}$/), rush_pause_late: z.string().regex(/^\d{1,3}$/), rush_extra_minutes: z.string().regex(/^\d{1,3}$/), shift_pulse: z.enum(['0', '1']), pulse_anonymous: z.enum(['0', '1']), tipout_at_clockout: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
     cash_balance_cents: z.coerce.number().int().min(-100_000_000).max(1_000_000_000), cash_balance_on: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), payroll_dow: z.coerce.number().int().min(0).max(6), payroll_every: z.enum(['weekly', 'biweekly']),
     show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
     pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
@@ -1259,6 +1260,7 @@ registerDesk({ app, staff, io, h: G });
 registerKds({ app, staff, io, h: G });
 registerCrew({ app, staff, io, h: G });
 registerPace({ app, staff, io, h: G });
+registerLine({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
@@ -1280,7 +1282,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status === 500 ? 'Server error' : err.message, ...(err.needsManager ? { needsManager: true } : {}), ...(err.overtime ? { overtime: err.overtime } : {}), ...(err.needsAllergyCheck ? { needsAllergyCheck: true } : {}) });
+  res.status(status).json({ error: status === 500 ? 'Server error' : err.message, ...(err.needsManager ? { needsManager: true } : {}), ...(err.overtime ? { overtime: err.overtime } : {}), ...(err.needsAllergyCheck ? { needsAllergyCheck: true } : {}), ...(err.needsCorrective ? { needsCorrective: true } : {}) });
 });
 
 /* ---------- realtime ---------- */

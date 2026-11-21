@@ -743,3 +743,10 @@ li.held { opacity: .5; }
 .break-curve i.now { background: var(--accent); }
 .event-menu { display: grid; gap: 6px; max-height: 340px; overflow: auto; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+
+/* ---- round 15 ---- */
+.kds-info { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); background: none; color: inherit; font-size: 11px; font-style: italic; font-weight: 700; margin-right: 6px; cursor: pointer; vertical-align: 1px; }
+.rush-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-radius: 12px; background: rgba(255,255,255,.04); margin-bottom: 12px; font-size: 14px; }
+.rush-bar.amber { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rush-bar.rose { background: color-mix(in srgb, var(--dirty, #e5534b) 20%, transparent); }
+.card-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: 17px; }

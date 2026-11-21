@@ -530,9 +530,9 @@ export function registerCommerce({ app, staff, io, h }) {
     const s = getSettings();
     const load = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('sent','open')").get().c;
     return {
-      enabled: s.online_enabled === '1', pickup: s.online_pickup === '1', delivery: s.online_delivery === '1',
+      enabled: s.online_enabled === '1' && h.rushState?.().level !== 'paused', paused: s.online_enabled === '1' && h.rushState?.().level === 'paused', busy: h.rushState?.().level === 'busy', pickup: s.online_pickup === '1', delivery: s.online_delivery === '1',
       deliveryFeeCents: Number(s.delivery_fee_cents), deliveryMinCents: Number(s.delivery_min_cents), deliveryArea: s.delivery_area,
-      readyInMinutes: Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
+      readyInMinutes: h.quoteMinutes ? h.quoteMinutes().minutes : Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
       taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1', schedule: s.online_schedule === '1', scheduleDays: Number(s.online_schedule_days || 7), prepMinutes: Number(s.online_prep_minutes),
       business: { name: s.business_name, accent: s.accent, type: s.business_type, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
     };
@@ -543,7 +543,7 @@ export function registerCommerce({ app, staff, io, h }) {
   const orderLimiter = h.orderLimiter;
   app.post('/api/o/checkout', orderLimiter, wrap(async (req, res) => {
     const info = onlineInfo();
-    if (!info.enabled) return res.status(403).json({ error: 'Online ordering is closed right now.' });
+    if (!info.enabled) return res.status(403).json({ error: info.paused ? 'The kitchen is very busy. Online orders are paused for a few minutes; please try again soon.' : 'Online ordering is closed right now.' });
     const b = parse(z.object({
       items: z.array(lineSchema).min(1).max(50), fulfillment: z.enum(['pickup', 'delivery']),
       name: z.string().trim().min(1).max(40), phone: z.string().trim().min(7).max(20).regex(/^[+\d\s()-]+$/, 'Phone looks wrong'),

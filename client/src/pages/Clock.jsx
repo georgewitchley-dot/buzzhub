@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, applyAccent } from '../lib.js';
 import { Puck, useToast } from '../ui.jsx';
 import { useCC, useLive } from './CommandCenter.jsx';
+import { PulseButtons } from './Line.jsx';
 
 const since = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${sql.replace(' ', 'T')}Z`)) / 60000));
 const dur = (min) => (min >= 60 ? `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m` : `${min}m`);
@@ -45,7 +46,8 @@ export function TimeClockScreen() {
       const r = await api('/clock/punch', { method: 'POST', body: { pin: p, action, ...(photo ? { photo } : {}), ...extra }, headers: hdr() });
       if (action === 'check') { lastPin.current = p; setWho(r); reset(20000); }
       else if (action === 'note') { setNote(null); setDone((x) => ({ ...x, noteSaved: true })); reset(4000); }
-      else { setMgr(null); setDone(r); setWho(null); setPin(''); load(); reset(r.notes?.length || (r.result?.action === 'out' && d?.handoff) ? 25000 : 7000); }
+      else if (action === 'pulse') { setDone((x) => ({ ...x, pulsed: true })); reset(note !== null ? 60000 : 8000); }
+      else { setMgr(null); setDone(r); setWho(null); setPin(''); load(); reset(r.notes?.length || (r.result?.action === 'out' && (d?.handoff || d?.pulse || r.tipout)) ? 25000 : 7000); }
     } catch (e) {
       if (e.data?.needsManager && action === 'in') { setMgr({ message: e.message, pin: '' }); setWho(null); reset(30000); }
       else { setErr(e.message); setPin(''); if (e.status === 401 && /signed out/.test(e.message)) setD(null); }
@@ -77,6 +79,9 @@ export function TimeClockScreen() {
               <span>{done.result.action === 'in' ? `Clocked in at ${now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${done.result.lateMinutes ? `, ${done.result.lateMinutes} minutes after your shift start` : ''}.` : done.result.action === 'out' ? `You worked ${hhmm(done.result.hours)} this shift.` : done.result.action === 'break_end' ? `Break: ${done.result.breakMinutes} minutes.` : 'Your break is being timed.'}</span>
               {done.notes?.length > 0 && <div className="tclock-notes"><b>Notes from the last shift</b>{done.notes.map((n) => <p key={n.id}><span className="dim">{n.name.split(' ')[0]}, {at(n.at)}:</span> {n.body}</p>)}</div>}
               <TimeCardSummary card={card} />
+              {done.tipout?.lines?.length > 0 && <div className="tclock-notes"><b>Your tip-out this shift: ${(done.tipout.totalCents / 100).toFixed(2)}</b>{done.tipout.lines.map((l, i) => <p key={i}>${(l.cents / 100).toFixed(2)} to {l.to} ({l.pct}% of {l.base === 'tips' ? `tips, $${(done.tipout.tipsCents / 100).toFixed(2)}` : `sales, $${(done.tipout.salesCents / 100).toFixed(2)}`})</p>)}</div>}
+              {done.result.action === 'out' && d.pulse && !done.pulsed && <div className="stack"><span>How was your shift?</span><PulseButtons onPick={(r) => send('pulse', lastPin.current, { rating: r })} /></div>}
+              {done.pulsed && <span>Thanks for telling us.</span>}
               {done.result.action === 'out' && d.handoff && !done.noteSaved && (note === null
                 ? <button className="btn block" onClick={() => { setNote(''); reset(60000); }}>Leave a note for the next shift</button>
                 : <div className="stack"><textarea className="input" rows={3} autoFocus value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="The walk-in door sticks, we're low on lemons…" /><button className="btn primary block" disabled={!note.trim() || busy} onClick={() => send('note', lastPin.current, { note })}>Save note</button></div>)}

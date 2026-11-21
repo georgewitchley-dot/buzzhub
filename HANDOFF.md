@@ -198,6 +198,19 @@ Server: `server/src/pace.js` plus additions to `kds.js`, `timeclock.js`, `house.
 - **Break planner** `/staff/break-plan`: on-clock staff without a break, earliest 2 h in, due by `break_after_hours`; picks the quietest 15-minute slots from the same-weekday 8-week sales curve, at most a quarter of the team at once; `break_minutes_planned`.
 - **Declared tips** (`declare_tips`): `shifts.declared_tips_cents`, asked at time-clock and phone clock-out (`tipsCents`); `PUT /staff/shifts/:id/declared-tips`; payroll CSV "Cash tips declared", Gusto `cash_tips`, ADP Earnings 4 `CT`.
 
+## 3o. Round 15 (2026-11-21)
+Server: `server/src/line.js` plus hooks in `commerce.js` (online quote/pause), `timeclock.js` (pulse, tip-out), `kds.js` (rush, recent items). Client: `client/src/pages/Line.jsx`, `Areas.jsx`.
+- **Print at each area** (client): area screen "Print" toggle (`localStorage.bh_kds_print`) prints that area's new tickets with `TicketPrint` + `printPart('printing-ticket')`. Use Chrome `--kiosk-printing` to skip the dialog.
+- **Recipe cards on area screens**: `GET /api/kds/card/:id` (+ `/photo?t=<token>` since an <img> can't send headers); the "i" button on each item.
+- **86 from the line**: `GET /api/kds/menu`, `POST /api/kds/86 {itemId, out}` sets `menu_items.stock` 0 / NULL, logs a stock move, pushes everyone.
+- **Remakes**: `POST /api/kds/remake {orderItemId, qty, reason}` adds a $0 `order_items` row noted `REMAKE: reason` (fired now), reopens a ready order, logs `remakes` (cost from recipe or `food_cost_target`); `/staff/remakes` on the Kitchen speed page. Reasons in `REMAKE_REASONS`.
+- **Temps on area screens**: `temp_units.area`; `GET/POST /api/kds/temps` (corrective action required out of range, `by` name stored in the note, managers pushed).
+- **Smart pickup times** (`smart_quotes`, `kitchen_parallel`): `quoteMinutes()` from the last 3 hours' ticket average and tickets cooking; replaces `onlineInfo().readyInMinutes`.
+- **Rush mode** (`rush_mode` off|auto, `rush_busy_*`, `rush_pause_*`, `rush_extra_minutes`, manual `online_paused_until`): `rushState()` = normal / busy (+minutes) / paused (online checkout refused with a friendly message); `/staff/rush`, `/staff/rush/pause`, `/api/kds/pause`; managers pushed when the level changes; rush bar on Kitchen page and expo/all screens.
+- **Shift pulse** (`shift_pulse`, `pulse_anonymous`): `shift_pulse` table; time-clock action `pulse {rating 1–4}` after clock-out; `/staff/pulse`; rating 1 pushes managers.
+- **Labor by area**: `users.area`; `/staff/labor-by-area` (owner) = hours and wages per area vs. sales of dishes that area makes (`stationFor`), Front of house vs. all sales.
+- **Tip-out at clock-out** (`tipout_at_clockout`): `shiftTipout()` applies `tipout_rules` for the person's `tip_role` to their sales and tips (card tips + declared) for that shift; returned as `tipout` on the clock-out punch.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

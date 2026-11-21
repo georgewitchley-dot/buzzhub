@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { RemakesPanel } from './Line.jsx';
 
 const t12 = (hm) => new Date(`2000-01-01T${hm}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -67,6 +68,7 @@ export function KitchenSpeed() {
         <div className="kpi"><div className="v" style={{ fontSize: '1.7rem' }}>{d.overall.n}</div><div className="l">Tickets</div></div>
       </div>
       <div className="stack" style={{ gap: 18 }}>
+        <RemakesPanel days={days} />
         <T title="By area" rows={d.byArea} empty="Area times appear once cooks mark items done on the area screens." />
         <T title="By hour" rows={d.byHour} label={(k) => new Date(2000, 0, 1, Number(k)).toLocaleTimeString([], { hour: 'numeric' })} />
         <T title="By day" rows={d.byDay} />

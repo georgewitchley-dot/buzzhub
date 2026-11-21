@@ -150,7 +150,7 @@ export function Checklists() {
             <table className="list"><tbody>{t.units.map((u) => (
               <tr key={u.id}><td><b>{u.name}</b><div className="dim" style={{ fontSize: 12.5 }}>{u.min_temp}° to {u.max_temp}°{u.scale}</div></td>
                 <td>{u.last ? <span className={`chip ${u.last.ok ? 'teal' : 'rose'}`}>{u.last.value}° {timeOf(u.last.at)}</span> : <span className="dim">Not logged</span>}<div className="dim" style={{ fontSize: 12 }}>{u.today.length} reading{u.today.length === 1 ? '' : 's'} today</div></td>
-                <td style={{ textAlign: 'right' }}><button className="btn sm primary" onClick={() => setTemp(u)}>Log</button>{can('manager') && <button className="btn sm ghost" onClick={() => confirm(`Remove ${u.name}?`) && api(`/staff/temp-units/${u.id}`, { method: 'DELETE' }).then(reloadT)}>Remove</button>}</td></tr>
+                <td style={{ textAlign: 'right' }}>{can('manager') && <TempArea u={u} onDone={reloadT} />}<button className="btn sm primary" onClick={() => setTemp(u)}>Log</button>{can('manager') && <button className="btn sm ghost" onClick={() => confirm(`Remove ${u.name}?`) && api(`/staff/temp-units/${u.id}`, { method: 'DELETE' }).then(reloadT)}>Remove</button>}</td></tr>
             ))}</tbody></table>
           )}
         </section>
@@ -441,4 +441,11 @@ export function ReferralCard() {
       {d.joined > 0 && <span className="dim" style={{ fontSize: 13 }}>{d.joined} friend{d.joined === 1 ? '' : 's'} joined, {d.rewarded} rewarded</span>}
     </div>
   );
+}
+
+/** Which kitchen area screen shows this unit's temperature log. */
+function TempArea({ u, onDone }) {
+  const { settings } = useCC();
+  let areas = []; try { areas = [...JSON.parse(settings.kitchen_stations || '[]'), 'Expo', 'Packing', 'All areas']; } catch { areas = []; }
+  return <select className="input" style={{ width: 130, height: 30, marginRight: 6 }} value={u.area || ''} onChange={(e) => api(`/staff/temp-units/${u.id}/area`, { method: 'PUT', body: { area: e.target.value || null } }).then(onDone)} aria-label={`Area screen for ${u.name}`}><option value="">No area screen</option>{areas.map((a) => <option key={a}>{a}</option>)}</select>;
 }
