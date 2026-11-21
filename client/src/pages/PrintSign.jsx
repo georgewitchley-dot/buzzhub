@@ -29,7 +29,7 @@ export function PrintSign({ settings, onClose }) {
       </div>
       <div className="row">
         <button className="btn grow" onClick={onClose}>Close</button>
-        <button className="btn primary grow" onClick={() => window.print()}><Icon name="print" size={17} />Print</button>
+        <button className="btn primary grow" onClick={() => { document.body.classList.add('printing-sign'); window.addEventListener('afterprint', () => document.body.classList.remove('printing-sign'), { once: true }); window.print(); }}><Icon name="print" size={17} />Print</button>
       </div>
     </Modal>
   );

@@ -43,6 +43,8 @@ export default function Lock({ business, onUnlocked }) {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [lockedFor, setLockedFor] = useState(0);
+  const [mode, setMode] = useState('unlock');
+  const [ok, setOk] = useState('');
   const dotsRef = useRef(null);
 
   useEffect(() => {
@@ -53,8 +55,15 @@ export default function Lock({ business, onUnlocked }) {
 
   const submit = async () => {
     if (pin.length < 4 || busy || lockedFor) return;
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setOk('');
     try {
+      if (mode === 'clock') {
+        const r = await api('/auth/clock', { method: 'POST', body: { pin } });
+        setPin(''); setMode('unlock');
+        setOk(r.action === 'in' ? `${r.name}, you're clocked in. Have a good shift.` : `${r.name}, you're clocked out after ${Math.floor(r.hours)}h ${Math.round((r.hours % 1) * 60)}m.`);
+        setTimeout(() => setOk(''), 6000);
+        return;
+      }
       const { user } = await api('/auth/login', { method: 'POST', body: { pin } });
       onUnlocked(user);
     } catch (e) {
@@ -71,12 +80,16 @@ export default function Lock({ business, onUnlocked }) {
       <div className="lock-card">
         <Puck state="buzzed" size={46} />
         <SplitText text={business?.name || 'BuzzHub'} tag="h1" splitType="chars" delay={28} duration={0.9} trigger="load" />
-        <ShinyText text={lockedFor ? `Terminal locked for ${lockedFor}s` : 'Enter your PIN to open the command center'} color="#8c8fa0" shineColor="#ece8df" speed={3} />
+        <ShinyText text={lockedFor ? `Terminal locked for ${lockedFor}s` : mode === 'clock' ? 'Enter your PIN to clock in or out' : 'Enter your PIN to open the command center'} color="#8c8fa0" shineColor="#ece8df" speed={3} />
         <div className="dots" ref={dotsRef} aria-live="polite" aria-label={`${pin.length} digits entered`}>
           {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => <i key={i} className={i < pin.length ? 'on' : ''} />)}
         </div>
         <PinPad value={pin} onChange={(v) => { setPin(v); setMsg(''); }} onSubmit={submit} disabled={busy || lockedFor > 0} />
-        <div className="lock-msg" role="alert">{msg}</div>
+        <div className="lock-msg" role="alert" style={ok ? { color: 'var(--seated)' } : undefined}>{ok || msg}</div>
+        <div className="seg" role="group" aria-label="What the PIN does">
+          <button type="button" aria-pressed={mode === 'unlock'} onClick={() => setMode('unlock')}>Open command center</button>
+          <button type="button" aria-pressed={mode === 'clock'} onClick={() => setMode('clock')}>Clock in or out</button>
+        </div>
       </div>
     </div>
   );

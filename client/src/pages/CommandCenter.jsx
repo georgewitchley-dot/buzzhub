@@ -11,6 +11,10 @@ import Register from './Register.jsx';
 import Orders from './Orders.jsx';
 import { MenuAdmin, StaffAdmin, SettingsAdmin, AuditLog } from './Admin.jsx';
 import Bookings from './Bookings.jsx';
+import Kitchen from './Kitchen.jsx';
+import Reports from './Reports.jsx';
+import Cash from './Cash.jsx';
+import Shifts from './Shifts.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -40,6 +44,10 @@ const NAV = [
   { to: '/floor', icon: 'floor', label: 'Floor', when: (s) => s?.business_type !== 'service' },
   { to: '/register', icon: 'register', label: 'Register' },
   { to: '/orders', icon: 'ticket', label: 'Orders' },
+  { to: '/kitchen', icon: 'flame', label: 'Kitchen', when: (s) => s?.business_type !== 'service' },
+  { to: '/cash', icon: 'cash', label: 'Cash drawer' },
+  { to: '/shifts', icon: 'clock', label: 'Shifts' },
+  { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security log', min: 'manager' },
@@ -155,6 +163,10 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="waitlist" element={<Waitlist />} />
                   <Route path="floor" element={<Floor />} />
                   <Route path="bookings" element={<Bookings />} />
+                  <Route path="kitchen" element={<Kitchen />} />
+                  <Route path="cash" element={<Cash />} />
+                  <Route path="shifts" element={<Shifts />} />
+                  {can('manager') && <Route path="reports" element={<Reports />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

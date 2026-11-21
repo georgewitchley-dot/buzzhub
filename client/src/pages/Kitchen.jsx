@@ -1,0 +1,72 @@
+import { useEffect, useRef, useState } from 'react';
+import { gsap } from 'gsap';
+import { api, minutesSince, playChime, useTick } from '../lib.js';
+import { Icon, useToast } from '../ui.jsx';
+import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+
+export default function Kitchen() {
+  const { settings } = useCC();
+  const toast = useToast();
+  const [data] = useLive(['orders'], () => api('/staff/kitchen'));
+  const seen = useRef(null);
+  const boardRef = useRef(null);
+  useTick(15000);
+
+  // chime + flash for tickets that just arrived
+  useEffect(() => {
+    if (!data) return;
+    const ids = new Set(data.orders.filter((o) => o.status !== 'ready').map((o) => o.id));
+    if (seen.current) {
+      const fresh = [...ids].filter((id) => !seen.current.has(id));
+      if (fresh.length) {
+        playChime();
+        requestAnimationFrame(() => fresh.forEach((id) => { const el = boardRef.current?.querySelector(`[data-id="${id}"]`); if (el) gsap.fromTo(el, { boxShadow: '0 0 0 4px rgba(var(--accent-rgb), .9)' }, { boxShadow: '0 0 0 0px rgba(var(--accent-rgb), 0)', duration: 1.6 }); }));
+      }
+    }
+    seen.current = ids;
+  }, [data]);
+
+  const act = async (path, msg) => { try { const r = await api(path, { method: 'POST' }); toast(r.buzz ? `${msg}. Customer buzzed.` : msg, 'ok'); } catch (e) { toast(e.message, 'err'); } };
+  const full = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
+  if (!data) return null;
+  const late = data.lateMinutes;
+  const cooking = data.orders.filter((o) => o.status !== 'ready' && o.status !== 'paid');
+  const done = data.orders.filter((o) => o.status === 'ready' || o.status === 'paid');
+
+  return (
+    <>
+      <PageHead title="Kitchen" sub={`${cooking.length} ticket${cooking.length === 1 ? '' : 's'} to make${data.held ? `, ${data.held} pre-order${data.held === 1 ? '' : 's'} waiting for a table` : ''}. Tickets turn red after ${late} minutes.`}>
+        <button className="btn" onClick={full}><Icon name="expand" size={17} />Full screen</button>
+      </PageHead>
+      {cooking.length === 0 && <div className="panel empty"><b>All caught up</b><span>New orders from the register and pre-orders from called parties show up here.</span></div>}
+      <div className="kds" ref={boardRef}>
+        {cooking.map((o) => {
+          const age = minutesSince(o.sent_at || o.created_at);
+          const tone = age >= late ? 'late' : age >= late * 0.66 ? 'warn' : '';
+          return (
+            <article key={o.id} data-id={o.id} className={`ticket-card ${tone}`}>
+              <header>
+                <b>#{o.number}</b>
+                <span className="grow">{o.table_label ? `${settings.unit_label} ${o.table_label}` : o.customer_name || o.guest_name || 'To go'}</span>
+                <span className="age num">{age >= 60 ? `${Math.floor(age / 60)}h ${age % 60}m` : `${age}m`}</span>
+              </header>
+              {o.source === 'guest' && <span className="chip blue">Ordered ahead</span>}
+              <ul>{o.items.map((i, k) => <li key={k}><b className="num">{i.qty}</b><span>{i.name}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
+              <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>
+            </article>
+          );
+        })}
+      </div>
+      {done.length > 0 && (
+        <section style={{ marginTop: 24 }}>
+          <h3 className="muted" style={{ fontFamily: 'var(--ui)', fontSize: 14, marginBottom: 10 }}>Just finished</h3>
+          <div className="row wrap">{done.map((o) => (
+            <span key={o.id} className="chip teal" style={{ padding: '6px 10px', fontSize: 14 }}>#{o.number} {o.table_label ? `${settings.unit_label} ${o.table_label}` : ''}
+              <button className="btn ghost sm" style={{ height: 24, padding: '0 6px' }} onClick={() => act(`/staff/kitchen/${o.id}/recall`, `#${o.number} back on the board`)}>Recall</button>
+            </span>
+          ))}</div>
+        </section>
+      )}
+    </>
+  );
+}

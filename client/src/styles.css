@@ -342,9 +342,9 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .sign small { color: #666; font-size: 13px; }
 @media print {
   @page { margin: 12mm; }
-  body * { visibility: hidden !important; }
-  .print-area, .print-area * { visibility: visible !important; }
-  .print-area { position: fixed; inset: 0; display: grid; place-items: center; background: #fff; }
+  body.printing-sign * { visibility: hidden !important; }
+  body.printing-sign .print-area, body.printing-sign .print-area * { visibility: visible !important; }
+  body.printing-sign .print-area { position: fixed; inset: 0; display: grid; place-items: center; background: #fff; }
   .sign { box-shadow: none; max-width: 640px; }
   .sign-qr { width: 380px; }
 }
@@ -354,3 +354,35 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .logo-box img { max-width: 88%; max-height: 88%; object-fit: contain; }
 .logo-box .dim { color: #888; font-size: 13px; }
 .chip svg { flex: none; }
+
+/* ---------- kitchen display ---------- */
+.kds { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-items: start; }
+.ticket-card { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--seated); border-radius: var(--r-md); padding: 14px; display: grid; gap: 10px; }
+.ticket-card.warn { border-top-color: var(--accent); }
+.ticket-card.late { border-top-color: var(--dirty); background: linear-gradient(180deg, rgba(242,102,122,.08), var(--panel) 40%); }
+.ticket-card header { display: flex; align-items: baseline; gap: 10px; }
+.ticket-card header b { font-family: var(--display); font-size: 1.75rem; font-weight: 700; }
+.ticket-card .age { font-family: var(--display); font-size: 1.25rem; font-weight: 650; }
+.ticket-card.late .age { color: var(--dirty); }
+.ticket-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 17px; }
+.ticket-card li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; }
+.ticket-card li em { display: block; font-style: normal; color: var(--accent); font-size: 14px; }
+:fullscreen .rail, :fullscreen .topbar, :fullscreen .tabbar { display: none; }
+:fullscreen .shell { grid-template-columns: 1fr; }
+
+/* ---------- cash + shifts ---------- */
+.denoms { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.denom { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; font-weight: 600; }
+.sched { display: grid; gap: 0; padding-top: 6px; }
+.sched-day { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.sched-day:last-child { border-bottom: 0; }
+.sched-day b.today { color: var(--accent); }
+
+@media print {
+  .report .no-print, .rail, .topbar, .tabbar, .toasts { display: none !important; }
+  body, .panel, .kpi { background: #fff !important; color: #111 !important; }
+  .panel, .kpis { border-color: #ccc !important; }
+  .muted, .dim, .kpi .l { color: #555 !important; }
+  .scroller { overflow: visible !important; }
+  .report .bars span { background: #333 !important; }
+}

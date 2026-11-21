@@ -223,7 +223,19 @@ const DEFAULTS = {
   booking_capacity: '1',
   booking_days_ahead: '14',
   booking_reminder_minutes: '60',
+  kds_late_minutes: '12',
 };
+
+/* ---------- business-local dates inside SQL: localdate(ts) / localtoday() ---------- */
+let TZ = 'America/New_York';
+const dayFmt = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+let fmt = dayFmt();
+export const currentTz = () => TZ;
+export const localDateOf = (ts) => (ts ? fmt.format(new Date(`${String(ts).replace(' ', 'T')}Z`)) : null);
+export const localToday = () => fmt.format(new Date());
+db.function('localdate', { deterministic: false }, (ts) => localDateOf(ts));
+db.function('localtoday', { deterministic: false }, () => localToday());
+function setTz(tz) { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); TZ = tz; fmt = dayFmt(); } catch { /* keep old */ } }
 
 export function getSettings() {
   const rows = db.prepare('SELECT key, value FROM settings').all();
@@ -236,6 +248,7 @@ export function setSettings(obj) {
   const stmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
   const tx = db.transaction((o) => { for (const [k, v] of Object.entries(o)) stmt.run(k, String(v)); });
   tx(obj);
+  if (obj.timezone) setTz(obj.timezone);
 }
 
 /** JWT signing secret: env var, else generated once and persisted in the data dir. */
@@ -289,3 +302,5 @@ export function seedDemoData(businessType) {
     list.forEach((m, i) => ins.run(m[0], m[1], m[2], m[3], i, guestCats.has(m[1]) ? 1 : 0));
   }
 }
+
+setTz(getSettings().timezone);

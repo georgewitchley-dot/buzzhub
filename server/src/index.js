@@ -16,6 +16,7 @@ import {
   clearLoginFails, issueSession, clearSession, userFromToken, requireAuth, csrfGuard, newGuestToken, clientIp,
   passwordProblem, hashPassword, checkPassword, burnCompare, issueCustomerSession, clearCustomerSession, customerFromReq, requireCustomer,
 } from './security.js';
+import { registerOps } from './ops.js';
 import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -414,7 +415,7 @@ app.post('/api/g/:token/preorder', orderLimiter, (req, res) => {
       db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
       db.prepare('UPDATE orders SET subtotal_cents=?, tax_cents=?, total_cents=? WHERE id=?').run(subtotal, tax, subtotal + tax, orderId);
     } else {
-      const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE date(created_at)=date('now')").get().n || 100) + 1;
+      const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE localdate(created_at) = localtoday()").get().n || 100) + 1;
       orderId = db.prepare("INSERT INTO orders (number, status, guest_id, customer_name, subtotal_cents, tax_cents, total_cents, source) VALUES (?, 'held', ?, ?, ?, ?, ?, 'guest')")
         .run(number, g.id, g.name, subtotal, tax, subtotal + tax).lastInsertRowid;
     }
@@ -497,6 +498,7 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     booking_capacity: z.coerce.number().int().min(1).max(50),
     booking_days_ahead: z.coerce.number().int().min(1).max(120),
     booking_reminder_minutes: z.coerce.number().int().min(0).max(1440),
+    kds_late_minutes: z.coerce.number().int().min(1).max(120),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -507,16 +509,16 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
 
 /* ---- dashboard ---- */
 staff.get('/dashboard', (req, res) => {
-  const today = "date(created_at) = date('now')";
+  const today = "localdate(created_at) = localtoday()";
   const waiting = db.prepare("SELECT COUNT(*) c FROM guests WHERE kind='table' AND status IN ('waiting','buzzed','acknowledged')").get().c;
   const seatedToday = db.prepare(`SELECT COUNT(*) c, COALESCE(SUM(party_size),0) covers FROM guests WHERE status IN ('seated','done') AND ${today}`).get();
   const avgWait = db.prepare(`SELECT AVG((julianday(seated_at) - julianday(created_at)) * 1440) m FROM guests WHERE seated_at IS NOT NULL AND ${today}`).get().m;
-  const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) total, COUNT(*) n, COALESCE(SUM(tip_cents),0) tips FROM orders WHERE status='paid' AND date(paid_at) = date('now')").get();
+  const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) total, COUNT(*) n, COALESCE(SUM(tip_cents),0) tips FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday()").get();
   const openOrders = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('open','sent','ready')").get().c;
   const tables = db.prepare('SELECT status, COUNT(*) c FROM tables GROUP BY status').all();
   const buzzesToday = db.prepare(`SELECT COALESCE(SUM(buzz_count),0) c FROM guests WHERE ${today}`).get().c;
-  const hourly = db.prepare("SELECT CAST(strftime('%H', paid_at) AS INTEGER) h, SUM(total_cents) t FROM orders WHERE status='paid' AND date(paid_at)=date('now') GROUP BY h").all();
-  const top = db.prepare("SELECT oi.name, SUM(oi.qty) q FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status='paid' AND date(o.paid_at)=date('now') GROUP BY oi.name ORDER BY q DESC LIMIT 5").all();
+  const hourly = db.prepare("SELECT CAST(strftime('%H', paid_at) AS INTEGER) h, SUM(total_cents) t FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday() GROUP BY h").all();
+  const top = db.prepare("SELECT oi.name, SUM(oi.qty) q FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status='paid' AND localdate(o.paid_at) = localtoday() GROUP BY oi.name ORDER BY q DESC LIMIT 5").all();
   const activity = db.prepare('SELECT ts, user_name, action, detail FROM audit ORDER BY id DESC LIMIT 12').all();
   res.json({ waiting, seatedToday: seatedToday.c, coversToday: seatedToday.covers, avgWait: avgWait ? Math.round(avgWait) : 0, salesCents: sales.total, ordersPaid: sales.n, tipsCents: sales.tips, openOrders, tables, buzzesToday, hourly, top, activity });
 });
@@ -530,7 +532,7 @@ staff.get('/guests', (req, res) => {
     FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN bookings b ON b.id = g.booking_id
     WHERE g.status IN ('waiting','buzzed','acknowledged') ORDER BY g.created_at, g.id`).all()
     .map(({ token, ...g }) => g);
-  const recent = db.prepare("SELECT g.*, t.label table_label FROM guests g LEFT JOIN tables t ON t.id=g.table_id WHERE g.status NOT IN ('waiting','buzzed','acknowledged') AND date(g.created_at)=date('now') ORDER BY g.id DESC LIMIT 30").all();
+  const recent = db.prepare("SELECT g.*, t.label table_label FROM guests g LEFT JOIN tables t ON t.id=g.table_id WHERE g.status NOT IN ('waiting','buzzed','acknowledged') AND localdate(g.created_at) = localtoday() ORDER BY g.id DESC LIMIT 30").all();
   res.json({ active, recent });
 });
 
@@ -720,7 +722,7 @@ staff.post('/orders', wrap(async (req, res) => {
   const subtotal = lines.reduce((a, l) => a + l.qty * l.price_cents, 0);
   const discount = Math.round(subtotal * (b.discountPct || 0) / 100);
   const tax = Math.round((subtotal - discount) * Number(s.tax_rate) / 100);
-  const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE date(created_at)=date('now')").get().n || 100) + 1;
+  const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE localdate(created_at) = localtoday()").get().n || 100) + 1;
   const tx = db.transaction(() => {
     const info = db.prepare("INSERT INTO orders (number, status, table_id, customer_name, subtotal_cents, tax_cents, discount_cents, total_cents, created_by, sent_at) VALUES (?, 'sent', ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(number, b.tableId || null, b.customerName || null, subtotal, tax, discount, subtotal - discount + tax, req.user.id, now());
@@ -742,7 +744,7 @@ staff.post('/orders', wrap(async (req, res) => {
 }));
 
 staff.get('/orders', (req, res) => {
-  const scope = req.query.scope === 'paid' ? "o.status IN ('paid','void') AND date(o.created_at)=date('now')" : "o.status IN ('held','open','sent','ready')";
+  const scope = req.query.scope === 'paid' ? "o.status IN ('paid','void') AND localdate(o.created_at) = localtoday()" : "o.status IN ('held','open','sent','ready')";
   const orders = db.prepare(`SELECT o.*, t.label table_label, u.name staff_name, g.status guest_status, g.kind guest_kind FROM orders o LEFT JOIN guests g ON g.id=o.guest_id LEFT JOIN tables t ON t.id=o.table_id LEFT JOIN users u ON u.id=o.created_by WHERE ${scope} ORDER BY o.id DESC LIMIT 100`).all();
   const items = db.prepare(`SELECT * FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',') || 0})`).all();
   res.json(orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id) })));
@@ -800,7 +802,7 @@ staff.post('/orders/:id/void', requireAuth('manager'), (req, res) => {
 
 /* ---- staff / users (manager+) ---- */
 staff.get('/users', requireAuth('manager'), (req, res) => {
-  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at FROM users ORDER BY active DESC, role DESC, name').all());
+  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at, hourly_cents FROM users ORDER BY active DESC, role DESC, name').all().map((u) => (req.user.role === 'owner' ? u : { ...u, hourly_cents: undefined })));
 });
 staff.post('/users', requireAuth('manager'), wrap(async (req, res) => {
   const b = parse(z.object({ name: z.string().trim().min(1).max(40), role: z.enum(['owner', 'manager', 'staff']), pin: z.string() }), req.body);
@@ -1064,6 +1066,8 @@ staff.get('/customers', requireAuth('manager'), (req, res) => {
     (SELECT COUNT(*) FROM guests g WHERE g.customer_id = c.id AND g.status IN ('seated','done')) visits
     FROM customers c ORDER BY c.id DESC LIMIT 500`).all());
 });
+
+registerOps({ app, staff, io, h: { wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 
 app.use('/api/staff', staff);
 
