@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
-import { CartLines, GuestMenu, PairsHint, useCart } from '../order-ui.jsx';
+import { CartLines, GuestMenu, PairsHint, useCart, useCombos } from '../order-ui.jsx';
 import { LangSwitch, getLang, useLang } from '../i18n.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
@@ -27,6 +27,7 @@ export function OrderOnline() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const cart = useCart();
+  const combos = useCombos(true);
   const [step, setStep] = useState('menu');
   const [f, setF] = useState(() => { try { return { fulfillment: 'pickup', name: '', phone: '', email: '', address: '', notes: '', ...JSON.parse(localStorage.getItem('bh_online_profile') || '{}') }; } catch { return { fulfillment: 'pickup' }; } });
   const [pct, setPct] = useState(15);
@@ -61,7 +62,7 @@ export function OrderOnline() {
       <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{t('Order from {name}', { name: d.business.name })}</h1><p style={{ margin: '0 auto' }}>{d.pickup ? `Pickup in about ${d.readyInMinutes} minutes` : ''}{d.pickup && d.delivery ? ' or ' : ''}{d.delivery ? `delivery${d.deliveryFeeCents ? ` for ${money(d.deliveryFeeCents, d.currency)}` : ''}` : ''}.{d.delivery && d.deliveryArea ? ` We deliver to ${d.deliveryArea}.` : ''}</p></div>
       {step === 'menu' ? (
         <>
-          <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} /></div>
+          <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} combos={combos} /></div>
           {cart.count > 0 && <div className="sticky-cta"><button className="btn primary lg block" onClick={() => setStep('checkout')}>{t('Review order: {n} items, {total}', { n: cart.count, total: money(cart.subtotal, d.currency) })}</button></div>}
         </>
       ) : (
@@ -105,6 +106,7 @@ export function TableOrder() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const cart = useCart();
+  const combos = useCombos(true);
   const [busy, setBusy] = useState(false);
   const load = () => api(`/t/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); document.title = `${x.business.name}, table ${x.table}`; }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -123,7 +125,7 @@ export function TableOrder() {
       <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{d.business.unitLabel} {d.table}</h1><p style={{ margin: '0 auto' }}>{d.tableOrdering ? 'Order from your phone. It goes straight to the kitchen.' : 'Your server will take your order.'}</p></div>
       {msg && <div className="card banner" role="status">{msg}</div>}
       {d.rounds.length > 0 && <div className="card"><b>On its way</b>{d.rounds.map((r) => <div key={r.number} className="row muted" style={{ fontSize: 14 }}><span className="grow">Order #{r.number}</span><span>{{ sent: 'Being made', open: 'Being made', ready: 'Ready', held: 'Waiting' }[r.status]}</span></div>)}</div>}
-      {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={getLang()} /></div>}
+      {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={getLang()} combos={combos} /></div>}
       {cart.count > 0 && (
         <div className="card">
           <b>Your order</b><CartLines cart={cart} currency={d.currency} />

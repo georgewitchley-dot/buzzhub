@@ -71,7 +71,7 @@ export function registerExtras({ app, staff, io, h }) {
     res.json({ business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null, unit: s.unit_label, type: s.business_type },
       preparing: preparing.map((o) => ({ number: o.number, name: first(o.name) })), ready: ready.map((o) => ({ number: o.number, name: first(o.name) })),
       waitlist: { count: wait.length, next: wait.slice(0, 8).map((g) => ({ name: first(g.name), party: g.party_size })), ready: buzzed.map((g) => ({ name: first(g.name), table: g.label })), minutes: smartEstimate(wait.length + 1, 2) },
-      message: s.screen_message || '', joinUrl: `${publicBase(req)}/join${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}` });
+      specials: h.specialsLine?.() || [], message: s.screen_message || '', joinUrl: `${publicBase(req)}/join${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}` });
   });
 
   /* ===== smart add-ons ===== */

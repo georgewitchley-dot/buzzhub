@@ -44,7 +44,7 @@ const ES = {
   'Enjoy!': '¡Que lo disfrute!', "You're off the list": 'Ya no está en la lista', "I'm on my way": 'Voy en camino', 'Turn on alerts': 'Activar avisos',
   'On its way': 'En camino', 'About {n} minutes away': 'A unos {n} minutos', 'Your driver': 'Su repartidor',
   'is bringing your order': 'lleva su pedido', 'Delivered. Enjoy!': 'Entregado. ¡Buen provecho!',
-  'Goes great with': 'Va muy bien con', 'Events at {name}': 'Eventos en {name}', 'No upcoming events right now. Check back soon!': 'No hay eventos próximos. ¡Vuelva pronto!',
+  'Goes great with': 'Va muy bien con', "Today's specials": 'Especiales de hoy', 'Events at {name}': 'Eventos en {name}', 'No upcoming events right now. Check back soon!': 'No hay eventos próximos. ¡Vuelva pronto!',
   'Free': 'Gratis', '{n} seats left': 'Quedan {n} lugares', 'Sold out': 'Agotado', 'Your name': 'Su nombre', 'Tickets': 'Entradas', 'Get my tickets': 'Obtener mis entradas',
   'Get tickets': 'Comprar entradas', 'Save my seat': 'Reservar mi lugar', '{n} tickets': '{n} entradas', 'Confirming your payment…': 'Confirmando su pago…', 'Checked in: {n}': 'Registrados: {n}', 'Show this at the door': 'Muestre esto en la entrada',
 };

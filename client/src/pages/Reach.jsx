@@ -122,10 +122,12 @@ const T_KEY = { join: ['Join the waitlist', 'Get in line'], book: ['Book a table
 export function LinkHub() {
   const { lang, setLang, t } = useLang();
   const [d, setD] = useState(null);
+  const [specials, setSpecials] = useState([]);
   const src = new URLSearchParams(location.search).get('src') || 'other';
   useEffect(() => {
     api('/public/links').then((x) => { setD(x); applyAccent(x.business.accent); }).catch(() => {});
     api('/public/hit', { method: 'POST', body: { src, target: 'view' } }).catch(() => {});
+    api('/public/specials').then(setSpecials).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!d) return <div className="guest" />;
   void T_KEY;
@@ -138,6 +140,7 @@ export function LinkHub() {
         {d.business.logo ? <img className="guest-logo" src={d.business.logo} alt={d.business.name} /> : <Puck state="buzzed" size={56} />}
         <h1 style={{ textAlign: 'center' }}>{d.business.name}</h1>
         {(d.business.address || d.business.phone) && <p style={{ textAlign: 'center' }}>{d.business.address}{d.business.address && d.business.phone ? ' · ' : ''}{d.business.phone && <a href={`tel:${d.business.phone.replace(/[^\d+]/g, '')}`}>{d.business.phone}</a>}</p>}
+        {specials.length > 0 && <div className="card stack" style={{ width: '100%', gap: 4 }}><b>{t("Today's specials")}</b>{specials.map((x) => <span key={x.id}>{x.name}{x.note ? `: ${x.note}` : ''}</span>)}</div>}
         <nav className="link-hub" style={{ width: '100%' }}>{d.links.map((l) => <a key={l.key} href={l.url} onClick={() => go(l)} target={l.key === 'review' ? '_blank' : undefined} rel="noreferrer">{t(l.label)}</a>)}</nav>
         {d.business.address && <a className="btn ghost" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${d.business.name} ${d.business.address}`)}`} target="_blank" rel="noreferrer"><Icon name="pin" size={16} />{t('Directions')}</a>}
       </main>

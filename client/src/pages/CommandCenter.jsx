@@ -26,6 +26,7 @@ import { Deliveries, PaymentClaims } from './Field.jsx';
 import { Catering, Memberships } from './Club.jsx';
 import { Chats, MyShifts, Performance, useUnreadChats } from './People.jsx';
 import { Checklists, Deposits, Events, Prep } from './House.jsx';
+import { Deals, Goals, Training } from './Plus.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -62,6 +63,7 @@ const NAV = [
   { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/checklists', icon: 'list', label: 'Checklists' },
+  { to: '/training', icon: 'star', label: 'Training' },
   { to: '/prep', icon: 'flame', label: 'Prep list', when: (s) => s?.business_type !== 'service' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
   { to: '/my-shifts', icon: 'calendar', label: 'My shifts' },
@@ -69,6 +71,8 @@ const NAV = [
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/feedback', icon: 'star', label: 'Feedback', min: 'manager', when: (s) => s?.feedback_enabled === '1' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
+  { to: '/deals', icon: 'gift', label: 'Deals', min: 'manager' },
+  { to: '/goals', icon: 'chart', label: 'Goals and contests', min: 'manager' },
   { to: '/inventory', icon: 'box', label: 'Inventory', min: 'manager' },
   { to: '/purchasing', icon: 'bag', label: 'Purchasing', min: 'manager' },
   { to: '/giftcards', icon: 'gift', label: 'Gift cards', min: 'manager' },
@@ -234,6 +238,9 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="deliveries" element={<Deliveries />} />
                   <Route path="chats" element={<Chats />} />
                   <Route path="checklists" element={<Checklists />} />
+                  <Route path="training" element={<Training />} />
+                  {can('manager') && <Route path="deals" element={<Deals />} />}
+                  {can('manager') && <Route path="goals" element={<Goals />} />}
                   <Route path="prep" element={<Prep />} />
                   {can('manager') && <Route path="ticketing" element={<Events />} />}
                   {can('owner') && <Route path="deposits" element={<Deposits />} />}

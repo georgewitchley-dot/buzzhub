@@ -6,6 +6,7 @@ import { OnlinePanel, OptionsAdmin } from './Commerce.jsx';
 import { TeamPanel } from './Team.jsx';
 import { MenuDetails } from './Reach.jsx';
 import { GrowPanel, MenuSync } from './House.jsx';
+import { FloorPanel, RecipeCard } from './Plus.jsx';
 import { KioskPanel, MorePanel, PaymentsSetup, ReadersPanel } from './Field.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 
@@ -38,6 +39,7 @@ export function MenuAdmin() {
   const toast = useToast();
   const [menu] = useLive(['menu'], () => api('/staff/menu'));
   const [edit, setEdit] = useState(undefined);
+  const [card, setCard] = useState(null);
   const toggle = (m) => api(`/staff/menu/${m.id}`, { method: 'PUT', body: { active: !m.active } }).catch((e) => toast(e.message, 'err'));
   const toggleAhead = (m) => api(`/staff/menu/${m.id}`, { method: 'PUT', body: { guest_orderable: !m.guest_orderable } }).catch((e) => toast(e.message, 'err'));
   const del = (m) => confirm(`Delete ${m.name}?`) && api(`/staff/menu/${m.id}`, { method: 'DELETE' }).catch((e) => toast(e.message, 'err'));
@@ -52,13 +54,14 @@ export function MenuAdmin() {
             <td className="muted">{m.category}</td><td className="num">{money(m.price_cents, settings.currency)}</td>
             <td><button className={`btn sm ${m.active ? '' : 'ghost'}`} onClick={() => toggle(m)}>{m.active ? 'On' : 'Sold out'}</button></td>
             <td><button className={`btn sm ${m.guest_orderable ? 'primary' : 'ghost'}`} onClick={() => toggleAhead(m)} aria-pressed={Boolean(m.guest_orderable)}>{m.guest_orderable ? 'Yes' : 'No'}</button></td>
-            <td style={{ textAlign: 'right' }}><button className="btn sm ghost" onClick={() => setEdit(m)}>Edit</button><button className="btn sm ghost danger" onClick={() => del(m)}>Delete</button></td>
+            <td style={{ textAlign: 'right' }}><button className="btn sm ghost" onClick={() => setCard(m.id)}>Recipe card</button><button className="btn sm ghost" onClick={() => setEdit(m)}>Edit</button><button className="btn sm ghost danger" onClick={() => del(m)}>Delete</button></td>
           </tr>
         ))}</tbody>
       </table></section>
       <OptionsAdmin />
       <MenuDetails />
       {edit !== undefined && <ItemModal item={edit} currency={settings.currency} onClose={() => setEdit(undefined)} />}
+      {card && <RecipeCard itemId={card} onClose={() => setCard(null)} />}
     </>
   );
 }
@@ -193,7 +196,7 @@ export function SettingsAdmin() {
       'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
       'online_enabled', 'online_pickup', 'online_delivery', 'delivery_fee_cents', 'delivery_min_cents', 'delivery_area', 'online_prep_minutes', 'online_pay_later', 'table_ordering',
       'tip_pool_enabled', 'tip_pool_managers', 'forecast_city', 'forecast_rain_pct', 'staff_sales_per_hour_cents', 'staff_min',
-      'booking_deposit_cents', 'deposit_refund_hours', 'ot_weekly_hours', 'payroll_week_start', 'ot_alerts', 'break_after_hours', 'food_cost_target', 'insights_summary', 'insights_hour', 'insights_alerts', 'insights_void_limit', 'insights_refund_cents', 'kiosk_reader_id', 'kiosk_message', 'chat_enabled', 'chat_quick', 'screen_message', 'upsell_enabled', 'prep_buffer_pct', 'referral_enabled', 'referral_reward_cents', 'referral_min_cents', 'recovery_enabled', 'recovery_max_rating', 'recovery_kind', 'recovery_value', 'recovery_days', 'recovery_message', 'pay_handles_enabled', 'pay_cashapp', 'pay_venmo', 'pay_paypalme', 'pay_zelle', 'card_provider', 'cash_discount_pct', 'fee_rates',
+      'booking_deposit_cents', 'deposit_refund_hours', 'ot_weekly_hours', 'payroll_week_start', 'ot_alerts', 'break_after_hours', 'food_cost_target', 'insights_summary', 'insights_hour', 'insights_alerts', 'insights_void_limit', 'insights_refund_cents', 'kiosk_reader_id', 'kiosk_message', 'chat_enabled', 'chat_quick', 'table_long_minutes', 'kitchen_slow_minutes', 'price_watch_pct', 'screen_message', 'upsell_enabled', 'prep_buffer_pct', 'referral_enabled', 'referral_reward_cents', 'referral_min_cents', 'recovery_enabled', 'recovery_max_rating', 'recovery_kind', 'recovery_value', 'recovery_days', 'recovery_message', 'pay_handles_enabled', 'pay_cashapp', 'pay_venmo', 'pay_paypalme', 'pay_zelle', 'card_provider', 'cash_discount_pct', 'fee_rates',
       'smart_waits', 'loyalty_enabled', 'loyalty_visits', 'loyalty_reward', 'feedback_enabled', 'feedback_delay_minutes', 'feedback_review_threshold', 'review_url',
       'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
@@ -301,6 +304,8 @@ export function SettingsAdmin() {
         <KioskPanel f={f} setF={setF} />
 
         <GrowPanel f={f} setF={setF} />
+
+        <FloorPanel f={f} setF={setF} />
 
         <PaymentsPanel />
 

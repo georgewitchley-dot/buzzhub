@@ -582,3 +582,21 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .pairs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line, rgba(255,255,255,.12)); }
 .check-row { padding: 6px 0; font-size: 14.5px; }
 @media print { .side, .topbar, .page-head .btn, .page-head input { display: none !important; } }
+
+/* ---- round 8: deals, display, goals, held items ---- */
+.goal-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 14px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.meter { height: 6px; border-radius: 6px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 4px; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 6px; transition: width .6s ease; }
+li.held { opacity: .5; }
+.linkish { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted rgba(255,255,255,.25); text-underline-offset: 3px; }
+.steps-list { margin: 0; padding-left: 22px; display: grid; gap: 8px; font-size: 15.5px; line-height: 1.45; }
+.ft[data-long="1"], .tbl[data-long="1"] { box-shadow: 0 0 0 2px var(--dirty) inset; }
+.special-line { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 10px; }
+.cdisp-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 3vw; min-height: 0; }
+.cdisp-lines { background: rgba(255,255,255,.05); border-radius: 2vh; padding: 3vh 2.4vw; overflow: auto; display: grid; align-content: start; gap: 1.6vh; font-size: 3vh; }
+.cdisp-tot { display: grid; align-content: start; gap: 1.6vh; font-size: 2.8vh; }
+.cdisp-tot .big { font-size: 5.5vh; font-weight: 800; border-top: 1px solid rgba(255,255,255,.15); padding-top: 1.6vh; }
+.cdisp-tips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.4vh; }
+.cdisp-tips .btn { height: auto; padding: 2vh; display: grid; gap: .4vh; font-size: 3.2vh; }
+.cdisp-tips small { font-size: 2vh; opacity: .7; }
+@media (max-width: 700px) { .cdisp-grid { grid-template-columns: 1fr; } }

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
 import { z } from 'zod';
 import { db, getSettings, setSettings, audit, registerSchema, currentSlug, getJwtSecret } from './db.js';
-import { priceLines, insertOrder, menuWithMods, stripeEnabled } from './commerce.js';
+import { priceLines, insertOrder, menuWithMods, stripeEnabled, lineSchema } from './commerce.js';
 import { pushToGuest } from './notify.js';
 
 registerSchema((db) => {
@@ -143,7 +143,7 @@ export function registerDelivery({ app, staff, io, h }) {
   });
   app.post('/api/k/order', publicLimiter, needKiosk, wrap(async (req, res) => {
     const b = parse(z.object({
-      items: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(20), mods: z.array(z.number().int()).max(20).optional(), note: z.string().trim().max(80).optional() })).min(1).max(40),
+      items: z.array(lineSchema).min(1).max(40),
       name: z.string().trim().min(1).max(40), where: z.enum(['here', 'togo']).default('togo'), pay: z.enum(['counter', 'card']), promoCode: z.string().trim().max(30).optional(), clientKey: z.string().max(64).optional(),
     }), req.body);
     const lines = priceLines(b.items);

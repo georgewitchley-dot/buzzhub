@@ -6,7 +6,8 @@ import SpotlightCard from '../bits/SpotlightCard.jsx';
 import ClickSpark from '../bits/ClickSpark.jsx';
 import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
-import { CartLines, ModPicker, PairsHint, useCart } from '../order-ui.jsx';
+import { CartLines, ComboPicker, ModPicker, PairsHint, PriceTag, useCart } from '../order-ui.jsx';
+import { GoalBar, PairDisplay, useDisplayPush, useLiveCombos } from './Plus.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { QrModal, RedeemModal } from './Waitlist.jsx';
 import { queueSale, attachPayment, isNetworkError } from '../offline.js';
@@ -86,6 +87,12 @@ export function PayModal({ order, currency, onClose, onPaid }) {
   const [tendered, setTendered] = useState('');
   const [busy, setBusy] = useState(false);
   const tip = customTip !== '' ? dollars(customTip) : Math.round((order.subtotal_cents - order.discount_cents) * tipPct / 100);
+  const { socket } = useCC();
+  useEffect(() => {
+    if (!socket) return undefined;
+    const on = (x) => { let code = ''; try { code = localStorage.getItem('bh_display') || ''; } catch { /* none */ } if (x.code !== code) return; if (x.cents !== null) setCustomTip((x.cents / 100).toFixed(2)); else { setCustomTip(''); setTipPct(x.pct || 0); } toast('The customer picked a tip', 'ok'); };
+    socket.on('display:tip', on); return () => socket.off('display:tip', on);
+  }, [socket]); // eslint-disable-line react-hooks/exhaustive-deps
   const cashPct = Number(useCC().settings.cash_discount_pct) || 0;
   const cashOff = method === 'cash' && cashPct > 0 && !order.offlineKey ? Math.round((order.subtotal_cents - order.discount_cents) * cashPct / 100 * (1 + (Number(useCC().settings.tax_rate) || 0) / 100)) : 0;
   const total = base + tip - cashOff;
@@ -212,6 +219,11 @@ export default function Register() {
   const [redeem, setRedeem] = useState(false);
   const [sellGift, setSellGift] = useState(false);
   const [picking, setPicking] = useState(null);
+  const [combo, setCombo] = useState(null);
+  const [hold, setHold] = useState(false);
+  const [pair, setPair] = useState(false);
+  const [thanks, setThanks] = useState(false);
+  const combos = useLiveCombos();
   const totalRef = useRef(null);
 
   const items = (menu || []).filter((m) => m.active || m.soldOut);
@@ -227,10 +239,13 @@ export default function Register() {
     const hit = (m.allergens || []).filter((a) => allergies.includes(a));
     if (hit.length && !confirm(`${m.name} contains ${hit.join(' and ')}. Add it anyway?`)) return;
     if (m.groups.length) return setPicking(m);
-    cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents });
+    cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents, course: hold ? 2 : 1 });
     gsap.fromTo(totalRef.current, { scale: 1.06 }, { scale: 1, duration: 0.3, ease: 'back.out(3)' });
   };
-  const reset = () => { cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); setCust(null); setAllergies([]); };
+  const addLine = (l) => cart.add({ ...l, course: hold ? 2 : 1 });
+  const displayCode = useDisplayPush(paying ? { stage: 'tip', lines: paying.lines || [], subtotalCents: paying.subtotal_cents, discountCents: paying.discount_cents, taxCents: paying.tax_cents, totalCents: paying.subtotal_cents - paying.discount_cents + paying.tax_cents, tipBaseCents: paying.subtotal_cents - paying.discount_cents }
+    : thanks ? { stage: 'paid' } : cart.count ? { stage: 'cart', lines: cart.lines.map((l) => ({ name: l.name, qty: l.qty, cents: l.qty * l.unitCents })), subtotalCents: cart.subtotal, discountCents: disc, taxCents: tax, totalCents: total } : { stage: 'idle' });
+  const reset = () => { setHold(false); cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); setCust(null); setAllergies([]); };
 
   const submit = async (payNow) => {
     if (!cart.count) return;
@@ -239,7 +254,7 @@ export default function Register() {
     const body = { items: cart.payload, tableId: tableId ? Number(tableId) : null, customerName: customer || cust?.name || undefined, discountPct: discount || undefined, customerId: cust?.id, allergies: allergies.length ? allergies : undefined, attachBuzzer: buzzer, phone, promoCode: promo || undefined, clientKey };
     try {
       const r = await api('/staff/orders', { method: 'POST', body });
-      const order = { id: r.id, number: r.number, subtotal_cents: cart.subtotal, discount_cents: r.discountCents ?? disc, tax_cents: tax };
+      const order = { id: r.id, number: r.number, subtotal_cents: cart.subtotal, discount_cents: r.discountCents ?? disc, tax_cents: tax, lines: cart.lines.map((l) => ({ name: l.name, qty: l.qty, cents: l.qty * l.unitCents })) };
       reset();
       if (r.buzzer) setQr({ link: r.buzzer.link, svg: r.buzzer.svg, title: `Buzzer for order #${r.number}`, note: 'The customer scans this. Their phone buzzes when you mark the order ready.' });
       if (payNow) setPaying(order); else toast(`Order #${r.number} sent`, 'ok');
@@ -259,9 +274,12 @@ export default function Register() {
       <PageHead title="Register" sub="Tap items to add them to the ticket.">
         <button className="btn" onClick={() => setSellGift(true)}><Icon name="gift" size={17} />Sell gift card</button>
         {settings.loyalty_enabled === '1' && <button className="btn" onClick={() => setRedeem(true)}>Redeem reward</button>}
+        <button className="btn" onClick={() => setPair(true)}>{displayCode ? `Display ${displayCode}` : 'Customer display'}</button>
       </PageHead>
+      <GoalBar />
       <div className="register">
         <div>
+          {combos.length > 0 && <div className="cats">{combos.map((c) => <button key={c.id} className="btn sm" onClick={() => setCombo(c)}>{c.name} {money(c.priceCents, cur)}</button>)}</div>}
           <div className="cats">{cats.map((c) => <button key={c} className={`btn sm ${c === cat ? 'primary' : ''}`} onClick={() => setCat(c)}>{c}</button>)}</div>
           <ClickSpark sparkColor={settings.accent} sparkCount={10} sparkRadius={26}>
             <div className="items">
@@ -270,7 +288,7 @@ export default function Register() {
                   <SpotlightCard className="item-card" spotlightColor={`${m.color}55`} style={{ '--c': m.color }}>
                     <b>{m.name}</b>
                     <span className="row" style={{ gap: 6 }}>
-                      <span className="p grow">{money(m.price_cents, cur)}</span>
+                      <span className="p grow"><PriceTag i={m} currency={cur} inline /></span>{m.special && <span className="chip teal">Special</span>}
                       {m.soldOut ? <span className="chip rose">Sold out</span> : m.stock !== null && m.stock <= m.low_stock ? <span className="chip amber">{m.stock} left</span> : m.groups.length ? <span className="chip">Options</span> : null}
                     </span>
                   </SpotlightCard>
@@ -295,6 +313,7 @@ export default function Register() {
             <CustomerPicker value={cust} onChange={setCust} allergies={allergies} setAllergies={setAllergies} currency={cur} />
             <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={buzzer} onChange={(e) => setBuzzer(e.target.checked)} /> Give the customer a phone buzzer for pickup</label>
             {buzzer && <input className="input" type="tel" placeholder="Mobile number (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} aria-label="Mobile number" />}
+            {settings.business_type !== 'service' && <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} /> Hold the next items until I fire them (mains after starters)</label>}
             <div className="row" style={{ fontSize: 14 }}><span className="muted grow">Discount</span>{[0, 10, 15, 50].map((p) => <button key={p} className={`btn sm ${discount === p ? 'primary' : ''}`} onClick={() => setDiscount(p)}>{p}%</button>)}</div>
             <input className="input" placeholder="Promo code (optional)" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} maxLength={30} aria-label="Promo code" />
             <div className="totals">
@@ -311,10 +330,12 @@ export default function Register() {
           </div>
         </aside>
       </div>
-      {picking && <ModPicker item={picking} currency={cur} onClose={() => setPicking(null)} onAdd={(l) => { cart.add(l); setPicking(null); }} />}
+      {picking && <ModPicker item={picking} currency={cur} onClose={() => setPicking(null)} onAdd={(l) => { addLine(l); setPicking(null); }} />}
+      {combo && <ComboPicker combo={combo} items={items} currency={cur} onClose={() => setCombo(null)} onAdd={(l) => { addLine(l); setCombo(null); }} />}
+      {pair && <PairDisplay onClose={() => setPair(false)} />}
       {redeem && <RedeemModal onClose={() => setRedeem(false)} />}
       {sellGift && <SellGiftModal currency={cur} canComp={can('manager')} onClose={() => setSellGift(false)} />}
-      {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => setPaying(null)} />}
+      {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => { setPaying(null); setThanks(true); setTimeout(() => setThanks(false), 6000); }} />}
       {qr && !paying && <QrModal {...qr} onClose={() => setQr(null)} />}
     </>
   );

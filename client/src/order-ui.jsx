@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, money } from './lib.js';
 import { Modal } from './ui.jsx';
 
-export const lineKey = (l) => `${l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}`;
+export const lineKey = (l) => `${l.comboId ? `c${l.comboId}:${JSON.stringify(l.picks)}` : l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}:${l.course || 1}`;
 export const lineTotal = (l) => l.qty * l.unitCents;
 
 /** Pick options for one item. onAdd({ itemId, qty, mods, note, name, modNames, unitCents }) */
@@ -50,7 +50,7 @@ export function useCart() {
   const bump = (k, d) => setLines((cur) => cur.map((x) => (lineKey(x) === k ? { ...x, qty: x.qty + d } : x)).filter((x) => x.qty > 0));
   const clear = () => setLines([]);
   const subtotal = lines.reduce((a, l) => a + lineTotal(l), 0);
-  const payload = lines.map((l) => ({ itemId: l.itemId, qty: l.qty, mods: l.mods?.length ? l.mods : undefined, note: l.note }));
+  const payload = lines.map((l) => (l.comboId ? { comboId: l.comboId, picks: l.picks, qty: l.qty, note: l.note, course: l.course > 1 ? l.course : undefined } : { itemId: l.itemId, qty: l.qty, mods: l.mods?.length ? l.mods : undefined, note: l.note, course: l.course > 1 ? l.course : undefined }));
   return { lines, add, bump, clear, subtotal, payload, count: lines.reduce((a, l) => a + l.qty, 0) };
 }
 
@@ -58,7 +58,7 @@ export function CartLines({ cart, currency }) {
   return cart.lines.map((l) => (
     <div className="line" key={lineKey(l)}>
       <span className="qty"><button onClick={() => cart.bump(lineKey(l), -1)} aria-label={`Remove one ${l.name}`}>−</button><span>{l.qty}</span><button onClick={() => cart.bump(lineKey(l), 1)} aria-label={`Add one ${l.name}`}>+</button></span>
-      <span>{l.name}{(l.modNames?.length || l.note) && <small className="mods">{[...(l.modNames || []), l.note].filter(Boolean).join(', ')}</small>}</span>
+      <span>{l.name}{l.course > 1 && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{(l.modNames?.length || l.note) && <small className="mods">{[...(l.modNames || []), l.note].filter(Boolean).join(', ')}</small>}</span>
       <span className="num">{money(lineTotal(l), currency)}</span>
     </div>
   ));
@@ -67,7 +67,7 @@ export function CartLines({ cart, currency }) {
 const ALLERGY_ES = { milk: 'leche', eggs: 'huevo', fish: 'pescado', shellfish: 'mariscos', 'tree nuts': 'nueces', peanuts: 'cacahuate', wheat: 'trigo', soy: 'soya', sesame: 'ajonjolí' };
 const DIET_ES = { vegetarian: 'vegetariano', vegan: 'vegano', 'gluten free': 'sin gluten', halal: 'halal', kosher: 'kosher', spicy: 'picante' };
 /** Customer-facing menu list with category chips, allergen filter and Spanish names; tap an item to add it (or pick options). */
-export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = false }) {
+export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = false, combos = [] }) {
   const es = lang === 'es';
   const nm = (i) => (es && i.i18n?.es?.name) || i.name;
   const catName = (c) => (es && items.find((i) => i.category === c && i.i18n?.es?.category)?.i18n.es.category) || c;
@@ -75,6 +75,8 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
   const [avoid, setAvoid] = useState([]);
   const [showFilter, setShowFilter] = useState(false);
   const [picking, setPicking] = useState(null);
+  const [combo, setCombo] = useState(null);
+  const specials = items.filter((i) => i.special && !i.soldOut);
   const cats = useMemo(() => [...new Set(items.map((i) => i.category))], [items]);
   const present = useMemo(() => [...new Set(items.flatMap((i) => i.allergens || []))], [items]);
   const shown = (cat ? items.filter((i) => i.category === cat) : items).filter((i) => !avoid.some((a) => (i.allergens || []).includes(a)));
@@ -85,6 +87,12 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
         {present.length > 0 && <button className={`btn sm ${avoid.length ? 'primary' : 'ghost'}`} onClick={() => setShowFilter(!showFilter)} aria-expanded={showFilter}>{es ? 'Alergias' : 'Allergies'}{avoid.length ? ` (${avoid.length})` : ''}</button>}</div>}
       {showFilter && <div className="card allergy-filter"><span className="muted" style={{ fontSize: 13 }}>{es ? 'Ocultar platillos con:' : 'Hide dishes that contain:'}</span><div className="row wrap" style={{ gap: 6 }}>{present.map((a) => <button key={a} className={`chip ${avoid.includes(a) ? 'rose' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={avoid.includes(a)} onClick={() => setAvoid(avoid.includes(a) ? avoid.filter((x) => x !== a) : [...avoid, a])}>{es ? ALLERGY_ES[a] : a}</button>)}</div><span className="dim" style={{ fontSize: 12 }}>{es ? 'Avise al personal sobre alergias graves.' : 'Always tell the team about serious allergies.'}</span></div>}
       <div className="sheet-list">
+        {!cat && specials.length > 0 && <section><h3 className="sheet-cat">{es ? 'Especiales de hoy' : "Today's specials"}</h3>
+          {specials.map((i) => <button key={i.id} className="menu-line menu-tap special-line" disabled={viewOnly} onClick={() => tap(i)}><span className="grow"><b>{nm(i)}</b>{i.special.note && <small className="menu-desc">{i.special.note}</small>}<PriceTag i={i} currency={currency} /></span>{!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}</button>)}
+        </section>}
+        {!cat && combos.length > 0 && <section><h3 className="sheet-cat">{es ? 'Combos' : 'Combos'}</h3>
+          {combos.map((c) => <button key={c.id} className="menu-line menu-tap" disabled={viewOnly} onClick={() => setCombo(c)}><span className="grow"><b>{c.name}</b><small className="menu-desc">{c.description || c.slots.map((x) => x.label).join(' + ')}</small><span className="muted num">{money(c.priceCents, currency)}</span></span>{!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}</button>)}
+        </section>}
         {(cat ? [cat] : cats).map((c) => { const list = shown.filter((i) => i.category === c); if (!list.length) return null; return (
           <section key={c}>
             <h3 className="sheet-cat">{catName(c)}</h3>
@@ -92,7 +100,7 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
               <button key={i.id} className="menu-line menu-tap" disabled={i.soldOut || viewOnly} onClick={() => tap(i)}>
                 <span className="grow"><b>{nm(i)}</b>
                   {((es && i.i18n?.es?.description) || i.description) && <small className="menu-desc">{(es && i.i18n?.es?.description) || i.description}</small>}
-                  <span className="muted num">{i.soldOut ? (es ? 'Agotado' : 'Sold out') : money(i.price_cents, currency)}{i.groups?.length ? (es ? ', opciones' : ', options') : ''}</span>
+                  <span className="muted num">{i.soldOut ? (es ? 'Agotado' : 'Sold out') : <PriceTag i={i} currency={currency} inline />}{i.groups?.length ? (es ? ', opciones' : ', options') : ''}</span>
                   {((i.diet || []).length > 0 || (i.allergens || []).length > 0) && <span className="tags-line">{(i.diet || []).map((t) => <span key={t} className="mini diet">{es ? DIET_ES[t] : t}</span>)}{(i.allergens || []).map((t) => <span key={t} className="mini">{es ? ALLERGY_ES[t] : t}</span>)}</span>}
                 </span>
                 {!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}
@@ -102,8 +110,56 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
         ); })}
       </div>
       {picking && <ModPicker item={picking} currency={currency} onClose={() => setPicking(null)} onAdd={(l) => { onAdd(l); setPicking(null); }} />}
+      {combo && <ComboPicker combo={combo} items={items} currency={currency} onClose={() => setCombo(null)} onAdd={(l) => { onAdd(l); setCombo(null); }} />}
     </>
   );
+}
+
+/** Price with the regular price struck through during a deal or special. */
+export function PriceTag({ i, currency, inline = false }) {
+  if (!i.regularCents) return inline ? money(i.price_cents, currency) : <span className="muted num">{money(i.price_cents, currency)}</span>;
+  const body = <><s className="dim">{money(i.regularCents, currency)}</s> <b style={{ color: 'var(--accent)' }}>{money(i.price_cents, currency)}</b>{i.deal && <span className="mini diet" style={{ marginLeft: 6 }}>{i.deal}</span>}</>;
+  return inline ? body : <span className="num">{body}</span>;
+}
+
+/** Build a combo: one choice per slot, with options. onAdd(cart line). */
+export function ComboPicker({ combo, items, currency, onClose, onAdd }) {
+  const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+  const [picks, setPicks] = useState(() => combo.slots.map((s) => ({ itemId: s.itemIds.length === 1 ? s.itemIds[0] : null, mods: [] })));
+  const [qty, setQty] = useState(1);
+  const setPick = (k, v) => setPicks((p) => p.map((x, i) => (i === k ? { ...x, ...v } : x)));
+  const toggleMod = (k, g, o) => { const cur = picks[k].mods; const inG = g.options.map((x) => x.id); const mine = cur.filter((x) => inG.includes(x));
+    let next = mine.includes(o.id) ? mine.filter((x) => x !== o.id) : g.max === 1 ? [o.id] : mine.length < g.max ? [...mine, o.id] : mine;
+    if (g.max === 1 && mine.includes(o.id) && g.min > 0) next = mine;
+    setPick(k, { mods: [...cur.filter((x) => !inG.includes(x)), ...next] }); };
+  const modObjs = (p) => (byId[p.itemId]?.groups || []).flatMap((g) => g.options.filter((o) => p.mods.includes(o.id)));
+  const extra = picks.reduce((a, p) => a + modObjs(p).reduce((b, o) => b + o.price_cents, 0), 0);
+  const missing = picks.findIndex((p) => !p.itemId || (byId[p.itemId]?.groups || []).some((g) => g.options.filter((o) => p.mods.includes(o.id)).length < g.min));
+  const add = () => onAdd({ comboId: combo.id, picks: picks.map((p) => ({ itemId: p.itemId, mods: p.mods })), qty, name: combo.name, modNames: picks.map((p) => [byId[p.itemId]?.name, ...modObjs(p).map((o) => o.name)].join(' ')), unitCents: combo.priceCents + extra });
+  return (
+    <Modal title={combo.name} onClose={onClose}>
+      {combo.slots.map((s, k) => (
+        <div key={k} className="field"><span>{s.label}</span>
+          <div className="opt-grid">{s.itemIds.map((id) => byId[id] && <button key={id} type="button" className={`opt ${picks[k].itemId === id ? 'on' : ''}`} aria-pressed={picks[k].itemId === id} onClick={() => setPick(k, { itemId: id, mods: [] })}>{byId[id].name}</button>)}</div>
+          {(byId[picks[k].itemId]?.groups || []).map((g) => (
+            <div key={g.id} className="opt-grid" style={{ marginTop: 6 }}><small className="dim" style={{ gridColumn: '1 / -1' }}>{g.name}{g.min ? ' (required)' : ''}</small>
+              {g.options.map((o) => { const on = picks[k].mods.includes(o.id); return <button key={o.id} type="button" className={`opt ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => toggleMod(k, g, o)}>{o.name}{o.price_cents ? <small>+{money(o.price_cents, currency)}</small> : null}</button>; })}</div>
+          ))}
+        </div>
+      ))}
+      <div className="row">
+        <span className="qty"><button type="button" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="One less">−</button><span>{qty}</span><button type="button" onClick={() => setQty(Math.min(20, qty + 1))} aria-label="One more">+</button></span>
+        <button className="btn primary lg grow" disabled={missing >= 0} onClick={add}>{missing >= 0 ? `Choose ${combo.slots[missing].label.toLowerCase()}` : `Add ${qty} for ${money((combo.priceCents + extra) * qty, currency)}`}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Live combos for a customer page. */
+export function useCombos(all = false) {
+  const [c, setC] = useState([]);
+  useEffect(() => { api(all ? '/public/combos/all' : '/public/combos').then(setC).catch(() => {}); }, [all]);
+  return c;
 }
 
 /** "Goes great with" suggestions from what customers often order together. */

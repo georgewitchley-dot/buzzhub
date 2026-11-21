@@ -59,7 +59,11 @@ export async function stripe(method, path, form) {
    Order builder (used by register, order-ahead, online and table orders)
    ====================================================================== */
 const err = (msg, status = 400) => Object.assign(new Error(msg), { status });
-export const lineSchema = z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(99), note: z.string().trim().max(80).optional(), mods: z.array(z.number().int()).max(20).optional() });
+export const lineSchema = z.object({
+  itemId: z.number().int().optional(), comboId: z.number().int().optional(),
+  picks: z.array(z.object({ itemId: z.number().int(), mods: z.array(z.number().int()).max(20).optional() })).max(8).optional(),
+  qty: z.number().int().min(1).max(99), note: z.string().trim().max(80).optional(), mods: z.array(z.number().int()).max(20).optional(), course: z.number().int().min(1).max(3).optional(),
+}).refine((l) => l.itemId !== undefined || (l.comboId !== undefined && l.picks?.length), { message: 'Each line needs an item or a combo' });
 
 export function menuWithMods({ where = 'active = 1' } = {}) {
   const items = db.prepare(`SELECT id, name, category, price_cents, color, active, guest_orderable, stock, low_stock, description, allergens, diet, i18n FROM menu_items WHERE ${where} ORDER BY sort, id`).all()
@@ -68,17 +72,19 @@ export function menuWithMods({ where = 'active = 1' } = {}) {
   const opts = db.prepare('SELECT * FROM mod_options ORDER BY sort, id').all();
   const links = db.prepare('SELECT * FROM item_mod_groups').all();
   const g = Object.fromEntries(groups.map((x) => [x.id, { id: x.id, name: x.name, min: x.min_pick, max: x.max_pick, options: opts.filter((o) => o.group_id === x.id).map((o) => ({ id: o.id, name: o.name, price_cents: o.price_cents })) }]));
-  return items.map((i) => ({ ...i, soldOut: i.stock !== null && i.stock <= 0, groups: links.filter((l) => l.item_id === i.id).map((l) => g[l.group_id]).filter(Boolean) }));
+  let out = items.map((i) => ({ ...i, soldOut: i.stock !== null && i.stock <= 0, groups: links.filter((l) => l.item_id === i.id).map((l) => g[l.group_id]).filter(Boolean) }));
+  for (const f of menuHooks.adjust) out = f(out);
+  return out;
 }
+/** Other modules adjust prices and visibility (specials, happy hour) and expand combos. */
+export const menuHooks = { adjust: [], combo: null };
 
 /** Validate lines against the menu (prices, options, stock). Prices always come from the server. */
 export function priceLines(lines, { guestOnly = false } = {}) {
   const menu = new Map(menuWithMods({ where: guestOnly ? 'active = 1 AND guest_orderable = 1' : 'active = 1' }).map((m) => [m.id, m]));
   const need = {};
-  const out = lines.map((l) => {
-    const m = menu.get(l.itemId);
-    if (!m) throw err('An item is no longer available');
-    const picked = new Set(l.mods || []);
+  const pickMods = (m, ids) => {
+    const picked = new Set(ids || []);
     const mods = [];
     for (const g of m.groups) {
       const chosen = g.options.filter((o) => picked.has(o.id));
@@ -87,8 +93,21 @@ export function priceLines(lines, { guestOnly = false } = {}) {
       for (const o of chosen) { mods.push({ name: o.name, price_cents: o.price_cents }); picked.delete(o.id); }
     }
     if (picked.size) throw err(`An option on ${m.name} is no longer available`);
+    return mods;
+  };
+  const out = lines.flatMap((l) => {
+    const course = l.course || 1;
+    if (l.comboId !== undefined) {
+      if (!menuHooks.combo) throw err('Combos are not available');
+      const parts = menuHooks.combo(l, menu, pickMods);
+      for (const p of parts) need[p.item_id] = (need[p.item_id] || 0) + p.qty;
+      return parts.map((p) => ({ ...p, course }));
+    }
+    const m = menu.get(l.itemId);
+    if (!m) throw err('An item is no longer available');
+    const mods = pickMods(m, l.mods);
     need[m.id] = (need[m.id] || 0) + l.qty;
-    return { item_id: m.id, name: m.name, qty: l.qty, price_cents: m.price_cents + mods.reduce((a, o) => a + o.price_cents, 0), note: l.note || null, mods };
+    return [{ item_id: m.id, name: m.name, qty: l.qty, price_cents: m.price_cents + mods.reduce((a, o) => a + o.price_cents, 0), note: l.note || null, mods, course }];
   });
   for (const [id, q] of Object.entries(need)) {
     const m = menu.get(Number(id));
@@ -137,8 +156,8 @@ export function insertOrder({ lines, status = 'sent', source = 'staff', tableId 
         promo_code, fulfillment, delivery_address, contact_phone, contact_email, order_notes, client_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(number, status, tableId, guestId, customerName, subtotal, tax, discount, feeCents, subtotal - discount + tax + feeCents, createdBy, status === 'sent' ? now : null, source,
         promoCode, fulfillment, address, phone, email, notes, clientKey).lastInsertRowid;
-    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note, mods) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const l of lines) ins.run(id, l.item_id, l.name, l.qty, l.price_cents, l.note, l.mods?.length ? JSON.stringify(l.mods) : null);
+    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note, mods, course, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const l of lines) ins.run(id, l.item_id, l.name, l.qty, l.price_cents, l.note, l.mods?.length ? JSON.stringify(l.mods) : null, l.course || 1, (l.course || 1) > 1 ? null : now);
     takeStock(lines, createdBy, `order #${number}`);
     for (const f of orderHooks.inserted) f(id, lines, createdBy);
     return { id, number };

@@ -36,7 +36,7 @@ export function LobbyScreen() {
           {d.waitlist.next.map((g, i) => <div key={i} className="lw"><b>{i + 1}. {g.name}</b><span>{g.party}</span></div>)}
         </section>}
       </div>
-      <footer className="lobby-foot">{d.message || 'Scan the code at the door to join the line and get a buzz on your phone.'}</footer>
+      <footer className="lobby-foot">{d.specials?.length > 0 && <div style={{ color: 'var(--accent)', marginBottom: '1vh' }}>Today's specials: {d.specials.join(', ')}</div>}{d.message || 'Scan the code at the door to join the line and get a buzz on your phone.'}</footer>
     </div>
   );
 }

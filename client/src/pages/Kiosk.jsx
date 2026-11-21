@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, applyAccent, money } from '../lib.js';
 import { Puck } from '../ui.jsx';
-import { CartLines, GuestMenu, PairsHint, useCart } from '../order-ui.jsx';
+import { CartLines, GuestMenu, PairsHint, useCart, useCombos } from '../order-ui.jsx';
 import { LangSwitch, useLang } from '../i18n.jsx';
 
 const kioskApi = (path, opts = {}) => api(path, { ...opts, headers: { 'X-Kiosk': localStorage.getItem('bh_kiosk') || '' } });
@@ -11,6 +11,7 @@ export default function Kiosk() {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const cart = useCart();
+  const combos = useCombos(true);
   const [step, setStep] = useState('start');
   const [name, setName] = useState('');
   const [where, setWhere] = useState('togo');
@@ -69,7 +70,7 @@ export default function Kiosk() {
       )}
       {step === 'menu' && (
         <div className="kiosk-grid">
-          <div className="card kiosk-menu"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} /></div>
+          <div className="card kiosk-menu"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} combos={combos} /></div>
           <aside className="card kiosk-cart">
             <b>{t('Your order')}</b>
             {cart.lines.length ? <><CartLines cart={cart} currency={d.currency} /><PairsHint cart={cart} items={d.items} currency={d.currency} label={t('Goes great with')} /></> : <span className="muted">{t('Nothing here yet. Tap an item to add it.')}</span>}

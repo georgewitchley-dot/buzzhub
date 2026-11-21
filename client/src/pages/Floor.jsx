@@ -5,6 +5,9 @@ import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { TableQrModal } from './Commerce.jsx';
 import { SplitModal } from './Register.jsx';
 
+let LONG = 90;
+const isLong = (t) => t.status === 'seated' && t.seated_at && LONG > 0 && minutesSince(t.seated_at) >= LONG;
+
 const STATUS = { open: 'Open', reserved: 'Held for guest', seated: 'Seated', dirty: 'Needs bussing' };
 const initials = (n) => (n || '').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
@@ -87,7 +90,7 @@ function FloorMap({ tables, zone, editing, onOpen, onChange, selected, setSelect
   return (
     <div className={`floor-map ${editing ? 'editing' : ''}`} ref={ref} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp} onPointerDown={() => editing && setSelected(null)}>
       {items.map((t) => (
-        <button key={t.id} type="button" className={`ft ${t.shape || 'square'} ${selected === t.id ? 'sel' : ''}`} data-status={t.status}
+        <button key={t.id} type="button" className={`ft ${t.shape || 'square'} ${selected === t.id ? 'sel' : ''}`} data-status={t.status} data-long={isLong(t) ? '1' : undefined}
           style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%` }}
           onPointerDown={(e) => onDown(e, t, 'move')} onClick={() => !editing && onOpen(t)} aria-label={`${t.label}, ${STATUS[t.status]}`}>
           <b>{t.label}</b>
@@ -103,6 +106,7 @@ function FloorMap({ tables, zone, editing, onOpen, onChange, selected, setSelect
 
 export default function Floor() {
   const { settings, can } = useCC();
+  LONG = Number(settings.table_long_minutes ?? 90);
   const toast = useToast();
   const unit = settings.unit_label;
   const [tables, reload] = useLive(['tables'], () => api('/staff/tables'));
@@ -185,7 +189,7 @@ export default function Floor() {
       ) : (
         <div className="tables">
           {tables.filter((t) => t.zone === z).map((t) => (
-            <button key={t.id} className="tbl" data-status={t.status} onClick={() => setOpen(t)} aria-label={`${unit} ${t.label}, ${STATUS[t.status]}`}>
+            <button key={t.id} className="tbl" data-status={t.status} data-long={isLong(t) ? '1' : undefined} onClick={() => setOpen(t)} aria-label={`${unit} ${t.label}, ${STATUS[t.status]}`}>
               <b>{t.label}</b><span className="s">{t.seats} seats{t.server_name ? `, ${t.server_name}` : ''}</span>
               <span className="s" style={{ color: 'var(--text)' }}>{t.status === 'seated' ? `${t.guest_name || 'Walk-in'}, ${minutesSince(t.seated_at)}m` : t.status === 'reserved' ? `Held for ${t.guest_name || 'guest'}` : STATUS[t.status]}</span>
             </button>

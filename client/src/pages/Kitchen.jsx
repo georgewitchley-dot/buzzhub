@@ -4,12 +4,14 @@ import { api, minutesSince, playChime, useTick } from '../lib.js';
 import { Icon, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { TicketPrint, printPart } from '../pro-ui.jsx';
+import { FireButton, RecipeCard } from './Plus.jsx';
 
 export default function Kitchen() {
   const { settings } = useCC();
   const toast = useToast();
   const [data] = useLive(['orders'], () => api('/staff/kitchen'));
   const seen = useRef(null);
+  const [card, setCard] = useState(null);
   const [station, setStation] = useState(() => localStorage.getItem('bh_print_station') === '1');
   const [toPrint, setToPrint] = useState([]);
   const stationRef = useRef(station); stationRef.current = station;
@@ -66,7 +68,8 @@ export default function Kitchen() {
               {o.delivery_address && <div className="muted" style={{ fontSize: 14 }}>{o.delivery_address}</div>}
               {(() => { let tags = []; try { tags = JSON.parse(o.customer_tags || '[]'); } catch { /* none */ } const al = [o.allergy_note, ...tags.filter((t) => /allerg|free|vegan|celiac|dairy|lactose/i.test(t))].filter(Boolean); return al.length ? <div className="ticket-allergy">ALLERGY: {al.join(', ')}</div> : null; })()}
               {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
-              <ul>{o.items.map((i, k) => <li key={k}><b className="num">{i.qty}</b><span>{i.name}{i.mods?.length > 0 && <em>{i.mods.map((m) => m.name).join(', ')}</em>}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
+              <ul>{o.items.map((i, k) => <li key={k} className={i.course > 1 && !i.fired_at ? 'held' : ''}><b className="num">{i.qty}</b><span><button type="button" className="linkish" onClick={() => i.item_id && setCard(i.item_id)}>{i.name}</button>{i.course > 1 && !i.fired_at && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{i.mods?.length > 0 && <em>{i.mods.map((m) => m.name).join(', ')}</em>}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
+              <FireButton orderId={o.id} held={o.items.filter((i) => i.course > 1 && !i.fired_at).length} />
               <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>
             </article>
           );
@@ -83,6 +86,7 @@ export default function Kitchen() {
         </section>
       )}
       <TicketPrint orders={toPrint} unit={settings.unit_label} />
+      {card && <RecipeCard itemId={card} onClose={() => setCard(null)} />}
     </>
   );
 }

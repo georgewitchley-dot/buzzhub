@@ -28,6 +28,7 @@ import { registerReach } from './reach.js';
 import { registerPeople } from './people.js';
 import { registerExtras } from './extras.js';
 import { registerHouse } from './house.js';
+import { registerPlus } from './plus.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -563,6 +564,10 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     referral_enabled: z.union([z.literal('0'), z.literal('1')]),
     recovery_enabled: z.union([z.literal('0'), z.literal('1')]),
     screen_message: z.string().trim().max(120),
+    sales_goals: z.string().max(200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 7 && a.every((x) => Number.isInteger(Number(x)) && Number(x) >= 0); } catch { return false; } }, 'Goals must be a list of 7 amounts'),
+    table_long_minutes: z.coerce.number().int().min(0).max(600),
+    kitchen_slow_minutes: z.coerce.number().int().min(0).max(240),
+    price_watch_pct: z.coerce.number().int().min(1).max(100),
     prep_buffer_pct: z.coerce.number().int().min(0).max(100),
     referral_reward_cents: z.coerce.number().int().min(100).max(10000),
     referral_min_cents: z.coerce.number().int().min(0).max(100000),
@@ -1198,6 +1203,7 @@ registerReach({ app, staff, h: G });
 registerPeople({ app, staff, io, h: G });
 registerExtras({ app, staff, io, h: G });
 registerHouse({ app, staff, io, h: G });
+registerPlus({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
