@@ -85,7 +85,8 @@ export function payroll(from, to) {
     const before = weekHours.get(key) || 0; weekHours.set(key, before + hrs);
     if (d < from || d > to) continue;
     const ot = Math.max(0, before + hrs - otAt) - Math.max(0, before - otAt);
-    const p = people.get(r.user_id) || { userId: r.user_id, name: r.name, role: r.role, rateCents: r.hourly_cents, regular: 0, overtime: 0, shifts: 0, openShift: false, noBreak: 0 };
+    const p = people.get(r.user_id) || { userId: r.user_id, name: r.name, role: r.role, rateCents: r.hourly_cents, regular: 0, overtime: 0, shifts: 0, openShift: false, noBreak: 0, declared: 0 };
+    p.declared += r.declared_tips_cents || 0;
     p.regular += hrs - ot; p.overtime += ot; p.shifts += 1; if (!r.clock_out) p.openShift = true;
     if (hrs > (Number(s.break_after_hours) || 6) && !r.break_minutes) p.noBreak += 1;
     people.set(r.user_id, p);
@@ -95,7 +96,7 @@ export function payroll(from, to) {
   const out = [...people.values()].map((p) => {
     const reg = round(p.regular); const ot = round(p.overtime);
     const regPay = Math.round(reg * p.rateCents); const otPay = Math.round(ot * p.rateCents * 1.5);
-    return { ...p, regular: reg, overtime: ot, regularPayCents: regPay, overtimePayCents: otPay, tipsCents: tipMap[p.userId] || 0, grossCents: regPay + otPay + (tipMap[p.userId] || 0) };
+    return { ...p, declaredTipsCents: p.declared, regular: reg, overtime: ot, regularPayCents: regPay, overtimePayCents: otPay, tipsCents: tipMap[p.userId] || 0, grossCents: regPay + otPay + (tipMap[p.userId] || 0) };
   }).sort((a, b) => a.name.localeCompare(b.name));
   return { from, to, overtimeAfter: otAt, people: out, totals: out.reduce((t, p) => ({ hours: round(t.hours + p.regular + p.overtime), overtime: round(t.overtime + p.overtime), grossCents: t.grossCents + p.grossCents, tipsCents: t.tipsCents + p.tipsCents }), { hours: 0, overtime: 0, grossCents: 0, tipsCents: 0 }) };
 }
@@ -252,8 +253,8 @@ export function registerBack({ app, staff, h }) {
       return res.send(h.payrollFile(p, req.query.format));
     }
     if (req.query.format === 'csv') {
-      const head = ['Name', 'Role', 'Shifts', 'Regular hours', 'Overtime hours', 'Hourly rate', 'Regular pay', 'Overtime pay', 'Tips paid', 'Gross'];
-      const body = p.people.map((x) => [x.name, x.role, x.shifts, x.regular, x.overtime, (x.rateCents / 100).toFixed(2), (x.regularPayCents / 100).toFixed(2), (x.overtimePayCents / 100).toFixed(2), (x.tipsCents / 100).toFixed(2), (x.grossCents / 100).toFixed(2)]);
+      const head = ['Name', 'Role', 'Shifts', 'Regular hours', 'Overtime hours', 'Hourly rate', 'Regular pay', 'Overtime pay', 'Tips paid', 'Cash tips declared', 'Gross'];
+      const body = p.people.map((x) => [x.name, x.role, x.shifts, x.regular, x.overtime, (x.rateCents / 100).toFixed(2), (x.regularPayCents / 100).toFixed(2), (x.overtimePayCents / 100).toFixed(2), (x.tipsCents / 100).toFixed(2), (x.declaredTipsCents / 100).toFixed(2), (x.grossCents / 100).toFixed(2)]);
       audit(req.user, 'payroll.export', `${from}..${to}`, clientIp(req));
       res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="payroll-${from}-to-${to}.csv"`);
       return res.send([head, ...body].map((r) => r.map(csvCell).join(',')).join('\n'));

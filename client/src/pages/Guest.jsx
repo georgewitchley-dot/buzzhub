@@ -10,6 +10,7 @@ import {
   api, applyAccent, connectGuest, enablePush, isIOS, isStandalone, money, playBuzz, playChime, pushSupported,
   pushIsOn, registerSW, withLoc, setManifest, unlockAudio, useLenis,
 } from '../lib.js';
+import { Curbside } from './Pace.jsx';
 
 const ACTIVE = ['waiting', 'buzzed', 'acknowledged'];
 const ORDER_STATUS = { held: 'Waiting for your table', sent: 'Being made now', ready: 'Ready', open: 'Being made now', paid: 'Paid', void: 'Cancelled' };
@@ -246,6 +247,8 @@ export default function Guest() {
             )}
           </div>
         )}
+
+        {g.curbside && <Curbside token={token} c={g.curbside} />}
 
         {active && (
           <div className="card">

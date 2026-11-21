@@ -116,12 +116,12 @@ export function registerCrew({ app, staff, h }) {
     const split = (n) => { const parts = n.trim().split(/\s+/); return [parts[0], parts.slice(1).join(' ')]; };
     const money = (c) => (c / 100).toFixed(2);
     if (format === 'gusto') {
-      return csv([['first_name', 'last_name', 'employee_id', 'regular_hours', 'overtime_hours', 'paycheck_tips'],
-        ...p.people.map((x) => { const [f, l] = split(x.name); return [f, l, ids[x.userId], x.regular, x.overtime, money(x.tipsCents)]; })]);
+      return csv([['first_name', 'last_name', 'employee_id', 'regular_hours', 'overtime_hours', 'paycheck_tips', 'cash_tips'],
+        ...p.people.map((x) => { const [f, l] = split(x.name); return [f, l, ids[x.userId], x.regular, x.overtime, money(x.tipsCents), money(x.declaredTipsCents || 0)]; })]);
     }
     const co = getSettings().adp_company_code || ''; const batch = `BH${p.to.replace(/-/g, '')}`;
-    return csv([['Co Code', 'Batch ID', 'File #', 'Employee Name', 'Reg Hours', 'O/T Hours', 'Earnings 3 Code', 'Earnings 3 Amount'],
-      ...p.people.map((x) => [co, batch, ids[x.userId], x.name, x.regular, x.overtime, x.tipsCents ? 'T' : '', x.tipsCents ? money(x.tipsCents) : ''])]);
+    return csv([['Co Code', 'Batch ID', 'File #', 'Employee Name', 'Reg Hours', 'O/T Hours', 'Earnings 3 Code', 'Earnings 3 Amount', 'Earnings 4 Code', 'Earnings 4 Amount'],
+      ...p.people.map((x) => [co, batch, ids[x.userId], x.name, x.regular, x.overtime, x.tipsCents ? 'T' : '', x.tipsCents ? money(x.tipsCents) : '', x.declaredTipsCents ? 'CT' : '', x.declaredTipsCents ? money(x.declaredTipsCents) : ''])]);
   };
   staff.get('/payroll-ids', owner, (req, res) => res.json(db.prepare('SELECT id, name, payroll_id FROM users WHERE active = 1 ORDER BY name').all()));
 
@@ -238,7 +238,8 @@ export function registerCrew({ app, staff, h }) {
     return db.prepare('SELECT * FROM room_bookings WHERE id = ?').get(id);
   };
   staff.post('/rooms/bookings', mgr, (req, res) => { const b = parse(bookSchema, req.body); const bk = createBooking(b, 'staff'); db.prepare("UPDATE room_bookings SET status = 'confirmed' WHERE id = ?").run(bk.id); audit(req.user, 'room.book', `${bk.name} ${bk.date}`, clientIp(req)); notifyStaff('rooms'); res.json({ ok: true, token: bk.token }); });
-  staff.post('/rooms/bookings/:id/:what', mgr, (req, res) => {
+  staff.post('/rooms/bookings/:id/:what', mgr, (req, res, next) => {
+    if (req.params.what === 'fire') return next();
     const bk = db.prepare('SELECT * FROM room_bookings WHERE id = ?').get(Number(req.params.id)); if (!bk) throw err('Not found', 404);
     const w = req.params.what;
     if (w === 'confirm') { const c = clash(bk.room_id, bk.date, bk.start_time, bk.end_time, bk.id); if (c && c.id) { /* the clash is another request */ } db.prepare("UPDATE room_bookings SET status = 'confirmed' WHERE id = ?").run(bk.id); tellCustomer(bk, 'Your event is confirmed', `Hi ${bk.name.split(' ')[0]}, your booking on ${bk.date} from ${bk.start_time} to ${bk.end_time} is confirmed.${bk.deposit_cents > bk.deposit_paid_cents ? ` Please pay the ${fmt(bk.deposit_cents - bk.deposit_paid_cents)} deposit to hold it.` : ''}`); }

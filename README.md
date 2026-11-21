@@ -163,6 +163,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 14: a faster, safer kitchen
+- **Bump bars and keyboard keys** on area screens.
+- **Curbside "I'm here"** with car details on the packing screen.
+- **Allergy check** before an order can be completed.
+- **Kitchen speed report.**
+- **Talking tickets** (optional, per screen).
+- **Event menus** for private rooms, sent to the kitchen on time.
+- **Break planner.**
+- **Declared cash tips** in the payroll files.
+- **Opening and closing lists** on each area's screen.
+- **Ticket pacing** so every area finishes together.
+
 ## Round 13: every area gets a screen
 - **Kitchen area screens**: one tablet per area (grill, fryer, bar…), an expo screen that completes orders, and a packing screen for to-go.
 - **All-day counts** on every kitchen screen.

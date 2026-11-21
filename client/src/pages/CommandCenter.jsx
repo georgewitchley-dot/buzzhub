@@ -32,6 +32,7 @@ import { Equipment, LogBanner, LogBook, SupplierBills, TableCalls, TipOuts, Week
 import { Safe, StockCount } from './Smart.jsx';
 import { OnClockChip } from './Clock.jsx';
 import { Rooms, TableTurns, UseFirst } from './Crew.jsx';
+import { KitchenSpeed } from './Pace.jsx';
 import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
 
 const Ctx = createContext(null);
@@ -101,6 +102,7 @@ const NAV = [
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/supplier-bills', icon: 'bag', label: 'Supplier bills', min: 'owner' },
   { to: '/report', icon: 'chart', label: 'Weekly report', min: 'owner' },
+  { to: '/kitchen-speed', icon: 'flame', label: 'Kitchen speed', min: 'manager', when: (s) => s?.business_type !== 'service' },
   { to: '/table-turns', icon: 'floor', label: 'Table turns', min: 'manager', when: (s) => s?.business_type !== 'service' },
   { to: '/rooms', icon: 'calendar', label: 'Private rooms', min: 'manager' },
   { to: '/cash-flow', icon: 'chart', label: 'Cash flow', min: 'owner' },
@@ -186,7 +188,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('pay:claim', ({ text }) => { playChime(); toast(text, 'ok'); });
     s.on('chat:new', ({ name, body }) => { playChime(); toast(`${name}: ${body}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
-    s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
+    s.on('security', ({ type, ip, detail }) => { if (type === 'curbside') { toast(detail, 'ok'); playChime?.(); } else if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
     s.on('sync', ({ scope }) => { if (scope === 'guests') loadCount(); });
     setSocket(s);
@@ -270,6 +272,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="certificates" element={<Certificates />} />
                   <Route path="use-first" element={<UseFirst />} />
                   {can('manager') && <Route path="table-turns" element={<TableTurns />} />}
+                  {can('manager') && <Route path="kitchen-speed" element={<KitchenSpeed />} />}
                   {can('manager') && <Route path="rooms" element={<Rooms />} />}
                   <Route path="allergens-chart" element={<AllergenChart />} />
                   {can('owner') && <Route path="cash-flow" element={<CashFlow />} />}

@@ -185,6 +185,19 @@ Server: `server/src/kds.js`, `server/src/crew.js`. Client: `client/src/pages/Are
 - **Table turns** `/staff/table-turns`: guests seated→closed with spend, by size, section, day, hour, server; tables over 125% of typical.
 - **Private rooms**: `rooms`, `room_bookings`; public `/event-rooms` (`rooms_online`, `rooms_lead_days`), status page `/event-room/:token` (API `/api/v/:token`, added to `resolveSlug`), deposit via pay kind `room`; staff confirm/decline/check in (deposit becomes a one-time gift card)/done; spend toward the minimum counts orders on the room's tables in the time window; Floor banner.
 
+## 3n. Round 14 (2026-11-21)
+Server: `server/src/pace.js` plus additions to `kds.js`, `timeclock.js`, `house.js`, `back.js`, `crew.js`. Client: `client/src/pages/Pace.jsx`, `Areas.jsx`.
+- **Bump bars** (client only): on `/kds`, keys 1–9 select a ticket, arrows move, Enter/Space runs the ticket's main button, R/Backspace recalls the last finished, A toggles all-day. Most bump bars send these keys.
+- **Talking tickets** (client only, per screen `localStorage.bh_kds_speak`): `speechSynthesis` reads new tickets for that area, with allergies.
+- **Allergy check** (`kds_allergy_check`): `/api/kds/complete` needs `allergyConfirmed` when the order has an allergy (note or customer allergy tags); `/api/kds/bump` returns `needsAllergyCheck` instead of finishing; `orders.allergy_checked_by` + audit `allergy.check`. With `kds_expo='0'`, any area may call `/complete`.
+- **Ticket pacing** (`kds_pacing`): per item `startIn` = fire time + (longest cook on the ticket − this cook), from `menu_items.cook_minutes`.
+- **Area lists**: `checklist_templates.area`; `/api/kds` returns that area's lists; `POST /api/kds/list-check` ticks them (by the screen or the signed-in user).
+- **Curbside** (`curbside`, `curbside_prompt`): `orders.arrived_at`, `arrival_note`, `handed_at`; guest view `curbside`; `POST /api/g/:token/here`; staff `POST /staff/orders/:id/handed` and `/api/kds/handed` (closes the pickup buzzer); arrivals banner on packing/expo/all screens; socket `security` type `curbside` toasts staff.
+- **Kitchen speed** `/staff/kitchen-speed?days=`: sent→ready by hour, day, channel; area and dish times from `order_items.done_at − COALESCE(fired_at, sent_at)`; slowest tickets.
+- **Event menus**: `room_bookings.menu` (JSON lines), `fire_time`, `fired_order_id`; `PUT /staff/rooms/bookings/:id/menu`, `POST .../fire` (creates an order, source `event`, on the room's first table); a minute job fires at `fire_time`; `h.eventsToday` feeds a banner on area screens.
+- **Break planner** `/staff/break-plan`: on-clock staff without a break, earliest 2 h in, due by `break_after_hours`; picks the quietest 15-minute slots from the same-weekday 8-week sales curve, at most a quarter of the team at once; `break_minutes_planned`.
+- **Declared tips** (`declare_tips`): `shifts.declared_tips_cents`, asked at time-clock and phone clock-out (`tipsCents`); `PUT /staff/shifts/:id/declared-tips`; payroll CSV "Cash tips declared", Gusto `cash_tips`, ADP Earnings 4 `CT`.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

@@ -5,6 +5,7 @@ import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { ScheduledList } from './More.jsx';
 import { PayModal } from './Register.jsx';
+import { HereChip } from './Pace.jsx';
 
 const LABEL = { held: 'Waiting',  open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
 
@@ -61,6 +62,7 @@ export default function Orders() {
               {o.source === 'guest' && <span className="chip blue">Ordered ahead</span>}
               {o.source === 'online' && <span className="chip amber">Online {o.fulfillment}</span>}
               {o.source === 'table' && <span className="chip blue">Table QR</span>}
+              <HereChip o={o} />
               {o.prepaid ? <span className="chip teal">Paid {o.payment_method}</span> : null}
               <span className="dim" style={{ fontSize: 13 }}>{scope === 'open' ? `${minutesSince(o.created_at)} min ago` : timeOf(o.paid_at || o.created_at)}{o.staff_name ? `, by ${o.staff_name}` : ''}</span>
             </div>

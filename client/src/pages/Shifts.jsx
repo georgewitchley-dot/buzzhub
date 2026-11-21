@@ -7,6 +7,7 @@ import { TeamRequests } from './People.jsx';
 import { AutoSchedule } from './Smart.jsx';
 import { WhosOn } from './Clock.jsx';
 import { HandoffNotes, PunchPhotos } from './Crew.jsx';
+import { BreakPlanner } from './Pace.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -74,6 +75,7 @@ export default function Shifts() {
         </div>
       </PageHead>
       <WhosOn />
+      <BreakPlanner />
       <HandoffNotes />
       <PunchPhotos />
 

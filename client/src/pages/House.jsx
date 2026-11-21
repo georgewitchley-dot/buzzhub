@@ -77,15 +77,17 @@ export function GrowPanel({ f, setF }) {
 
 /* ================= Checklists and temperature logs ================= */
 function TemplateModal({ tpl, onClose }) {
-  const toast = useToast();
-  const [f, setF] = useState(tpl ? { name: tpl.name, kind: tpl.kind, dow: tpl.dow ?? 1, dueTime: tpl.due_time || '', items: tpl.items.map((i) => i.text).join('\n') } : { name: '', kind: 'open', dow: 1, dueTime: '', items: '' });
-  const save = async (active) => { try { await api(tpl ? `/staff/checklist-templates/${tpl.id}` : '/staff/checklist-templates', { method: tpl ? 'PUT' : 'POST', body: { name: f.name, kind: f.kind, dow: Number(f.dow), dueTime: f.dueTime, items: f.items.split('\n').map((t) => t.trim()).filter(Boolean).map((t) => ({ text: t, needsValue: /temperature|temp\b/i.test(t) })), ...(active !== undefined ? { active } : {}) } }); onClose(); } catch (e) { toast(e.message, 'err'); } };
+  const toast = useToast(); const { settings } = useCC();
+  const areas = (() => { try { return [...JSON.parse(settings.kitchen_stations || '[]'), 'Expo', 'Packing', 'All areas']; } catch { return []; } })();
+  const [f, setF] = useState(tpl ? { name: tpl.name, kind: tpl.kind, dow: tpl.dow ?? 1, dueTime: tpl.due_time || '', items: tpl.items.map((i) => i.text).join('\n'), area: tpl.area || '' } : { name: '', kind: 'open', dow: 1, dueTime: '', items: '', area: '' });
+  const save = async (active) => { try { await api(tpl ? `/staff/checklist-templates/${tpl.id}` : '/staff/checklist-templates', { method: tpl ? 'PUT' : 'POST', body: { name: f.name, kind: f.kind, dow: Number(f.dow), dueTime: f.dueTime, area: f.area || null, items: f.items.split('\n').map((t) => t.trim()).filter(Boolean).map((t) => ({ text: t, needsValue: /temperature|temp\b/i.test(t) })), ...(active !== undefined ? { active } : {}) } }); onClose(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <Modal title={tpl ? `Edit ${tpl.name}` : 'New checklist'} onClose={onClose} width={520}>
       <label className="field"><span>Name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={60} /></label>
       <div className="row"><label className="field grow"><span>When</span><select className="input" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="open">Opening</option><option value="close">Closing</option><option value="daily">Every day</option><option value="weekly">Once a week</option></select></label>
         {f.kind === 'weekly' && <label className="field grow"><span>Day</span><select className="input" value={f.dow} onChange={(e) => setF({ ...f, dow: e.target.value })}>{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => <option key={d} value={i}>{d}</option>)}</select></label>}
         <label className="field grow"><span>Due by (managers get an alert)</span><input className="input" type="time" value={f.dueTime} onChange={(e) => setF({ ...f, dueTime: e.target.value })} /></label></div>
+      <label className="field"><span>Show on a kitchen area screen (optional)</span><select className="input" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value })}><option value="">No, only on the Checklists page</option>{areas.map((a) => <option key={a}>{a}</option>)}</select></label>
       <label className="field"><span>Tasks, one per line</span><textarea className="input" rows={8} value={f.items} onChange={(e) => setF({ ...f, items: e.target.value })} /></label>
       <button className="btn primary lg block" disabled={!f.name || !f.items.trim()} onClick={() => save()}>Save</button>
       {tpl && <button className="btn ghost block" onClick={() => save(!tpl.active)}>{tpl.active ? 'Turn off this checklist' : 'Turn it back on'}</button>}

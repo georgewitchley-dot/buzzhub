@@ -20,7 +20,8 @@ export function TimeClockScreen() {
   const [now, setNow] = useState(new Date());
   const resetRef = useRef(null);
   const [mgr, setMgr] = useState(null); // { message, pin } while a manager approves overtime
-  const [note, setNote] = useState(null); // text of a handoff note after clocking out
+  const [note, setNote] = useState(null);
+  const [tips, setTips] = useState(null); // cash tips typed before clocking out // text of a handoff note after clocking out
   const lastPin = useRef('');
   const cam = useRef(null); const stream = useRef(null);
   useEffect(() => {
@@ -36,7 +37,7 @@ export function TimeClockScreen() {
   const hdr = () => ({ 'X-Clock': localStorage.getItem('bh_clock') || '' });
   const load = () => api('/clock', { headers: hdr() }).then((x) => { setD(x); setErr(''); applyAccent(x.business.accent); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); const a = setInterval(load, 20000); const b = setInterval(() => setNow(new Date()), 1000); navigator.wakeLock?.request('screen').catch(() => {}); return () => { clearInterval(a); clearInterval(b); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const reset = (ms = 0) => { clearTimeout(resetRef.current); resetRef.current = setTimeout(() => { setPin(''); setWho(null); setDone(null); setErr(''); setMgr(null); setNote(null); lastPin.current = ''; }, ms); };
+  const reset = (ms = 0) => { clearTimeout(resetRef.current); resetRef.current = setTimeout(() => { setPin(''); setWho(null); setDone(null); setErr(''); setMgr(null); setNote(null); setTips(null); lastPin.current = ''; }, ms); };
   const send = async (action = 'check', p = pin, extra = {}) => {
     if (busy) return; setBusy(true); setErr('');
     try {
@@ -56,7 +57,7 @@ export function TimeClockScreen() {
     if (who || done) return; if (k === 'del') setPin((x) => x.slice(0, -1)); else if (k === 'ok') { if (pin.length >= 4) send('check'); } else if (pin.length < 8) setPin((x) => x + k);
   };
   useEffect(() => {
-    const onKey = (e) => { if (note !== null) return; if (/^\d$/.test(e.key)) key(e.key); else if (e.key === 'Backspace') key('del'); else if (e.key === 'Enter') key('ok'); else if (e.key === 'Escape') reset(); };
+    const onKey = (e) => { if (note !== null || tips !== null) return; if (/^\d$/.test(e.key)) key(e.key); else if (e.key === 'Backspace') key('del'); else if (e.key === 'Enter') key('ok'); else if (e.key === 'Escape') reset(); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   });
   if (err && !d) return <div className="lobby"><div className="lobby-msg"><h1>{err}</h1><a className="btn" href="/">Open the command center</a></div></div>;
@@ -94,7 +95,10 @@ export function TimeClockScreen() {
               <b>Hi, {who.firstName}</b>
               <span>{who.card.clockedIn ? (who.card.onBreak ? `On break. Clocked in since ${at(who.card.since)}.` : `Clocked in since ${at(who.card.since)}.`) : who.card.scheduledToday.length ? `Your shift today: ${who.card.scheduledToday.map((x) => `${t12(x.start)}–${t12(x.end)}`).join(', ')}` : 'Not on the schedule today.'}</span>
               {who.otWarn && <span className="warn">{who.otWarn}</span>}
-              <div className="tclock-actions">{who.choices.map((c) => <button key={c} className={`btn lg ${c === 'in' || c === 'out' ? 'primary' : ''}`} disabled={busy} onClick={() => send(c, pin)}>{label[c]}</button>)}</div>
+              {tips !== null ? (
+                <div className="stack"><span>Cash tips this shift</span><input className="input" style={{ fontSize: '3vh', height: '7vh', textAlign: 'center' }} inputMode="decimal" autoFocus value={tips} onChange={(e) => setTips(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" aria-label="Cash tips" />
+                  <button className="btn primary lg block" disabled={busy} onClick={() => { const c = Math.round(Number(tips || 0) * 100); setTips(null); send('out', pin, { tipsCents: c }); }}>Clock out</button></div>
+              ) : <div className="tclock-actions">{who.choices.map((c) => <button key={c} className={`btn lg ${c === 'in' || c === 'out' ? 'primary' : ''}`} disabled={busy} onClick={() => (c === 'out' && d.declareTips ? (setTips(''), reset(60000)) : send(c, pin))}>{label[c]}</button>)}</div>}
               <TimeCardSummary card={card} />
               <button className="btn ghost block" onClick={() => reset()}>Cancel</button>
             </div>
@@ -169,7 +173,7 @@ export function MyTimeCard() {
   const [c, reload] = useLive(['shifts'], () => api('/staff/me/timecard'));
   if (!c) return null;
   const where = () => new Promise((ok) => { if (settings.punch_geofence !== '1' || !navigator.geolocation) return ok({}); navigator.geolocation.getCurrentPosition((p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => ok({}), { enableHighAccuracy: true, timeout: 10000 }); });
-  const punch = async (action) => { try { const r = await api('/staff/me/punch', { method: 'POST', body: { action, ...(await where()) } }); if (r.notes?.length) toast(`Note from ${r.notes[0].name.split(' ')[0]}: ${r.notes[0].body}`, 'ok'); reload(); } catch (e) { toast(e.message, 'err'); } };
+  const punch = async (action) => { let tipsCents; if (action === 'out' && settings.declare_tips === '1') { const v = prompt('Cash tips this shift (0 if none)', ''); if (v === null) return; tipsCents = Math.round(Number(String(v).replace(/[^\d.]/g, '') || 0) * 100); } try { const r = await api('/staff/me/punch', { method: 'POST', body: { action, ...(tipsCents !== undefined ? { tipsCents } : {}), ...(await where()) } }); if (r.notes?.length) toast(`Note from ${r.notes[0].name.split(' ')[0]}: ${r.notes[0].body}`, 'ok'); reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <section className="panel" style={{ marginBottom: 18 }}>
       <div className="panel-h"><h3 className="grow">My time card</h3>{c.clockedIn ? <span className={`chip ${c.onBreak ? 'amber' : 'teal'}`}>{c.onBreak ? 'On break' : `Clocked in at ${at(c.since)}`}</span> : <span className="chip">Clocked out</span>}</div>

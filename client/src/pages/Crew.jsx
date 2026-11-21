@@ -4,6 +4,7 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money } from '../lib.js';
 import { Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { EventMenu } from './Pace.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 const at = (sql) => new Date(`${sql.replace(' ', 'T')}Z`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -160,6 +161,7 @@ export function Rooms() {
             <td>{status[b.status]}<div className="dim" style={{ fontSize: 12 }}>Deposit {money(b.deposit_paid_cents, cur)} of {money(b.deposit_cents, cur)}</div>{short !== null && <div style={{ fontSize: 12.5 }} className={short ? 'rose-text' : ''}>Spent {money(b.spendCents, cur)}{short ? `, ${money(short, cur)} to reach the minimum` : ', minimum reached'}</div>}</td>
             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
               {b.status === 'requested' && <><button className="btn sm primary" onClick={() => act(b, 'confirm')}>Confirm</button><button className="btn sm ghost" onClick={() => act(b, 'decline')}>Decline</button></>}
+              {['requested', 'confirmed'].includes(b.status) && <EventMenu b={b} onSaved={reload} />}
               {b.status === 'confirmed' && <>{b.deposit_paid_cents < b.deposit_cents && <button className="btn sm ghost" onClick={() => { const v = prompt('Deposit taken in person (amount)'); if (dollars(v)) act(b, 'paid', { cents: dollars(v) }); }}>Took deposit</button>}{b.deposit_paid_cents > 0 && !b.credit_code && <button className="btn sm" onClick={() => act(b, 'checkin')}>Check in</button>}{b.credit_code && <span className="chip teal">Credit {b.credit_code}</span>}<button className="btn sm ghost" onClick={() => act(b, 'done')}>Done</button><button className="btn sm ghost" onClick={() => confirm(`Cancel ${b.name}'s event?`) && act(b, 'cancel')}>Cancel</button></>}
             </td></tr>);
         })}</tbody></table>

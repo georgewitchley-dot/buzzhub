@@ -57,7 +57,7 @@ function checklistsFor(day) {
     const items = parseJ(t.items, []); const run = db.prepare('SELECT r.*, u.name by_name FROM checklist_runs r LEFT JOIN users u ON u.id = r.completed_by WHERE r.template_id = ? AND r.day = ?').get(t.id, day);
     const done = parseJ(run?.done, {});
     const count = items.filter((_, i) => done[i]).length;
-    return { id: t.id, name: t.name, kind: t.kind, dueTime: t.due_time, items: items.map((it, i) => ({ text: it.text, needsValue: Boolean(it.needsValue), done: done[i] || null })), count, total: items.length, completedAt: run?.completed_at || null, completedBy: run?.by_name || null,
+    return { id: t.id, name: t.name, kind: t.kind, area: t.area || null, dueTime: t.due_time, items: items.map((it, i) => ({ text: it.text, needsValue: Boolean(it.needsValue), done: done[i] || null })), count, total: items.length, completedAt: run?.completed_at || null, completedBy: run?.by_name || null,
       overdue: !run?.completed_at && t.due_time && day === localToday() && nowLocalHM() > t.due_time };
   });
 }
@@ -128,9 +128,9 @@ export function registerHouse({ app, staff, io, h }) {
     if (complete && !run.completed_at) audit(req.user, 'checklist.done', `${t.name} ${day}`, clientIp(req));
     notifyStaff('checklists'); res.json({ ok: true, complete });
   });
-  const tplSchema = z.object({ name: z.string().trim().min(1).max(60), kind: z.enum(['open', 'close', 'daily', 'weekly']), dow: z.number().int().min(0).max(6).nullable().optional(), dueTime: z.string().regex(/^(\d{2}:\d{2})?$/).optional(), items: z.array(z.object({ text: z.string().trim().min(1).max(120), needsValue: z.boolean().optional() })).min(1).max(60), active: z.boolean().optional() });
-  staff.post('/checklist-templates', mgr, (req, res) => { const b = parse(tplSchema, req.body); const id = db.prepare('INSERT INTO checklist_templates (name, kind, dow, due_time, items) VALUES (?,?,?,?,?)').run(b.name, b.kind, b.kind === 'weekly' ? b.dow ?? 1 : null, b.dueTime || null, JSON.stringify(b.items)).lastInsertRowid; audit(req.user, 'checklist.create', b.name, clientIp(req)); notifyStaff('checklists'); res.json({ id }); });
-  staff.put('/checklist-templates/:id', mgr, (req, res) => { const b = parse(tplSchema, req.body); db.prepare('UPDATE checklist_templates SET name=?, kind=?, dow=?, due_time=?, items=?, active=COALESCE(?, active) WHERE id=?').run(b.name, b.kind, b.kind === 'weekly' ? b.dow ?? 1 : null, b.dueTime || null, JSON.stringify(b.items), b.active === undefined ? null : b.active ? 1 : 0, idParam(req)); notifyStaff('checklists'); res.json({ ok: true }); });
+  const tplSchema = z.object({ name: z.string().trim().min(1).max(60), kind: z.enum(['open', 'close', 'daily', 'weekly']), dow: z.number().int().min(0).max(6).nullable().optional(), dueTime: z.string().regex(/^(\d{2}:\d{2})?$/).optional(), items: z.array(z.object({ text: z.string().trim().min(1).max(120), needsValue: z.boolean().optional() })).min(1).max(60), active: z.boolean().optional(), area: z.string().trim().max(24).nullable().optional() });
+  staff.post('/checklist-templates', mgr, (req, res) => { const b = parse(tplSchema, req.body); const id = db.prepare('INSERT INTO checklist_templates (name, kind, dow, due_time, items, area) VALUES (?,?,?,?,?,?)').run(b.name, b.kind, b.kind === 'weekly' ? b.dow ?? 1 : null, b.dueTime || null, JSON.stringify(b.items), b.area || null).lastInsertRowid; audit(req.user, 'checklist.create', b.name, clientIp(req)); notifyStaff('checklists'); res.json({ id }); });
+  staff.put('/checklist-templates/:id', mgr, (req, res) => { const b = parse(tplSchema, req.body); db.prepare('UPDATE checklist_templates SET name=?, kind=?, dow=?, due_time=?, items=?, active=COALESCE(?, active), area=? WHERE id=?').run(b.name, b.kind, b.kind === 'weekly' ? b.dow ?? 1 : null, b.dueTime || null, JSON.stringify(b.items), b.active === undefined ? null : b.active ? 1 : 0, b.area || null, idParam(req)); notifyStaff('checklists'); res.json({ ok: true }); });
   staff.post('/checklist-templates/starter', mgr, (req, res) => {
     if (db.prepare('SELECT 1 FROM checklist_templates').get()) throw err('You already have checklists', 409);
     const type = getSettings().business_type; const food = ['restaurant', 'cafe', 'bar', 'food_truck'].includes(type) || type !== 'salon' && type !== 'clinic' && type !== 'service';
