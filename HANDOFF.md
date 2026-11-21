@@ -5,7 +5,7 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
-## 2. Current status (2026-11-21, round 10 deployed)
+## 2. Current status (2026-11-21, round 11 deployed)
 | Item | Status |
 |---|---|
 | App code (server + client) | ✅ Done, builds cleanly, end-to-end browser test passed |
@@ -142,6 +142,19 @@ Server: `server/src/owner.js`. Client: `client/src/pages/Owner.jsx`; dictionarie
 - **Weekly report**: `weeklyReport(monday)`; Monday job at `weekly_report_hour` emails `report_email` (comma list) and pushes owners. `/report` page.
 - **Languages**: setting `languages` (JSON, must include en); `/api/public/langs`; LangSwitch becomes a select with 3+; menu item `i18n` supports es/fr/zh/vi.
 - **Supplier bills**: `supplier_bills`, `bill_payments` (partial payments, cash ones leave the drawer), `suppliers.terms_days`, photo/PDF in `assets` key `bill:<id>`; aging buckets, unbilled received POs, CSV, due-in-3-days owner alert. Route prefix is `/staff/supplier-bills` (`/staff/bills` is split checks).
+
+## 3k. Round 11 (2026-11-21)
+Server: `server/src/smart.js`. Client: `client/src/pages/Smart.jsx`.
+- **Pay by bank**: Stripe Checkout with `payment_method_types[0]=us_bank_account` via `POST /api/pay/:token/bank`, offered by `h.bankOption` only for kinds invoice/ticket/deposit at or above `pay_bank_min_cents` when `pay_bank_enabled='1'` and Stripe is connected. Returning sessions that are complete but unpaid set `payments.bank_status='processing'`; the Stripe webhook now handles `checkout.session.async_payment_succeeded` (completes) and `..._failed` (`h.bankFailed`, alerts). Square ACH is not wired (Square only offers it on its own invoices/links).
+- **Dish photos**: reuses the recipe-card photo (`assets` `item:<id>`), public `/api/public/item-photo/:id` when `menu_photos='1'` and `menu_items.show_photo=1`; a menu hook adds `photo`.
+- **Online catering**: `catering_packages`; public `/catering-order` → `POST /api/public/catering` creates an invoice (`source='online'`, status sent, deposit `catering_deposit_pct`) and returns the `/i/:token` link. Lead time `catering_lead_hours`.
+- **Auto schedule**: `proposeSchedule(weekStart)` layers shifts from 8-week same-weekday sales ÷ `staff_sales_per_hour_cents`, assigns staff by availability, time off and weekly hours (≤ `ot_weekly_hours`); `POST /staff/schedule/auto` inserts the kept shifts.
+- **Barcode counts**: `ingredients.barcode`; `/count` uses `BarcodeDetector` (camera) or keyboard-wedge scanners; unknown codes can be linked to an ingredient.
+- **Cook timers**: `menu_items.cook_minutes` (set on the recipe card); kitchen tickets show "start in N min" so items finish together.
+- **Supplier prices**: `ingredient_prices` (learned from received POs and typed quotes); `/staff/price-compare` with monthly savings and one-tap switch.
+- **Bills in accounting**: `apJournal()` adds bill (Dr expense / Cr AP) and payment (Dr AP / Cr bank or cash) journals to the QuickBooks and Xero exports when `bills=1`. Account names come from `acct_map` (keys ap, bank, cash, food, drinks, supplies, equipment, rent, utilities, services, other).
+- **Review themes**: keyword groups over feedback comments (praise 4–5★, complaints 1–2★) on the Feedback page.
+- **Safe log (optional, `safe_log_enabled='0'` by default)**: `safe_log` counts/drops/bank runs/adjustments; `safe_two_person` requires a different user's PIN (rate-limited with the login lockout); drops also leave the open cash drawer; owner alert when a count is off by $1+.
 
 ## 4. Architecture
 ```

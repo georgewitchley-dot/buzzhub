@@ -151,6 +151,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **More languages**: French, Chinese and Vietnamese on customer pages.
 - **Supplier bills**: what you owe, when it's due, partial payments, aging and CSV.
 
+## Round 11: money in, money out
+- **Pay by bank**: big invoices, catering, deposits and tickets paid from the customer's bank (Stripe ACH).
+- **Dish photos** on customer menus.
+- **Online catering orders** with lead time and deposit.
+- **Auto-built schedules** from the forecast and availability.
+- **Barcode stock counts** with a phone camera or scanner.
+- **Cook timers** on kitchen tickets.
+- **Supplier price comparison** with savings and one-tap switch.
+- **Supplier bills in the QuickBooks/Xero export.**
+- **Review themes**: what guests praise and complain about.
+- **Safe log (optional)** with two-person counts.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
