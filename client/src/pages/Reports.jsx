@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { api, money } from '../lib.js';
 import { Icon } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { AccountingExport } from './Reach.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const nice = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 
 export default function Reports() {
-  const { settings } = useCC();
+  const { settings, can } = useCC();
   const cur = settings.currency;
   const [date, setDate] = useState('');
   const [r] = useLive(['orders', 'cash', 'shifts'], () => api(`/staff/reports/day${date ? `?date=${date}` : ''}`), [date]);
@@ -78,6 +79,7 @@ export default function Reports() {
           </section>
         </div>
       </div>
+      {can('owner') && <div className="no-print"><AccountingExport /></div>}
     </div>
   );
 }

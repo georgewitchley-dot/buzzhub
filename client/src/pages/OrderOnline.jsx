@@ -4,12 +4,14 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
+import { LangSwitch, getLang, useLang } from '../i18n.jsx';
 
-function Shell({ biz, children }) {
+function Shell({ biz, children, lang, setLang }) {
   return (
     <div className="guest">
       <div className="guest-bg"><Aurora colorStops={[biz.accent, '#2a1f55', biz.accent]} amplitude={0.5} speed={0.3} mouseInteraction={false} /></div>
       <main className="guest-in" style={{ alignContent: 'start', textAlign: 'left', justifyItems: 'stretch' }}>
+        {setLang && <div style={{ justifySelf: 'end' }}><LangSwitch lang={lang} setLang={setLang} /></div>}
         <div style={{ justifySelf: 'center' }}>{biz.logo ? <img className="guest-logo" src={biz.logo} alt={biz.name} /> : <Puck state="buzzed" size={44} />}</div>
         {children}
       </main>
@@ -20,6 +22,8 @@ function Shell({ biz, children }) {
 /* ---------- online ordering for pickup or delivery ---------- */
 export function OrderOnline() {
   const nav = useNavigate();
+  const { lang, setLang, t } = useLang();
+  const viewOnly = new URLSearchParams(location.search).get('view') === 'menu';
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const cart = useCart();
@@ -37,7 +41,7 @@ export function OrderOnline() {
   }, [promo, cart.subtotal]);
   if (err && !d) return <div className="guest"><main className="guest-in"><h1>Ordering unavailable</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
-  if (!d.enabled) return <Shell biz={d.business}><h1 style={{ textAlign: 'center' }}>Online ordering is closed</h1><p style={{ textAlign: 'center', margin: '0 auto' }}>Please call or visit {d.business.name}.</p></Shell>;
+  if (viewOnly || !d.enabled) return <Shell biz={d.business} lang={lang} setLang={setLang}><h1 style={{ textAlign: 'center' }}>{viewOnly ? t('Our menu') : t('Online ordering is closed')}</h1>{!viewOnly && <p style={{ textAlign: 'center', margin: '0 auto' }}>{t('Please call or visit {name}.', { name: d.business.name })}</p>}<div className="card"><GuestMenu items={d.items} currency={d.currency} lang={lang} viewOnly onAdd={() => {}} /></div>{viewOnly && d.enabled && <a className="btn primary lg block" href={withLoc('/order')}>{t('Start an order')}</a>}</Shell>;
   const fee = f.fulfillment === 'delivery' ? d.deliveryFeeCents : 0;
   const off = promoRes?.ok ? promoRes.cents : 0;
   const tax = Math.round((cart.subtotal - off) * d.taxRate / 100);
@@ -53,16 +57,16 @@ export function OrderOnline() {
   };
 
   return (
-    <Shell biz={d.business}>
-      <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>Order from {d.business.name}</h1><p style={{ margin: '0 auto' }}>{d.pickup ? `Pickup in about ${d.readyInMinutes} minutes` : ''}{d.pickup && d.delivery ? ' or ' : ''}{d.delivery ? `delivery${d.deliveryFeeCents ? ` for ${money(d.deliveryFeeCents, d.currency)}` : ''}` : ''}.{d.delivery && d.deliveryArea ? ` We deliver to ${d.deliveryArea}.` : ''}</p></div>
+    <Shell biz={d.business} lang={lang} setLang={setLang}>
+      <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{t('Order from {name}', { name: d.business.name })}</h1><p style={{ margin: '0 auto' }}>{d.pickup ? `Pickup in about ${d.readyInMinutes} minutes` : ''}{d.pickup && d.delivery ? ' or ' : ''}{d.delivery ? `delivery${d.deliveryFeeCents ? ` for ${money(d.deliveryFeeCents, d.currency)}` : ''}` : ''}.{d.delivery && d.deliveryArea ? ` We deliver to ${d.deliveryArea}.` : ''}</p></div>
       {step === 'menu' ? (
         <>
-          <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} /></div>
-          {cart.count > 0 && <div className="sticky-cta"><button className="btn primary lg block" onClick={() => setStep('checkout')}>Review order: {cart.count} item{cart.count === 1 ? '' : 's'}, {money(cart.subtotal, d.currency)}</button></div>}
+          <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} /></div>
+          {cart.count > 0 && <div className="sticky-cta"><button className="btn primary lg block" onClick={() => setStep('checkout')}>{t('Review order: {n} items, {total}', { n: cart.count, total: money(cart.subtotal, d.currency) })}</button></div>}
         </>
       ) : (
         <>
-          <div className="card"><div className="row"><b className="grow">Your order</b><button className="btn ghost sm" onClick={() => setStep('menu')}>Add more</button></div><CartLines cart={cart} currency={d.currency} /></div>
+          <div className="card"><div className="row"><b className="grow">{t('Your order')}</b><button className="btn ghost sm" onClick={() => setStep('menu')}>{t('Add more')}</button></div><CartLines cart={cart} currency={d.currency} /></div>
           <div className="card">
             {d.pickup && d.delivery && <div className="seg" style={{ width: '100%' }}>{['pickup', 'delivery'].map((x) => <button key={x} aria-pressed={f.fulfillment === x} onClick={() => setF({ ...f, fulfillment: x })} style={{ flex: 1, textTransform: 'capitalize' }}>{x}</button>)}</div>}
             <label className="field"><span>Your name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={40} autoComplete="name" /></label>
@@ -119,7 +123,7 @@ export function TableOrder() {
       <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{d.business.unitLabel} {d.table}</h1><p style={{ margin: '0 auto' }}>{d.tableOrdering ? 'Order from your phone. It goes straight to the kitchen.' : 'Your server will take your order.'}</p></div>
       {msg && <div className="card banner" role="status">{msg}</div>}
       {d.rounds.length > 0 && <div className="card"><b>On its way</b>{d.rounds.map((r) => <div key={r.number} className="row muted" style={{ fontSize: 14 }}><span className="grow">Order #{r.number}</span><span>{{ sent: 'Being made', open: 'Being made', ready: 'Ready', held: 'Waiting' }[r.status]}</span></div>)}</div>}
-      {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} /></div>}
+      {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={getLang()} /></div>}
       {cart.count > 0 && (
         <div className="card">
           <b>Your order</b><CartLines cart={cart} currency={d.currency} />

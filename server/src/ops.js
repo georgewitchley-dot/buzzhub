@@ -50,7 +50,8 @@ export function registerOps({ app, staff, io, h }) {
 
   /* ================= Kitchen display ================= */
   staff.get('/kitchen', (req, res) => {
-    const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, t.label table_label, g.name guest_name
+    const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, o.allergy_note, t.label table_label, g.name guest_name,
+        (SELECT c.tags FROM customers c WHERE c.id = COALESCE(o.customer_id, g.customer_id)) customer_tags
       FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
       WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-10 minutes'))
       ORDER BY CASE WHEN o.status IN ('open','sent') THEN 0 ELSE 1 END, COALESCE(o.sent_at, o.created_at)`).all();
@@ -226,7 +227,8 @@ export function registerOps({ app, staff, io, h }) {
     if (!db.prepare('SELECT 1 FROM users WHERE id=? AND active=1').get(b.userId)) return res.status(404).json({ error: 'Unknown team member' });
     db.prepare('INSERT INTO schedule (user_id, start_local, end_local, role_note) VALUES (?, ?, ?, ?)').run(b.userId, `${b.date} ${b.start}`, `${b.date} ${b.end}`, b.note || null);
     audit(req.user, 'schedule.add', `${b.date} ${b.start}-${b.end}`, clientIp(req));
-    notifyStaff('shifts'); res.json({ ok: true });
+    const warnings = h.shiftConflicts ? h.shiftConflicts(b.userId, b.date, b.start, b.end) : [];
+    notifyStaff('shifts'); res.json({ ok: true, warnings });
   });
   staff.delete('/schedule/:id', requireAuth('manager'), (req, res) => {
     db.prepare('DELETE FROM schedule WHERE id=?').run(idParam(req));

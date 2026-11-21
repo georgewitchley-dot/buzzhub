@@ -23,6 +23,8 @@ import { GiftCards, Inventory } from './Commerce.jsx';
 import { Marketing, Tips } from './Team.jsx';
 import { Insights, Payroll, Purchasing } from './Back.jsx';
 import { Deliveries, PaymentClaims } from './Field.jsx';
+import { Catering, Memberships } from './Club.jsx';
+import { Chats, MyShifts, Performance, useUnreadChats } from './People.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -50,6 +52,7 @@ const NAV = [
   { to: '/insights', icon: 'chart', label: 'Insights', min: 'manager' },
   { to: '/locations', icon: 'pin', label: 'All locations', min: 'manager' },
   { to: '/waitlist', icon: 'list', label: 'Waitlist', count: true },
+  { to: '/chats', icon: 'bell', label: 'Messages', chat: true, when: (s) => s?.chat_enabled === '1' },
   { to: '/bookings', icon: 'calendar', label: 'Bookings', when: (s) => s?.booking_enabled === '1' },
   { to: '/floor', icon: 'floor', label: 'Floor', when: (s) => s?.business_type !== 'service' },
   { to: '/register', icon: 'register', label: 'Register' },
@@ -58,6 +61,8 @@ const NAV = [
   { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
+  { to: '/my-shifts', icon: 'calendar', label: 'My shifts' },
+  { to: '/performance', icon: 'star', label: 'Team performance', min: 'manager' },
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/feedback', icon: 'star', label: 'Feedback', min: 'manager', when: (s) => s?.feedback_enabled === '1' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
@@ -65,6 +70,8 @@ const NAV = [
   { to: '/purchasing', icon: 'bag', label: 'Purchasing', min: 'manager' },
   { to: '/giftcards', icon: 'gift', label: 'Gift cards', min: 'manager' },
   { to: '/marketing', icon: 'bell', label: 'Marketing', min: 'manager' },
+  { to: '/memberships', icon: 'star', label: 'Memberships', min: 'manager' },
+  { to: '/catering', icon: 'calendar', label: 'Catering', min: 'manager' },
   { to: '/tips', icon: 'cash', label: 'Tips', min: 'manager' },
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
@@ -145,6 +152,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('paid:phone', ({ number, totalCents }) => { playChime(); toast(`Order #${number} paid by phone, ${money(totalCents, settings?.currency || 'USD')}`, 'ok'); });
     s.on('online:new', ({ number, name, fulfillment, kind }) => { playChime(); toast(kind === 'kiosk' ? `New kiosk order #${number}` : fulfillment === 'paid' ? 'An online order was paid' : `New ${fulfillment === 'table' ? 'table' : fulfillment} order${number ? ` #${number}` : ''} from ${name}`, 'ok'); });
     s.on('pay:claim', ({ text }) => { playChime(); toast(text, 'ok'); });
+    s.on('chat:new', ({ name, body }) => { playChime(); toast(`${name}: ${body}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
     s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
@@ -164,6 +172,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     return () => { evts.forEach((e) => window.removeEventListener(e, bump)); clearInterval(t); };
   }, [idleMin, onLock]);
 
+  const unread = useUnreadChats(socket);
   const nav = NAV.filter((n) => (!n.min || RANK[user.role] >= RANK[n.min]) && (!n.when || n.when(settings)));
   const can = (min) => RANK[user.role] >= RANK[min];
 
@@ -179,7 +188,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
           )}
           <nav className="nav">
             {nav.map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end}><Icon name={n.icon} />{n.label}{n.count && waitCount > 0 && <span className="count">{waitCount}</span>}</NavLink>
+              <NavLink key={n.to} to={n.to} end={n.end}><Icon name={n.icon} />{n.label}{n.count && waitCount > 0 && <span className="count">{waitCount}</span>}{n.chat && unread > 0 && <span className="count">{unread}</span>}</NavLink>
             ))}
           </nav>
           <div className="rail-foot">
@@ -218,6 +227,11 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('manager') && <Route path="purchasing" element={<Purchasing />} />}
                   {can('owner') && <Route path="payroll" element={<Payroll />} />}
                   <Route path="deliveries" element={<Deliveries />} />
+                  <Route path="chats" element={<Chats />} />
+                  <Route path="my-shifts" element={<MyShifts />} />
+                  {can('manager') && <Route path="performance" element={<Performance />} />}
+                  {can('manager') && <Route path="memberships" element={<Memberships />} />}
+                  {can('manager') && <Route path="catering" element={<Catering />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ReaderCharge } from '../pro-ui.jsx';
+import { CustomerPicker } from './Club.jsx';
 import { gsap } from 'gsap';
 import SpotlightCard from '../bits/SpotlightCard.jsx';
 import ClickSpark from '../bits/ClickSpark.jsx';
@@ -201,6 +202,8 @@ export default function Register() {
   const [tableId, setTableId] = useState('');
   const [discount, setDiscount] = useState(0);
   const [promo, setPromo] = useState('');
+  const [cust, setCust] = useState(null);
+  const [allergies, setAllergies] = useState([]);
   const [buzzer, setBuzzer] = useState(settings.business_type !== 'restaurant');
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -214,23 +217,26 @@ export default function Register() {
   const items = (menu || []).filter((m) => m.active || m.soldOut);
   const cats = ['All', ...new Set(items.map((m) => m.category))];
   const shown = cat === 'All' ? items : items.filter((m) => m.category === cat);
-  const disc = Math.round(cart.subtotal * discount / 100);
+  const memberPct = cust?.member?.good ? cust.member.discountPct : 0;
+  const disc = Math.round(cart.subtotal * Math.max(discount, memberPct) / 100);
   const tax = Math.round((cart.subtotal - disc) * Number(settings.tax_rate) / 100);
   const total = cart.subtotal - disc + tax;
 
   const tap = (m) => {
     if (m.soldOut) return;
+    const hit = (m.allergens || []).filter((a) => allergies.includes(a));
+    if (hit.length && !confirm(`${m.name} contains ${hit.join(' and ')}. Add it anyway?`)) return;
     if (m.groups.length) return setPicking(m);
     cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents });
     gsap.fromTo(totalRef.current, { scale: 1.06 }, { scale: 1, duration: 0.3, ease: 'back.out(3)' });
   };
-  const reset = () => { cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); };
+  const reset = () => { cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); setCust(null); setAllergies([]); };
 
   const submit = async (payNow) => {
     if (!cart.count) return;
     setBusy(true);
     const clientKey = `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-    const body = { items: cart.payload, tableId: tableId ? Number(tableId) : null, customerName: customer || undefined, discountPct: discount || undefined, attachBuzzer: buzzer, phone, promoCode: promo || undefined, clientKey };
+    const body = { items: cart.payload, tableId: tableId ? Number(tableId) : null, customerName: customer || cust?.name || undefined, discountPct: discount || undefined, customerId: cust?.id, allergies: allergies.length ? allergies : undefined, attachBuzzer: buzzer, phone, promoCode: promo || undefined, clientKey };
     try {
       const r = await api('/staff/orders', { method: 'POST', body });
       const order = { id: r.id, number: r.number, subtotal_cents: cart.subtotal, discount_cents: r.discountCents ?? disc, tax_cents: tax };
@@ -286,13 +292,14 @@ export default function Register() {
                 </select>
               )}
             </div>
+            <CustomerPicker value={cust} onChange={setCust} allergies={allergies} setAllergies={setAllergies} currency={cur} />
             <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={buzzer} onChange={(e) => setBuzzer(e.target.checked)} /> Give the customer a phone buzzer for pickup</label>
             {buzzer && <input className="input" type="tel" placeholder="Mobile number (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} aria-label="Mobile number" />}
             <div className="row" style={{ fontSize: 14 }}><span className="muted grow">Discount</span>{[0, 10, 15, 50].map((p) => <button key={p} className={`btn sm ${discount === p ? 'primary' : ''}`} onClick={() => setDiscount(p)}>{p}%</button>)}</div>
             <input className="input" placeholder="Promo code (optional)" value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} maxLength={30} aria-label="Promo code" />
             <div className="totals">
               <div><span>Subtotal</span><span>{money(cart.subtotal, cur)}</span></div>
-              {disc > 0 && <div><span>Discount</span><span>−{money(disc, cur)}</span></div>}
+              {disc > 0 && <div><span>{memberPct >= discount && memberPct ? `Member price (${memberPct}%)` : 'Discount'}</span><span>−{money(disc, cur)}</span></div>}
               {promo && <div><span>Promo {promo}</span><span>applied at checkout</span></div>}
               <div><span>Tax {settings.tax_rate}%</span><span>{money(tax, cur)}</span></div>
               <div className="grand" ref={totalRef}><span>Total</span><span>{money(total, cur)}</span></div>

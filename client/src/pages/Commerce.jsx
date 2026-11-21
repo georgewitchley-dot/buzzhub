@@ -128,7 +128,7 @@ export function GiftCards() {
           <tr key={c.id} style={{ opacity: c.status === 'disabled' ? 0.5 : 1 }}>
             <td className="num">…{c.code.slice(-4)}</td><td>{c.name || <span className="dim">No name</span>}</td>
             <td className="muted">{new Date(c.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}</td>
-            <td className="num">{money(c.initial_cents, settings.currency)}</td><td className="num">{money(c.balance_cents, settings.currency)}</td>
+            <td className="num">{money(c.initial_cents, settings.currency)}</td><td className="num">{money(c.balance_cents, settings.currency)}{c.status === 'active' && <button className="btn sm ghost" title="Phone wallet card for this gift card" onClick={() => api(`/staff/giftcards/${c.id}/wallet`).then((r) => { navigator.clipboard?.writeText(r.url); toast('Card link copied. Text or email it to them.', 'ok'); })}>Card link</button>}</td>
             <td className="muted" style={{ textTransform: 'capitalize' }}>{c.source}</td>
             <td style={{ textAlign: 'right' }}>{c.status === 'active' && <button className="btn sm ghost danger" onClick={() => confirm('Disable this card? Its balance can no longer be used.') && api(`/staff/giftcards/${c.id}/disable`, { method: 'POST' }).then(reload)}>Disable</button>}</td>
           </tr>

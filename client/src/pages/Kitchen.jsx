@@ -64,6 +64,7 @@ export default function Kitchen() {
                 {o.prepaid ? <span className="chip teal">Paid</span> : null}
               </div>
               {o.delivery_address && <div className="muted" style={{ fontSize: 14 }}>{o.delivery_address}</div>}
+              {(() => { let tags = []; try { tags = JSON.parse(o.customer_tags || '[]'); } catch { /* none */ } const al = [o.allergy_note, ...tags.filter((t) => /allerg|free|vegan|celiac|dairy|lactose/i.test(t))].filter(Boolean); return al.length ? <div className="ticket-allergy">ALLERGY: {al.join(', ')}</div> : null; })()}
               {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
               <ul>{o.items.map((i, k) => <li key={k}><b className="num">{i.qty}</b><span>{i.name}{i.mods?.length > 0 && <em>{i.mods.map((m) => m.name).join(', ')}</em>}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
               <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>

@@ -64,28 +64,42 @@ export function CartLines({ cart, currency }) {
   ));
 }
 
-/** Customer-facing menu list with category chips; tap an item to add it (or pick options). */
-export function GuestMenu({ items, currency, onAdd }) {
+const ALLERGY_ES = { milk: 'leche', eggs: 'huevo', fish: 'pescado', shellfish: 'mariscos', 'tree nuts': 'nueces', peanuts: 'cacahuate', wheat: 'trigo', soy: 'soya', sesame: 'ajonjolí' };
+const DIET_ES = { vegetarian: 'vegetariano', vegan: 'vegano', 'gluten free': 'sin gluten', halal: 'halal', kosher: 'kosher', spicy: 'picante' };
+/** Customer-facing menu list with category chips, allergen filter and Spanish names; tap an item to add it (or pick options). */
+export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = false }) {
+  const es = lang === 'es';
+  const nm = (i) => (es && i.i18n?.es?.name) || i.name;
+  const catName = (c) => (es && items.find((i) => i.category === c && i.i18n?.es?.category)?.i18n.es.category) || c;
   const [cat, setCat] = useState('');
+  const [avoid, setAvoid] = useState([]);
+  const [showFilter, setShowFilter] = useState(false);
   const [picking, setPicking] = useState(null);
   const cats = useMemo(() => [...new Set(items.map((i) => i.category))], [items]);
-  const shown = cat ? items.filter((i) => i.category === cat) : items;
-  const tap = (i) => (i.groups?.length ? setPicking(i) : onAdd({ itemId: i.id, qty: 1, mods: [], name: i.name, modNames: [], unitCents: i.price_cents }));
+  const present = useMemo(() => [...new Set(items.flatMap((i) => i.allergens || []))], [items]);
+  const shown = (cat ? items.filter((i) => i.category === cat) : items).filter((i) => !avoid.some((a) => (i.allergens || []).includes(a)));
+  const tap = (i) => (viewOnly ? null : i.groups?.length ? setPicking(i) : onAdd({ itemId: i.id, qty: 1, mods: [], name: nm(i), modNames: [], unitCents: i.price_cents }));
   return (
     <>
-      {cats.length > 1 && <div className="cat-strip">{['', ...cats].map((c) => <button key={c || 'all'} className={`btn sm ${cat === c ? 'primary' : ''}`} onClick={() => setCat(c)}>{c || 'All'}</button>)}</div>}
+      {cats.length > 1 && <div className="cat-strip">{['', ...cats].map((c) => <button key={c || 'all'} className={`btn sm ${cat === c ? 'primary' : ''}`} onClick={() => setCat(c)}>{c ? catName(c) : es ? 'Todo' : 'All'}</button>)}
+        {present.length > 0 && <button className={`btn sm ${avoid.length ? 'primary' : 'ghost'}`} onClick={() => setShowFilter(!showFilter)} aria-expanded={showFilter}>{es ? 'Alergias' : 'Allergies'}{avoid.length ? ` (${avoid.length})` : ''}</button>}</div>}
+      {showFilter && <div className="card allergy-filter"><span className="muted" style={{ fontSize: 13 }}>{es ? 'Ocultar platillos con:' : 'Hide dishes that contain:'}</span><div className="row wrap" style={{ gap: 6 }}>{present.map((a) => <button key={a} className={`chip ${avoid.includes(a) ? 'rose' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={avoid.includes(a)} onClick={() => setAvoid(avoid.includes(a) ? avoid.filter((x) => x !== a) : [...avoid, a])}>{es ? ALLERGY_ES[a] : a}</button>)}</div><span className="dim" style={{ fontSize: 12 }}>{es ? 'Avise al personal sobre alergias graves.' : 'Always tell the team about serious allergies.'}</span></div>}
       <div className="sheet-list">
-        {(cat ? [cat] : cats).map((c) => (
+        {(cat ? [cat] : cats).map((c) => { const list = shown.filter((i) => i.category === c); if (!list.length) return null; return (
           <section key={c}>
-            <h3 className="sheet-cat">{c}</h3>
-            {shown.filter((i) => i.category === c).map((i) => (
-              <button key={i.id} className="menu-line menu-tap" disabled={i.soldOut} onClick={() => tap(i)}>
-                <span className="grow"><b>{i.name}</b><span className="muted num">{i.soldOut ? 'Sold out' : money(i.price_cents, currency)}{i.groups?.length ? ', options' : ''}</span></span>
-                <span className="add-dot" aria-hidden="true">+</span>
+            <h3 className="sheet-cat">{catName(c)}</h3>
+            {list.map((i) => (
+              <button key={i.id} className="menu-line menu-tap" disabled={i.soldOut || viewOnly} onClick={() => tap(i)}>
+                <span className="grow"><b>{nm(i)}</b>
+                  {((es && i.i18n?.es?.description) || i.description) && <small className="menu-desc">{(es && i.i18n?.es?.description) || i.description}</small>}
+                  <span className="muted num">{i.soldOut ? (es ? 'Agotado' : 'Sold out') : money(i.price_cents, currency)}{i.groups?.length ? (es ? ', opciones' : ', options') : ''}</span>
+                  {((i.diet || []).length > 0 || (i.allergens || []).length > 0) && <span className="tags-line">{(i.diet || []).map((t) => <span key={t} className="mini diet">{es ? DIET_ES[t] : t}</span>)}{(i.allergens || []).map((t) => <span key={t} className="mini">{es ? ALLERGY_ES[t] : t}</span>)}</span>}
+                </span>
+                {!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}
               </button>
             ))}
           </section>
-        ))}
+        ); })}
       </div>
       {picking && <ModPicker item={picking} currency={currency} onClose={() => setPicking(null)} onAdd={(l) => { onAdd(l); setPicking(null); }} />}
     </>

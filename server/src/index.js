@@ -23,6 +23,9 @@ import { registerCrm } from './crm.js';
 import { registerBack } from './back.js';
 import { registerDelivery } from './delivery.js';
 import { registerPayments } from './payments.js';
+import { registerClub } from './club.js';
+import { registerReach } from './reach.js';
+import { registerPeople } from './people.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -136,6 +139,7 @@ function guestPublicView(g) {
     pushDevices: devices,
     preorder: { ...preorderWindow(g, s, pos), order: preorderFor(g.id) },
     delivery: G.deliveryView ? G.deliveryView(g.order_id) : null,
+    chat: s.chat_enabled === '1',
     business: { slug: currentSlug(), name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
   };
 }
@@ -551,6 +555,11 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     food_cost_target: z.coerce.number().int().min(5).max(80),
     kiosk_reader_id: z.string().regex(/^(tmr_[A-Za-z0-9]+)?$/),
     kiosk_message: z.string().trim().max(120),
+    business_address: z.string().trim().max(160),
+    chat_enabled: z.union([z.literal('0'), z.literal('1')]),
+    chat_quick: z.string().max(1200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 8 && a.every((x) => typeof x === 'string' && x.length <= 120); } catch { return false; } }, 'Quick replies look wrong'),
+    business_phone: z.string().trim().max(30),
+    acct_map: z.string().max(1500).refine((v) => { try { const o = JSON.parse(v); return typeof o === 'object' && Object.values(o).every((x) => typeof x === 'string' && x.length <= 60); } catch { return false; } }, 'Account names look wrong'),
     pay_handles_enabled: z.union([z.literal('0'), z.literal('1')]),
     pay_cashapp: z.string().trim().regex(/^(\$[A-Za-z][A-Za-z0-9_-]{0,20})?$/, 'Cash App $cashtag looks wrong'),
     pay_venmo: z.string().trim().regex(/^(@?[A-Za-z0-9_-]{3,30})?$/, 'Venmo username looks wrong'),
@@ -775,6 +784,8 @@ const orderSchema = z.object({
   discountPct: z.number().min(0).max(100).optional(),
   attachBuzzer: z.boolean().optional(),
   phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/).optional().or(z.literal('')),
+  customerId: z.number().int().optional(),
+  allergies: z.array(z.string().trim().min(1).max(30)).max(12).optional(),
 });
 
 staff.post('/orders', wrap(async (req, res) => {
@@ -786,9 +797,12 @@ staff.post('/orders', wrap(async (req, res) => {
   let discount = Math.round(subtotal * (b.discountPct || 0) / 100);
   const promo = b.promoCode && G.promoDiscount ? G.promoDiscount(b.promoCode, subtotal) : null;
   if (promo) discount = Math.max(discount, promo.cents);
+  const member = b.customerId && G.memberDiscount ? G.memberDiscount(b.customerId, subtotal) : null;
+  if (member) discount = Math.max(discount, member.cents);
   const made = insertOrder({ lines, status: 'sent', source: 'staff', tableId: b.tableId || null, customerName: b.customerName || null, createdBy: req.user.id, discountCents: discount, promoCode: promo?.code || null, clientKey: b.clientKey || null });
   if (made.duplicate) return res.json({ id: made.id, number: made.number, duplicate: true });
   const orderId = made.id; const number = made.number;
+  if (b.customerId || b.allergies?.length) db.prepare('UPDATE orders SET customer_id = ?, allergy_note = ? WHERE id = ?').run(b.customerId || null, b.allergies?.length ? b.allergies.join(', ') : null, orderId);
   let buzzer = null;
   if (b.attachBuzzer) {
     const g = createGuest({ kind: 'order', name: b.customerName || `Order ${number}`, phone: b.phone, party_size: 1, order_id: orderId });
@@ -1163,20 +1177,25 @@ registerPro({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, client
 registerCrm({ app, staff, h: G });
 registerBack({ app, staff, h: G });
 registerPayments({ app, staff, io, h: G });
+registerClub({ app, staff, h: G });
+registerReach({ app, staff, h: G });
+registerPeople({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
-registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
+registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 
 app.use('/api/staff', staff);
+
+app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 /* ---------- static client ---------- */
 const DIST = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST, { index: false, maxAge: IS_PROD ? '1h' : 0, setHeaders: (res, p) => { if (p.includes('/assets/')) res.set('Cache-Control', 'public, max-age=31536000, immutable'); if (p.endsWith('sw.js') || p.endsWith('.webmanifest')) res.set('Cache-Control', 'no-cache'); } }));
+  app.get('/go', (req, res, next) => (G.linkHubHtml ? G.linkHubHtml(DIST)(req, res) : next()));
   app.get(/^\/(?!api|socket\.io).*/, (req, res) => res.sendFile(path.join(DIST, 'index.html')));
 }
 
-app.get('/healthz', (req, res) => res.json({ ok: true }));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

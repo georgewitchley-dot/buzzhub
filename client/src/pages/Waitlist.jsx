@@ -4,6 +4,7 @@ import { api, fmtSlot, minutesSince, timeOf, useTick } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { useCustomerModal } from './Field.jsx';
+import { ChatModal } from './People.jsx';
 
 const STATE_TEXT = { waiting: 'Waiting', buzzed: 'Buzzed', acknowledged: 'On the way' };
 const PRE = { held: 'Pre-order waiting', sent: 'Pre-order making', ready: 'Pre-order ready', open: 'Pre-order making', paid: 'Pre-order paid' };
@@ -116,6 +117,7 @@ export default function Waitlist() {
   const [buzzing, setBuzzing] = useState(null);
   const [redeeming, setRedeeming] = useState(null);
   const [customerModal, openCustomer] = useCustomerModal();
+  const [chatWith, setChatWith] = useState(null);
   const [view, setView] = useState('table');
   const listRef = useRef(null);
   const seen = useRef(new Set());
@@ -163,6 +165,7 @@ export default function Waitlist() {
                   {(() => { try { return JSON.parse(g.customer_tags || '[]'); } catch { return []; } })().map((t) => <span key={t} className={`chip ${/allerg|free|vegan/i.test(t) ? 'rose' : 'amber'}`}>{t}</span>)}
                   {g.customer_birthday && g.customer_birthday === new Date().toISOString().slice(5, 10) && <span className="chip amber">Birthday today</span>}
                   {g.customer_id && <button className="chip" style={{ border: 0, cursor: 'pointer' }} onClick={() => openCustomer(g.customer_id)}>Profile{g.customer_notes ? ' and notes' : ''}</button>}
+                  {settings.chat_enabled === '1' && <button className="chip" style={{ border: 0, cursor: 'pointer' }} onClick={() => setChatWith(g.id)}>Message</button>}
                   {g.rewards > 0 && <button className="chip amber" style={{ border: 0, cursor: 'pointer' }} onClick={() => setRedeeming(g)}><Icon name="gift" size={13} />Reward ready</button>}
                   {g.booking_start && <span className="chip blue">Booked {fmtSlot(g.booking_start).time}{g.booking_service ? `, ${g.booking_service}` : ''}</span>}
                   {g.table_label && <span>{unit} {g.table_label}</span>}
@@ -198,6 +201,7 @@ export default function Waitlist() {
       {qr && <QrModal {...qr} onClose={() => setQr(null)} />}
       {redeeming && <RedeemModal customerId={redeeming.customer_id} name={redeeming.name} onClose={() => setRedeeming(null)} />}
       {buzzing && <BuzzModal guest={buzzing} unit={unit} onClose={() => setBuzzing(null)} onDone={() => setBuzzing(null)} />}
+      {chatWith && <ChatModal guestId={chatWith} onClose={() => setChatWith(null)} />}
       {customerModal}
     </>
   );

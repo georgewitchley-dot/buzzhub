@@ -313,6 +313,8 @@ const DEFAULTS = {
   auto_birthday: '0', auto_birthday_pct: '15', auto_winback: '0', auto_winback_days: '45', auto_winback_pct: '10', auto_welcome: '0', auto_welcome_pct: '10', auto_last_run: '',
   pay_handles_enabled: '0', pay_cashapp: '', pay_venmo: '', pay_paypalme: '', pay_zelle: '', card_provider: 'auto', cash_discount_pct: '0',
   fee_rates: '{"card":[2.6,15],"online":[2.9,30],"venmo":[1.9,10],"cashapp":[2.75,0],"paypal":[3.49,49],"paypalme":[3.49,49],"zelle":[0,0],"cash":[0,0],"gift":[0,0],"other":[0,0]}',
+  chat_enabled: '1', chat_quick: '["Your table is almost ready","We have your order, it will be out soon","Running about 10 minutes behind, sorry!","Come to the host stand please"]',
+  business_address: '', business_phone: '', acct_map: '{}',
   kiosk_version: '1', kiosk_reader_id: '', kiosk_message: '',
   ot_weekly_hours: '40', payroll_week_start: '1', ot_alerts: '1', break_after_hours: '6', food_cost_target: '30',
   insights_summary: '1', insights_hour: '22', insights_alerts: '1', insights_void_limit: '3', insights_refund_cents: '10000',

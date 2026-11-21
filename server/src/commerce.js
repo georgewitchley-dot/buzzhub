@@ -62,7 +62,8 @@ const err = (msg, status = 400) => Object.assign(new Error(msg), { status });
 export const lineSchema = z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(99), note: z.string().trim().max(80).optional(), mods: z.array(z.number().int()).max(20).optional() });
 
 export function menuWithMods({ where = 'active = 1' } = {}) {
-  const items = db.prepare(`SELECT id, name, category, price_cents, color, active, guest_orderable, stock, low_stock FROM menu_items WHERE ${where} ORDER BY sort, id`).all();
+  const items = db.prepare(`SELECT id, name, category, price_cents, color, active, guest_orderable, stock, low_stock, description, allergens, diet, i18n FROM menu_items WHERE ${where} ORDER BY sort, id`).all()
+    .map((i) => { const j = (v, d) => { try { return JSON.parse(v || ''); } catch { return d; } }; return { ...i, allergens: j(i.allergens, []), diet: j(i.diet, []), i18n: j(i.i18n, {}) }; });
   const groups = db.prepare('SELECT * FROM mod_groups ORDER BY sort, id').all();
   const opts = db.prepare('SELECT * FROM mod_options ORDER BY sort, id').all();
   const links = db.prepare('SELECT * FROM item_mod_groups').all();
@@ -418,6 +419,7 @@ export function registerCommerce({ app, staff, io, h }) {
     const r = db.prepare("UPDATE payments SET status='paid', paid_at=?, stripe_session=? WHERE id=? AND status <> 'paid'").run(now(), sessionId, p.id);
     if (!r.changes) return;
     if (p.kind === 'deposit') { h.onDepositPaid?.(p, sessionId); return; }
+    if (h.payHooks?.[p.kind]) { h.payHooks[p.kind](db.prepare('SELECT * FROM payments WHERE id = ?').get(p.id)); return; }
     if (p.kind === 'giftcard') {
       const meta = JSON.parse(p.meta || '{}');
       const card = issueCard({ cents: p.amount_cents, name: meta.name, email: meta.email, source: 'online', method: 'card' });

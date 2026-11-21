@@ -3,6 +3,7 @@ import { api, fmtSlot, minutesSince, money, timeOf, useTick } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { Forecast } from './Team.jsx';
+import { TeamRequests } from './People.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -11,7 +12,7 @@ const hm = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart
 function AddSchedule({ people, date, onClose }) {
   const toast = useToast();
   const [f, setF] = useState({ userId: people[0]?.id || '', date, start: '09:00', end: '17:00', note: '' });
-  const save = async (e) => { e.preventDefault(); try { await api('/staff/schedule', { method: 'POST', body: { ...f, userId: Number(f.userId), note: f.note || undefined } }); onClose(); } catch (e2) { toast(e2.message, 'err'); } };
+  const save = async (e) => { e.preventDefault(); try { const r = await api('/staff/schedule', { method: 'POST', body: { ...f, userId: Number(f.userId), note: f.note || undefined } }); if (r.warnings?.length) toast(`Added, but check: ${r.warnings.join(', ')}`, 'err'); onClose(); } catch (e2) { toast(e2.message, 'err'); } };
   return (
     <Modal title="Add to the schedule" onClose={onClose}>
       <form className="stack" onSubmit={save}>
@@ -60,6 +61,7 @@ export default function Shifts() {
 
   return (
     <>
+      {mgr && <TeamRequests />}
       <PageHead title="Shifts" sub="Clock in and out from the lock screen with your PIN.">
         <div className="row">
           <button className="btn sm" onClick={() => setFrom(addDays(data.from, -7))}>Earlier</button>

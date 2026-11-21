@@ -3,6 +3,7 @@ import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { AutoOffers } from './Field.jsx';
+import { GetFound } from './Reach.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 const dayLabel = (d) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
@@ -130,6 +131,7 @@ export function Marketing() {
         )}
       </section>
       <AutoOffers />
+      <GetFound />
       {modal === 'promo' && <PromoModal currency={cur} onClose={() => { setModal(null); reloadPromos(); }} />}
       {modal === 'campaign' && <CampaignModal data={data} promos={promos} onClose={() => { setModal(null); reload(); }} />}
     </>

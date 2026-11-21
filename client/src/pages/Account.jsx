@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, enablePush, fmtSlot, isIOS, isStandalone, money, pushIsOn, registerSW, setManifest, useLenis, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
+import { AccountClub } from './Club.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
@@ -159,6 +160,8 @@ export default function Account() {
             <label className="card row" style={{ fontSize: 14.5 }}><span className="grow"><b>Your birthday</b><br /><span className="muted">For a treat on your day. Month and day only.</span></span>
               <select className="input" style={{ width: 90 }} value={bday.slice(0, 2)} onChange={(e) => saveBirthday(e.target.value ? `${e.target.value}-${bday.slice(3) || '01'}` : '')} aria-label="Birth month"><option value="">Month</option>{Array.from({ length: 12 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{new Date(2000, i, 1).toLocaleDateString([], { month: 'short' })}</option>)}</select>
               <select className="input" style={{ width: 70 }} value={bday.slice(3)} disabled={!bday} onChange={(e) => saveBirthday(`${bday.slice(0, 2)}-${e.target.value}`)} aria-label="Birth day">{Array.from({ length: 31 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{i + 1}</option>)}</select></label>
+
+            <AccountClub />
 
             {offers !== null && (
               <label className="card row" style={{ fontSize: 14.5 }}><input type="checkbox" checked={offers} onChange={(e) => api('/c/marketing', { method: 'PUT', body: { optIn: e.target.checked } }).then((r) => setOffers(r.optIn))} /><span className="grow"><b>Offers and news</b><br /><span className="muted">{offers ? "You'll get the occasional deal on this phone and by email." : 'Off. You still get booking reminders and buzzes.'}</span></span></label>

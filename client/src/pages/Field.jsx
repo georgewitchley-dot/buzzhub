@@ -231,6 +231,8 @@ export function MorePanel({ f, setF }) {
         <label className="field grow"><span>Break needed after (hours)</span><input className="input" type="number" min={2} max={12} step={0.5} value={f.break_after_hours} onChange={set('break_after_hours')} /></label>
       </div>
       <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.ot_alerts === '1'} onChange={flag('ot_alerts')} /> Alert managers when someone nears overtime or skips a break</label>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.chat_enabled === '1'} onChange={flag('chat_enabled')} /> Let guests message the team from their buzzer</label>
+      {f.chat_enabled === '1' && <label className="field"><span>Quick replies (one per line)</span><textarea className="input" rows={4} value={(() => { try { return JSON.parse(f.chat_quick || '[]').join('\n'); } catch { return ''; } })()} onChange={(e) => setF({ ...f, chat_quick: JSON.stringify(e.target.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8).map((x) => x.slice(0, 120))) })} /></label>}
       <label className="field"><span>Food cost target (%)</span><input className="input" type="number" min={5} max={80} value={f.food_cost_target} onChange={set('food_cost_target')} /></label>
       <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.insights_summary === '1'} onChange={flag('insights_summary')} /> Send owners a daily summary at
         <select className="input" style={{ width: 110, height: 32 }} value={f.insights_hour} onChange={set('insights_hour')}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: 'numeric' })}</option>)}</select></label>

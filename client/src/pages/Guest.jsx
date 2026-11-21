@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { gsap } from 'gsap';
 import { DeliveryMap } from '../track.jsx';
-import { LangSwitch, useLang } from '../i18n.jsx';
+import { LangSwitch, getLang, useLang } from '../i18n.jsx';
 import Aurora from '../bits/Aurora.jsx';
 import StarBorder from '../bits/StarBorder.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
@@ -15,6 +15,32 @@ const ACTIVE = ['waiting', 'buzzed', 'acknowledged'];
 const ORDER_STATUS = { held: 'Waiting for your table', sent: 'Being made now', ready: 'Ready', open: 'Being made now', paid: 'Paid', void: 'Cancelled' };
 
 /* ---------- order-ahead menu sheet ---------- */
+function ChatSheet({ token, t, onClose, onSeen }) {
+  const [d, setD] = useState(null);
+  const [text, setText] = useState('');
+  const [err, setErr] = useState('');
+  const log = useRef(null);
+  const load = useCallback(() => api(`/g/${token}/messages`).then((x) => { setD(x); onSeen(); }).catch(() => {}), [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); const id = setInterval(load, 5000); window.addEventListener('bh:chat', load); return () => { clearInterval(id); window.removeEventListener('bh:chat', load); }; }, [load]);
+  useEffect(() => { log.current?.scrollTo(0, log.current.scrollHeight); }, [d?.messages?.length]);
+  const send = async () => { if (!text.trim()) return; try { await api(`/g/${token}/messages`, { method: 'POST', body: { body: text } }); setText(''); setErr(''); load(); } catch (e) { setErr(e.message); } };
+  return (
+    <div className="overlay sheet-wrap" role="dialog" aria-label={t('Messages')} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="sheet">
+        <div className="row"><b className="grow" style={{ fontSize: 18 }}>{t('Messages')}</b><button className="btn ghost sm" onClick={onClose}>×</button></div>
+        <div className="chat">
+          <div className="chat-log" ref={log}>
+            {d && d.messages.length === 0 && <span className="muted" style={{ fontSize: 14 }}>{t('Ask us anything: a high chair, a change to your order, running late.')}</span>}
+            {d?.messages.map((m) => <div key={m.id} className={`bubble ${m.sender === 'guest' ? 'me' : 'them'}`}>{m.body}<small>{m.from}</small></div>)}
+          </div>
+          {err && <div className="lock-msg">{err}</div>}
+          <div className="row"><input className="input grow" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} maxLength={500} placeholder={t('Type a message')} aria-label={t('Type a message')} /><button className="btn primary" onClick={send} disabled={!text.trim()}>{t('Send')}</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MenuSheet({ token, g, onClose }) {
   const [menu, setMenu] = useState(null);
   const cart = useCart();
@@ -43,7 +69,7 @@ function MenuSheet({ token, g, onClose }) {
         </p>
         {!menu && !err && <p className="muted">Loading the menu…</p>}
         {menu && menu.items.length === 0 && <p className="muted">Nothing is available to order ahead right now.</p>}
-        {menu && <GuestMenu items={canOrder ? menu.items : menu.items.map((i) => ({ ...i, soldOut: true }))} currency={menu.currency} onAdd={cart.add} />}
+        {menu && <GuestMenu items={canOrder ? menu.items : menu.items.map((i) => ({ ...i, soldOut: true }))} currency={menu.currency} onAdd={cart.add} lang={getLang()} />}
         {cart.count > 0 && <div><CartLines cart={cart} currency={menu.currency} /></div>}
         {err && <div className="lock-msg">{err}</div>}
         {canOrder && (
@@ -64,6 +90,8 @@ export default function Guest() {
   const [alerts, setAlerts] = useState('off'); // off | on | denied | needs-install | unsupported
   const [online, setOnline] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(() => new URLSearchParams(location.search).get('chat') === '1');
+  const [chatNew, setChatNew] = useState(0);
   const [email, setEmail] = useState('');
   const [banner, setBanner] = useState('');
   const puckRef = useRef(null); const flashRef = useRef(null); const wakeRef = useRef(null);
@@ -99,6 +127,7 @@ export default function Guest() {
     s.on('disconnect', () => { setOnline(false); onlineRef.current = false; });
     s.on('guest:update', (d) => setG(d));
     s.on('buzz', ({ message }) => alarm(message));
+    s.on('chat', () => { setChatNew((n) => n + 1); window.dispatchEvent(new Event('bh:chat')); try { navigator.vibrate?.([120, 60, 120]); } catch { /* not supported */ } });
     s.on('headsup', ({ message }) => headsUp(message));
     // if the live connection dropped, the service worker still relays pushes to the open page
     const onSw = (e) => { if (e.data?.type === 'push' && !onlineRef.current) (e.data.data.kind === 'buzz' ? alarm : headsUp)(e.data.data.body); };
@@ -243,10 +272,12 @@ export default function Guest() {
             {g.emailAlerts && <span className="dim" style={{ fontSize: 13 }}>We'll also email you.</span>}
           </div>
         )}
+        {g.chat !== false && !['removed', 'no_show'].includes(g.status) && <button className="btn block" onClick={() => setChatOpen(true)}>{t('Message us')}{chatNew > 0 ? ` (${chatNew})` : ''}</button>}
         {g.status === 'waiting' && !isOrder && <button className="btn ghost" onClick={leave}>Leave the list</button>}
         {g.business.booking && !g.customer && <Link className="btn ghost sm" to={withLoc('/account', g.business.slug)}>Create an account to book ahead next time</Link>}
       </main>
       {menuOpen && <MenuSheet token={token} g={g} onClose={() => setMenuOpen(false)} />}
+      {chatOpen && <ChatSheet token={token} t={t} onClose={() => setChatOpen(false)} onSeen={() => setChatNew(0)} />}
     </div>
   );
 }

@@ -69,7 +69,7 @@ export default function Kiosk() {
       )}
       {step === 'menu' && (
         <div className="kiosk-grid">
-          <div className="card kiosk-menu"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} /></div>
+          <div className="card kiosk-menu"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} /></div>
           <aside className="card kiosk-cart">
             <b>{t('Your order')}</b>
             {cart.lines.length ? <CartLines cart={cart} currency={d.currency} /> : <span className="muted">{t('Nothing here yet. Tap an item to add it.')}</span>}
