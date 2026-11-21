@@ -74,6 +74,25 @@ New server modules:
 - Cash discount: setting `cash_discount_pct`, applied in `/staff/orders/:id/pay` for cash.
 - Client: `pro-ui.jsx`, `i18n.jsx` (en/es), `track.jsx` (Leaflet + OSM tiles), and pages `PayPage`, `Receipt`, `Kiosk`, `Back.jsx` (Insights, Purchasing, Payroll) and `Field.jsx` (Deliveries, customer profile, auto offers, settings panels, payment claims bar, payment costs).
 
+## 3f. Round 6 (2026-11-21)
+- `club.js`
+  - Memberships: `membership_plans`, `memberships`. Payments use kind 'membership' through `G.payHooks.membership`; there is an hourly renewal job. Member discount at the register goes through `G.memberDiscount` from `customerId` on `POST /staff/orders`.
+  - Invoices: `invoices`, `invoice_payments`, public `/api/i/:token`, kind 'invoice'.
+  - Wallet: `customers.card_token` and `gift_cards.wallet_token`, public `/api/w/:token`, scan value `BH-C-<token>`, register search at `/staff/customer-search`.
+  - Google Wallet needs `GOOGLE_WALLET_ISSUER_ID` plus `GOOGLE_WALLET_SERVICE_ACCOUNT` (JSON). Apple Wallet needs `APPLE_PASS_TYPE_ID`, `APPLE_TEAM_ID`, `APPLE_PASS_CERT`, `APPLE_PASS_KEY`, `APPLE_PASS_KEY_PASSPHRASE` and `APPLE_WWDR_CERT` (PEM, \n escaped), and uses passkit-generator.
+  - `completePayment` dispatches `G.payHooks[kind]`.
+- `reach.js`
+  - menu_items.description/allergens/diet/i18n (es); `menuWithMods` returns them.
+  - Accounting: `/staff/accounting?format=quickbooks|xero|csv` (balanced daily journal, `acct_map` setting).
+  - Link hub: `/go` is server-rendered with schema.org JSON-LD; `link_hits` tracking; `/staff/links`.
+- `people.js`
+  - Availability, time_off, shift_swaps and `/staff/me/*` routes; manager approvals; `shiftConflicts` warnings on `POST /staff/schedule`.
+  - `/staff/performance`.
+  - Chat: `messages`, guest `/api/g/:token/messages`, staff `/staff/chats` and `/staff/guests/:id/messages`, socket `chat` / `chat:new`.
+- orders.customer_id and orders.allergy_note; the kitchen shows allergies, including the customer's allergy tags.
+- Client: `Club.jsx`, `Reach.jsx`, `People.jsx`; `GuestMenu` takes `lang` and `viewOnly`.
+- `/healthz` is now registered before the static fallback.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

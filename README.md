@@ -93,6 +93,17 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - Purchasing: recipes, food cost per item, suppliers and purchase orders. Payroll export with overtime.
 - Delivery drivers with live location on the customer's phone. Self-order kiosk. Spanish customer pages.
 
+## Grow and run the business
+
+- **Memberships:** monthly or yearly plans with a member discount and perks. Customers join online, and renewals come with a pay link.
+- **Catering quotes and invoices:** customers accept online, then pay a deposit and the balance.
+- **Wallet cards:** member and gift cards on the phone, with Google Wallet and Apple Wallet when set up.
+- **Allergens and diets** on every item. Customers can filter by allergen, and allergies show on kitchen tickets. Menus are in Spanish too.
+- **Accounting export** for QuickBooks Online and Xero.
+- **One link page** for Instagram, Facebook, TikTok and Google, with tracking.
+- **Team app:** availability, time off, shift swaps, and team performance stats.
+- **Two-way messages** with guests on their buzzer.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
