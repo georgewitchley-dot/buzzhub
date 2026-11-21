@@ -5,7 +5,8 @@ import { api, applyAccent, money, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { CartLines, GuestMenu, PairsHint, useCart, useCombos } from '../order-ui.jsx';
 import { WhenPicker } from './More.jsx';
-import { LangSwitch, getLang, useLang } from '../i18n.jsx';
+import { useReorder } from './Owner.jsx';
+import { LangSwitch, getLang, tr, useLang } from '../i18n.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
   return (
@@ -29,6 +30,7 @@ export function OrderOnline() {
   const [err, setErr] = useState('');
   const cart = useCart();
   const combos = useCombos(true);
+  useReorder(d?.items, cart, () => setErr(t('Some items are no longer available.')));
   const [step, setStep] = useState('menu');
   const [f, setF] = useState(() => { try { return { fulfillment: 'pickup', name: '', phone: '', email: '', address: '', notes: '', ...JSON.parse(localStorage.getItem('bh_online_profile') || '{}') }; } catch { return { fulfillment: 'pickup' }; } });
   const [pct, setPct] = useState(15);
@@ -119,7 +121,7 @@ export function TableOrder() {
     try { const r = await api(`/t/${token}/order`, { method: 'POST', body: { items: cart.payload } }); cart.clear(); setMsg(`Order #${r.number} is in. We'll bring it to your table.`); load(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
-  const help = (reason) => api(`/t/${token}/help`, { method: 'POST', body: { reason } }).then(() => setMsg(reason === 'water' ? 'Water is on the way.' : 'Your server is on the way.')).catch((e) => setErr(e.message));
+  const help = (kind) => api(`/t/${token}/call`, { method: 'POST', body: { kind } }).then(() => setMsg(tr(getLang(), kind === 'water' ? 'Water is on the way.' : kind === 'check' ? 'The check is on the way.' : 'Your server is on the way.'))).catch(() => api(`/t/${token}/help`, { method: 'POST', body: { reason: kind } }).then(() => setMsg(tr(getLang(), 'Your server is on the way.'))).catch((e) => setErr(e.message)));
   const pay = async () => { try { const r = await api(`/t/${token}/bill`, { method: 'POST' }); nav(`/p/${r.token}`); } catch (e) { setErr(e.message); } };
 
   return (
@@ -136,8 +138,9 @@ export function TableOrder() {
         </div>
       )}
       <div className="row wrap">
-        <button className="btn grow" onClick={() => help('server')}>Call my server</button>
-        <button className="btn grow" onClick={() => help('water')}>Water, please</button>
+        <button className="btn grow" onClick={() => help('server')}>{tr(getLang(), 'Call my server')}</button>
+        <button className="btn grow" onClick={() => help('water')}>{tr(getLang(), 'Water, please')}</button>
+        <button className="btn grow" onClick={() => help('check')}>{tr(getLang(), 'Bring the check')}</button>
         <button className="btn primary grow" onClick={pay}>See the check and pay</button>
       </div>
     </Shell>

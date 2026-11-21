@@ -313,6 +313,7 @@ const DEFAULTS = {
   auto_birthday: '0', auto_birthday_pct: '15', auto_winback: '0', auto_winback_days: '45', auto_winback_pct: '10', auto_welcome: '0', auto_welcome_pct: '10', auto_last_run: '',
   pay_handles_enabled: '0', pay_cashapp: '', pay_venmo: '', pay_paypalme: '', pay_zelle: '', card_provider: 'auto', cash_discount_pct: '0',
   fee_rates: '{"card":[2.6,15],"online":[2.9,30],"venmo":[1.9,10],"cashapp":[2.75,0],"paypal":[3.49,49],"paypalme":[3.49,49],"zelle":[0,0],"cash":[0,0],"gift":[0,0],"other":[0,0]}',
+  show_calories: '0', loyalty_tiers: '[]', tipout_rules: '[]', table_calls: '1', weekly_report: '1', weekly_report_hour: '8', report_email: '', languages: '["en","es"]', auto_reorder: '0',
   labor_target_pct: '25', labor_alerts: '1', online_schedule: '1', online_schedule_days: '7', booking_duration_minutes: '90', kitchen_stations: '["Kitchen","Bar"]', station_map: '{}', label_shelf_days: '3',
   sales_goals: '[]', table_long_minutes: '90', kitchen_slow_minutes: '20', price_watch_pct: '5', display_version: '1',
   screen_message: '', screen_version: '1', upsell_enabled: '1', prep_buffer_pct: '10',

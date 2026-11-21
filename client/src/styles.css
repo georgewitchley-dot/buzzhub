@@ -619,7 +619,7 @@ li.held { opacity: .5; }
 .punches i.used { background: var(--accent); }
 .label-sheet { display: none; }
 @media print {
-  .no-print, .panel.no-print, .page-head:has(~ .label-sheet), .claims-bar { display: none !important; }
+  .no-print, .panel.no-print, .page-head:has(~ .label-sheet), .claims { display: none !important; }
   .label-sheet { display: grid; gap: 0; }
   .label-sheet.size-2x1 { grid-template-columns: 2in; }
   .label-sheet.size-4x2 { grid-template-columns: 4in; }

@@ -28,6 +28,7 @@ import { Chats, MyShifts, Performance, useUnreadChats } from './People.jsx';
 import { Checklists, Deposits, Events, Prep } from './House.jsx';
 import { Deals, Goals, Training } from './Plus.jsx';
 import { Labels, Waste } from './More.jsx';
+import { Equipment, LogBanner, LogBook, SupplierBills, TableCalls, TipOuts, WeeklyReport } from './Owner.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -65,6 +66,8 @@ const NAV = [
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/checklists', icon: 'list', label: 'Checklists' },
   { to: '/training', icon: 'star', label: 'Training' },
+  { to: '/logbook', icon: 'list', label: 'Log book' },
+  { to: '/equipment', icon: 'gear', label: 'Equipment' },
   { to: '/waste', icon: 'box', label: 'Waste' },
   { to: '/labels', icon: 'print', label: 'Labels' },
   { to: '/prep', icon: 'flame', label: 'Prep list', when: (s) => s?.business_type !== 'service' },
@@ -85,7 +88,10 @@ const NAV = [
   { to: '/ticketing', icon: 'ticket', label: 'Events', min: 'manager' },
   { to: '/deposits', icon: 'cash', label: 'Bank deposits', min: 'owner' },
   { to: '/tips', icon: 'cash', label: 'Tips', min: 'manager' },
+  { to: '/tipouts', icon: 'cash', label: 'Tip-outs', min: 'manager' },
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
+  { to: '/supplier-bills', icon: 'bag', label: 'Supplier bills', min: 'owner' },
+  { to: '/report', icon: 'chart', label: 'Weekly report', min: 'owner' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
@@ -219,6 +225,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
           <div className="scroller" ref={scrollRef}>
             <div className="content" ref={contentRef}>
               {settings && socket && <PaymentClaims />}
+              {settings && socket && <TableCalls />}
+              {settings && socket && <LogBanner />}
               {settings && socket && (
                 <Routes>
                   <Route index element={<Dashboard />} />
@@ -243,6 +251,11 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="checklists" element={<Checklists />} />
                   <Route path="training" element={<Training />} />
                   <Route path="waste" element={<Waste />} />
+                  <Route path="logbook" element={<LogBook />} />
+                  <Route path="equipment" element={<Equipment />} />
+                  {can('manager') && <Route path="tipouts" element={<TipOuts />} />}
+                  {can('owner') && <Route path="supplier-bills" element={<SupplierBills />} />}
+                  {can('owner') && <Route path="report" element={<WeeklyReport />} />}
                   <Route path="labels" element={<Labels />} />
                   {can('manager') && <Route path="deals" element={<Deals />} />}
                   {can('manager') && <Route path="goals" element={<Goals />} />}

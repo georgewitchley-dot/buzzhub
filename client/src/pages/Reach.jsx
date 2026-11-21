@@ -26,17 +26,21 @@ export function MenuDetails() {
   );
 }
 function DetailsModal({ item, lists, onClose, toast }) {
-  const [f, setF] = useState({ description: item.description || '', allergens: item.allergens, diet: item.diet, esName: item.i18n?.es?.name || '', esDesc: item.i18n?.es?.description || '', esCat: item.i18n?.es?.category || '' });
+  const LN = { es: 'Spanish', fr: 'French', zh: 'Chinese', vi: 'Vietnamese' };
+  const [f, setF] = useState({ description: item.description || '', allergens: item.allergens, diet: item.diet });
+  const [tl, setTl] = useState(() => Object.fromEntries(Object.keys(LN).map((l) => [l, { name: item.i18n?.[l]?.name || '', description: item.i18n?.[l]?.description || '', category: item.i18n?.[l]?.category || '' }])));
+  const [lang, setLang] = useState('es');
   const flip = (k, v) => setF({ ...f, [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] });
-  const save = async () => { try { await api(`/staff/menu/${item.id}/details`, { method: 'PUT', body: { description: f.description || undefined, allergens: f.allergens, diet: f.diet, es: { name: f.esName, description: f.esDesc, category: f.esCat } } }); toast(`${item.name} saved`, 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); } };
+  const setT = (k) => (e) => setTl({ ...tl, [lang]: { ...tl[lang], [k]: e.target.value } });
+  const save = async () => { try { await api(`/staff/menu/${item.id}/details`, { method: 'PUT', body: { description: f.description || undefined, allergens: f.allergens, diet: f.diet, ...tl } }); toast(`${item.name} saved`, 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); } };
   return (
     <Modal title={item.name} onClose={onClose} width={560}>
       <label className="field"><span>Description customers see</span><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} maxLength={200} /></label>
       <div className="field"><span>Contains</span><div className="row wrap" style={{ gap: 6 }}>{lists.allergens.map((a) => <button key={a} className={`chip ${f.allergens.includes(a) ? 'rose' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={f.allergens.includes(a)} onClick={() => flip('allergens', a)}>{a}</button>)}</div></div>
       <div className="field"><span>Diet</span><div className="row wrap" style={{ gap: 6 }}>{lists.diets.map((a) => <button key={a} className={`chip ${f.diet.includes(a) ? 'teal' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={f.diet.includes(a)} onClick={() => flip('diet', a)}>{a}</button>)}</div></div>
-      <b style={{ marginTop: 6 }}>Spanish</b>
-      <div className="row"><label className="field grow"><span>Name</span><input className="input" value={f.esName} onChange={(e) => setF({ ...f, esName: e.target.value })} maxLength={60} /></label><label className="field grow"><span>Category</span><input className="input" value={f.esCat} onChange={(e) => setF({ ...f, esCat: e.target.value })} maxLength={40} placeholder={item.category} /></label></div>
-      <label className="field"><span>Description</span><input className="input" value={f.esDesc} onChange={(e) => setF({ ...f, esDesc: e.target.value })} maxLength={200} /></label>
+      <div className="seg" style={{ width: '100%', marginTop: 6 }}>{Object.entries(LN).map(([k, v]) => <button key={k} aria-pressed={lang === k} onClick={() => setLang(k)} style={{ flex: 1 }}>{v}{tl[k].name ? ' ✓' : ''}</button>)}</div>
+      <div className="row"><label className="field grow"><span>Name</span><input className="input" value={tl[lang].name} onChange={setT('name')} maxLength={60} /></label><label className="field grow"><span>Category</span><input className="input" value={tl[lang].category} onChange={setT('category')} maxLength={40} placeholder={item.category} /></label></div>
+      <label className="field"><span>Description</span><input className="input" value={tl[lang].description} onChange={setT('description')} maxLength={200} /></label>
       <button className="btn primary lg block" onClick={save}>Save</button>
       <span className="dim" style={{ fontSize: 12.5 }}>Customers can hide dishes with an allergen. Tags are a guide only, so always tell guests to mention serious allergies.</span>
     </Modal>

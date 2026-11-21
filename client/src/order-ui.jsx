@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, money } from './lib.js';
 import { Modal } from './ui.jsx';
+import { tr } from './i18n.jsx';
 
 export const lineKey = (l) => `${l.comboId ? `c${l.comboId}:${JSON.stringify(l.picks)}` : l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}:${l.course || 1}`;
 export const lineTotal = (l) => l.qty * l.unitCents;
@@ -68,9 +69,9 @@ const ALLERGY_ES = { milk: 'leche', eggs: 'huevo', fish: 'pescado', shellfish: '
 const DIET_ES = { vegetarian: 'vegetariano', vegan: 'vegano', 'gluten free': 'sin gluten', halal: 'halal', kosher: 'kosher', spicy: 'picante' };
 /** Customer-facing menu list with category chips, allergen filter and Spanish names; tap an item to add it (or pick options). */
 export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = false, combos = [] }) {
-  const es = lang === 'es';
-  const nm = (i) => (es && i.i18n?.es?.name) || i.name;
-  const catName = (c) => (es && items.find((i) => i.category === c && i.i18n?.es?.category)?.i18n.es.category) || c;
+  const es = lang === 'es'; const L = lang !== 'en' ? lang : null; const T = (k) => tr(lang, k);
+  const nm = (i) => (L && i.i18n?.[L]?.name) || i.name;
+  const catName = (c) => (L && items.find((i) => i.category === c && i.i18n?.[L]?.category)?.i18n[L].category) || c;
   const [cat, setCat] = useState('');
   const [avoid, setAvoid] = useState([]);
   const [showFilter, setShowFilter] = useState(false);
@@ -83,14 +84,14 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
   const tap = (i) => (viewOnly ? null : i.groups?.length ? setPicking(i) : onAdd({ itemId: i.id, qty: 1, mods: [], name: nm(i), modNames: [], unitCents: i.price_cents }));
   return (
     <>
-      {cats.length > 1 && <div className="cat-strip">{['', ...cats].map((c) => <button key={c || 'all'} className={`btn sm ${cat === c ? 'primary' : ''}`} onClick={() => setCat(c)}>{c ? catName(c) : es ? 'Todo' : 'All'}</button>)}
-        {present.length > 0 && <button className={`btn sm ${avoid.length ? 'primary' : 'ghost'}`} onClick={() => setShowFilter(!showFilter)} aria-expanded={showFilter}>{es ? 'Alergias' : 'Allergies'}{avoid.length ? ` (${avoid.length})` : ''}</button>}</div>}
-      {showFilter && <div className="card allergy-filter"><span className="muted" style={{ fontSize: 13 }}>{es ? 'Ocultar platillos con:' : 'Hide dishes that contain:'}</span><div className="row wrap" style={{ gap: 6 }}>{present.map((a) => <button key={a} className={`chip ${avoid.includes(a) ? 'rose' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={avoid.includes(a)} onClick={() => setAvoid(avoid.includes(a) ? avoid.filter((x) => x !== a) : [...avoid, a])}>{es ? ALLERGY_ES[a] : a}</button>)}</div><span className="dim" style={{ fontSize: 12 }}>{es ? 'Avise al personal sobre alergias graves.' : 'Always tell the team about serious allergies.'}</span></div>}
+      {cats.length > 1 && <div className="cat-strip">{['', ...cats].map((c) => <button key={c || 'all'} className={`btn sm ${cat === c ? 'primary' : ''}`} onClick={() => setCat(c)}>{c ? catName(c) : T('All')}</button>)}
+        {present.length > 0 && <button className={`btn sm ${avoid.length ? 'primary' : 'ghost'}`} onClick={() => setShowFilter(!showFilter)} aria-expanded={showFilter}>{T('Allergies')}{avoid.length ? ` (${avoid.length})` : ''}</button>}</div>}
+      {showFilter && <div className="card allergy-filter"><span className="muted" style={{ fontSize: 13 }}>{T('Hide dishes that contain:')}</span><div className="row wrap" style={{ gap: 6 }}>{present.map((a) => <button key={a} className={`chip ${avoid.includes(a) ? 'rose' : ''}`} style={{ border: 0, cursor: 'pointer' }} aria-pressed={avoid.includes(a)} onClick={() => setAvoid(avoid.includes(a) ? avoid.filter((x) => x !== a) : [...avoid, a])}>{es ? ALLERGY_ES[a] : a}</button>)}</div><span className="dim" style={{ fontSize: 12 }}>{T('Always tell the team about serious allergies.')}</span></div>}
       <div className="sheet-list">
-        {!cat && specials.length > 0 && <section><h3 className="sheet-cat">{es ? 'Especiales de hoy' : "Today's specials"}</h3>
+        {!cat && specials.length > 0 && <section><h3 className="sheet-cat">{T("Today's specials")}</h3>
           {specials.map((i) => <button key={i.id} className="menu-line menu-tap special-line" disabled={viewOnly} onClick={() => tap(i)}><span className="grow"><b>{nm(i)}</b>{i.special.note && <small className="menu-desc">{i.special.note}</small>}<PriceTag i={i} currency={currency} /></span>{!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}</button>)}
         </section>}
-        {!cat && combos.length > 0 && <section><h3 className="sheet-cat">{es ? 'Combos' : 'Combos'}</h3>
+        {!cat && combos.length > 0 && <section><h3 className="sheet-cat">Combos</h3>
           {combos.map((c) => <button key={c.id} className="menu-line menu-tap" disabled={viewOnly} onClick={() => setCombo(c)}><span className="grow"><b>{c.name}</b><small className="menu-desc">{c.description || c.slots.map((x) => x.label).join(' + ')}</small><span className="muted num">{money(c.priceCents, currency)}</span></span>{!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}</button>)}
         </section>}
         {(cat ? [cat] : cats).map((c) => { const list = shown.filter((i) => i.category === c); if (!list.length) return null; return (
@@ -99,8 +100,8 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
             {list.map((i) => (
               <button key={i.id} className="menu-line menu-tap" disabled={i.soldOut || viewOnly} onClick={() => tap(i)}>
                 <span className="grow"><b>{nm(i)}</b>
-                  {((es && i.i18n?.es?.description) || i.description) && <small className="menu-desc">{(es && i.i18n?.es?.description) || i.description}</small>}
-                  <span className="muted num">{i.soldOut ? (es ? 'Agotado' : 'Sold out') : <PriceTag i={i} currency={currency} inline />}{i.groups?.length ? (es ? ', opciones' : ', options') : ''}</span>
+                  {((L && i.i18n?.[L]?.description) || i.description) && <small className="menu-desc">{(L && i.i18n?.[L]?.description) || i.description}</small>}
+                  <span className="muted num">{i.soldOut ? T('Sold out') : <PriceTag i={i} currency={currency} inline />}{i.groups?.length ? `, ${T('options')}` : ''}{i.calories !== undefined ? ` · ${i.calories} ${T('cal')}` : ''}</span>
                   {((i.diet || []).length > 0 || (i.allergens || []).length > 0) && <span className="tags-line">{(i.diet || []).map((t) => <span key={t} className="mini diet">{es ? DIET_ES[t] : t}</span>)}{(i.allergens || []).map((t) => <span key={t} className="mini">{es ? ALLERGY_ES[t] : t}</span>)}</span>}
                 </span>
                 {!viewOnly && <span className="add-dot" aria-hidden="true">+</span>}

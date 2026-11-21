@@ -6,6 +6,7 @@ import { Puck } from '../ui.jsx';
 import { AccountClub } from './Club.jsx';
 import { ReferralCard } from './House.jsx';
 import { AccountPunches } from './More.jsx';
+import { AccountOrders, AccountTier } from './Owner.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
@@ -166,6 +167,8 @@ export default function Account() {
 
             <ReferralCard />
             <AccountPunches />
+            <AccountTier />
+            <AccountOrders />
             <AccountClub />
 
             {offers !== null && (

@@ -90,7 +90,7 @@ export function priceLines(lines, { guestOnly = false } = {}) {
       const chosen = g.options.filter((o) => picked.has(o.id));
       if (chosen.length < g.min) throw err(`Choose ${g.min === 1 ? 'an option' : `${g.min} options`} for ${g.name} on ${m.name}`);
       if (chosen.length > g.max) throw err(`Choose at most ${g.max} for ${g.name} on ${m.name}`);
-      for (const o of chosen) { mods.push({ name: o.name, price_cents: o.price_cents }); picked.delete(o.id); }
+      for (const o of chosen) { mods.push({ id: o.id, name: o.name, price_cents: o.price_cents }); picked.delete(o.id); }
     }
     if (picked.size) throw err(`An option on ${m.name} is no longer available`);
     return mods;
@@ -556,6 +556,7 @@ export function registerCommerce({ app, staff, io, h }) {
     const o = insertOrder({ lines, status: b.payNow || b.scheduledFor ? 'held' : 'sent', source: 'online', guestId: g.id, customerName: b.name, fulfillment: b.fulfillment, address: b.fulfillment === 'delivery' ? b.address : null,
       phone: b.phone, email: b.email || null, notes: b.notes || null, feeCents: b.fulfillment === 'delivery' ? info.deliveryFeeCents : 0, discountCents: promo?.cents || 0, promoCode: promo?.code || null });
     db.prepare('UPDATE guests SET order_id = ? WHERE id = ?').run(o.id, g.id);
+    h.linkOrderCustomer?.(req, o.id);
     if (b.scheduledFor) db.prepare('UPDATE orders SET scheduled_for = ?, sched_pay = ? WHERE id = ?').run(b.scheduledFor, b.payNow ? 'now' : 'later', o.id);
     const buzzer = `/b/${g.token}`;
     if (!b.payNow) {

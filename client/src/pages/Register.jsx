@@ -9,6 +9,7 @@ import { Icon, Modal, useToast } from '../ui.jsx';
 import { CartLines, ComboPicker, ModPicker, PairsHint, PriceTag, useCart } from '../order-ui.jsx';
 import { GoalBar, PairDisplay, useDisplayPush, useLiveCombos } from './Plus.jsx';
 import { PunchUse, SellPunch, applyPunches } from './More.jsx';
+import { TierChip } from './Owner.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { QrModal, RedeemModal } from './Waitlist.jsx';
 import { queueSale, attachPayment, isNetworkError } from '../offline.js';
@@ -319,6 +320,7 @@ export default function Register() {
               )}
             </div>
             <CustomerPicker value={cust} onChange={setCust} allergies={allergies} setAllergies={setAllergies} currency={cur} />
+            <TierChip customer={cust} />
             <PunchUse customer={cust} picks={punchPicks} setPicks={setPunchPicks} />
             <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={buzzer} onChange={(e) => setBuzzer(e.target.checked)} /> Give the customer a phone buzzer for pickup</label>
             {buzzer && <input className="input" type="tel" placeholder="Mobile number (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} aria-label="Mobile number" />}

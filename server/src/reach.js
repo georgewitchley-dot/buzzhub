@@ -55,9 +55,10 @@ export function registerReach({ app, staff, h }) {
   /* ===== allergens, diets, Spanish names ===== */
   staff.get('/menu/details', mgr, (req, res) => res.json({ allergens: ALLERGENS, diets: DIETS, items: db.prepare('SELECT id, name, category, description, allergens, diet, i18n FROM menu_items WHERE active = 1 ORDER BY category, sort, id').all().map((m) => ({ ...m, allergens: parseJ(m.allergens, []), diet: parseJ(m.diet, []), i18n: parseJ(m.i18n, {}) })) }));
   staff.put('/menu/:id/details', mgr, (req, res) => {
-    const b = parse(z.object({ description: z.string().trim().max(200).optional(), allergens: z.array(z.enum(ALLERGENS)).max(9), diet: z.array(z.enum(DIETS)).max(6), es: z.object({ name: z.string().trim().max(60).optional(), description: z.string().trim().max(200).optional(), category: z.string().trim().max(40).optional() }).optional() }), req.body);
+    const b = parse(z.object({ description: z.string().trim().max(200).optional(), allergens: z.array(z.enum(ALLERGENS)).max(9), diet: z.array(z.enum(DIETS)).max(6), es: z.object({ name: z.string().trim().max(60).optional(), description: z.string().trim().max(200).optional(), category: z.string().trim().max(40).optional() }).optional(), fr: z.object({ name: z.string().trim().max(60).optional(), description: z.string().trim().max(200).optional(), category: z.string().trim().max(40).optional() }).optional(), zh: z.object({ name: z.string().trim().max(60).optional(), description: z.string().trim().max(200).optional(), category: z.string().trim().max(40).optional() }).optional(), vi: z.object({ name: z.string().trim().max(60).optional(), description: z.string().trim().max(200).optional(), category: z.string().trim().max(40).optional() }).optional() }), req.body);
     const id = idParam(req); const cur = db.prepare('SELECT i18n FROM menu_items WHERE id = ?').get(id); if (!cur) throw err('Not found', 404);
-    const i18n = { ...parseJ(cur.i18n, {}), ...(b.es ? { es: Object.fromEntries(Object.entries(b.es).filter(([, v]) => v)) } : {}) };
+    const i18n = { ...parseJ(cur.i18n, {}) };
+    for (const l of ['es', 'fr', 'zh', 'vi']) if (b[l]) i18n[l] = Object.fromEntries(Object.entries(b[l]).filter(([, v]) => v));
     db.prepare('UPDATE menu_items SET description = ?, allergens = ?, diet = ?, i18n = ? WHERE id = ?').run(b.description || null, JSON.stringify(b.allergens), JSON.stringify(b.diet), JSON.stringify(i18n), id);
     audit(req.user, 'menu.details', `item ${id}`, clientIp(req)); notifyStaff('menu'); res.json({ ok: true });
   });
