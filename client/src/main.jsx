@@ -7,6 +7,7 @@ import CommandCenter from './pages/CommandCenter.jsx';
 import Guest from './pages/Guest.jsx';
 import Join from './pages/Join.jsx';
 import Account from './pages/Account.jsx';
+import { RateVisit } from './pages/Feedback.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -17,6 +18,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/b/:token" element={<Guest />} />
           <Route path="/join" element={<Join />} />
           <Route path="/account" element={<Account />} />
+          <Route path="/f/:token" element={<RateVisit />} />
           <Route path="/*" element={<CommandCenter />} />
         </Routes>
       </BrowserRouter>

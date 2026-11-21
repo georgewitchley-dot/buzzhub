@@ -3,9 +3,9 @@ import { gsap } from 'gsap';
 import SpotlightCard from '../bits/SpotlightCard.jsx';
 import ClickSpark from '../bits/ClickSpark.jsx';
 import { api, money } from '../lib.js';
-import { Modal, useToast } from '../ui.jsx';
+import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
-import { QrModal } from './Waitlist.jsx';
+import { QrModal, RedeemModal } from './Waitlist.jsx';
 
 export function PayModal({ order, currency, onClose, onPaid }) {
   const toast = useToast();
@@ -70,6 +70,7 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(null);
   const [qr, setQr] = useState(null);
+  const [redeem, setRedeem] = useState(false);
   const totalRef = useRef(null);
 
   const items = (menu || []).filter((m) => m.active);
@@ -104,7 +105,7 @@ export default function Register() {
 
   return (
     <>
-      <PageHead title="Register" sub="Tap items to add them to the ticket." />
+      <PageHead title="Register" sub="Tap items to add them to the ticket.">{settings.loyalty_enabled === '1' && <button className="btn" onClick={() => setRedeem(true)}><Icon name="gift" size={17} />Redeem reward</button>}</PageHead>
       <div className="register">
         <div>
           <div className="cats">{cats.map((c) => <button key={c} className={`btn sm ${c === cat ? 'primary' : ''}`} onClick={() => setCat(c)}>{c}</button>)}</div>
@@ -157,6 +158,7 @@ export default function Register() {
           </div>
         </aside>
       </div>
+      {redeem && <RedeemModal onClose={() => setRedeem(false)} />}
       {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => setPaying(null)} />}
       {qr && !paying && <QrModal {...qr} onClose={() => setQr(null)} />}
     </>

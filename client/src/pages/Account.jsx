@@ -98,6 +98,7 @@ export default function Account() {
   const [bookings, setBookings] = useState([]);
   const [alerts, setAlerts] = useState('off');
   const [msg, setMsg] = useState('');
+  const [loyal, setLoyal] = useState(null);
   useLenis();
 
   const loadBookings = useCallback(() => api('/c/bookings').then(setBookings).catch(() => {}), []);
@@ -107,7 +108,7 @@ export default function Account() {
     api('/c/booking-info').then(setInfo);
     api('/c/me').then(({ customer }) => setMe(customer)).catch(() => setMe(null));
   }, []);
-  useEffect(() => { if (me) { loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
+  useEffect(() => { if (me) { api('/c/loyalty').then(setLoyal).catch(() => {}); loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
 
   const turnOn = async () => { try { const r = await enablePush('/c/push'); setAlerts(r); } catch { setAlerts('unsupported'); } };
   const checkIn = async (b) => { try { const r = await api(`/c/bookings/${b.id}/checkin`, { method: 'POST' }); nav(r.buzzer); } catch (e) { setMsg(e.message); } };
@@ -146,6 +147,19 @@ export default function Account() {
             </div>
 
             {msg && <div className="card banner" role="alert">{msg}</div>}
+
+            {loyal?.enabled && (
+              <div className="card">
+                <b>{loyal.rewards.length ? 'You have a reward!' : `${loyal.toNext} more visit${loyal.toNext === 1 ? '' : 's'} to ${loyal.reward.toLowerCase()}`}</b>
+                {loyal.rewards.map((r) => (
+                  <div key={r.id} className="stack" style={{ gap: 6 }}><span>{r.title}. Show this code to the staff:</span><div className="reward-code num">{r.code}</div></div>
+                ))}
+                <div className="loyal-dots" aria-label={`${loyal.visits % loyal.every} of ${loyal.every} visits`}>
+                  {Array.from({ length: loyal.every }, (_, i) => <i key={i} className={i < loyal.visits % loyal.every ? 'on' : ''}>{i + 1}</i>)}
+                </div>
+                <span className="dim" style={{ fontSize: 13 }}>{loyal.visits} visit{loyal.visits === 1 ? '' : 's'} so far. Visits count when you check in with this account.</span>
+              </div>
+            )}
 
             {upcoming.length > 0 && (
               <div className="card">

@@ -85,6 +85,26 @@ function BuzzModal({ guest, onClose, onDone, unit }) {
   );
 }
 
+export function RedeemModal({ customerId, name, code: initialCode, onClose }) {
+  const toast = useToast();
+  const [list, setList] = useState(null);
+  const [code, setCode] = useState(initialCode || '');
+  useEffect(() => { if (customerId) api(`/staff/customers/${customerId}/rewards`).then(setList); }, [customerId]);
+  const redeem = async (id) => { try { const r = await api(`/staff/rewards/${id}/redeem`, { method: 'POST' }); toast(`Redeemed ${r.title} for ${r.name}`, 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); } };
+  const lookup = async () => { try { const r = await api(`/staff/rewards/lookup?code=${code}`); setList([{ ...r, code }]); } catch (e) { toast(e.message, 'err'); } };
+  return (
+    <Modal title={name ? `${name}'s rewards` : 'Redeem a reward'} onClose={onClose}>
+      {!customerId && (
+        <div className="row"><input className="input grow" inputMode="numeric" placeholder="6-digit code from their phone" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} aria-label="Reward code" /><button className="btn" disabled={code.length !== 6} onClick={lookup}>Find</button></div>
+      )}
+      {list && (list.length ? list.map((r) => (
+        <div key={r.id} className="row" style={{ borderBottom: '1px solid var(--line)', paddingBottom: 10 }}><span className="grow"><b>{r.title}</b>{r.name && <div className="muted" style={{ fontSize: 14 }}>{r.name}</div>}</span><button className="btn primary sm" onClick={() => redeem(r.id)}>Redeem</button></div>
+      )) : <p className="muted">No rewards ready.</p>)}
+      <p className="dim" style={{ margin: 0, fontSize: 13 }}>Give them the reward, then tap Redeem so it can't be used twice.</p>
+    </Modal>
+  );
+}
+
 export default function Waitlist() {
   const { settings } = useCC();
   const unit = settings.unit_label;
@@ -93,6 +113,7 @@ export default function Waitlist() {
   const [adding, setAdding] = useState(false);
   const [qr, setQr] = useState(null);
   const [buzzing, setBuzzing] = useState(null);
+  const [redeeming, setRedeeming] = useState(null);
   const [view, setView] = useState('table');
   const listRef = useRef(null);
   const seen = useRef(new Set());
@@ -126,7 +147,7 @@ export default function Waitlist() {
           <div className="empty"><Puck state="waiting" size={48} /><b>Nobody is waiting</b><span>Add a guest and hand them a buzzer code, or let them scan the door code.</span><button className="btn primary" onClick={() => setAdding(true)}>Add guest</button></div>
         ) : active.map((g, i) => {
           const waited = minutesSince(g.created_at);
-          const quoted = (i + 1) * turn;
+          const quoted = g.est_minutes ?? (i + 1) * turn;
           return (
             <div className="wl-row" key={g.id} data-id={g.id} data-state={g.status}>
               <Puck state={g.status} />
@@ -136,6 +157,8 @@ export default function Waitlist() {
                   <span className={`chip ${g.status === 'buzzed' ? 'amber' : g.status === 'acknowledged' ? 'teal' : ''}`}>{STATE_TEXT[g.status]}{g.buzz_count > 1 ? ` ×${g.buzz_count}` : ''}</span>
                   {g.devices > 0 ? <span className="chip teal" title="Gets phone notifications"><Icon name="phone" size={13} />Alerts on</span> : <span className="chip" title="Has not turned on phone alerts">No alerts</span>}
                   {g.preorder && <span className="chip amber"><Icon name="glass" size={13} />{PRE[g.preorder.split(':')[0]] || 'Pre-order'} ({g.preorder.split(':')[2]})</span>}
+                  {g.customer_visits >= 2 && <span className="chip blue" title="Has a customer account">Regular, {g.customer_visits} visits</span>}
+                  {g.rewards > 0 && <button className="chip amber" style={{ border: 0, cursor: 'pointer' }} onClick={() => setRedeeming(g)}><Icon name="gift" size={13} />Reward ready</button>}
                   {g.booking_start && <span className="chip blue">Booked {fmtSlot(g.booking_start).time}{g.booking_service ? `, ${g.booking_service}` : ''}</span>}
                   {g.table_label && <span>{unit} {g.table_label}</span>}
                   <span>Joined {timeOf(g.created_at)}{g.source === 'self' ? ' by self check-in' : g.source === 'booking' ? ' from a booking' : ''}</span>
@@ -168,6 +191,7 @@ export default function Waitlist() {
 
       {adding && <AddGuest unit={unit} onClose={() => setAdding(false)} onAdded={(r) => { setAdding(false); setQr({ guestId: r.guest.id }); }} />}
       {qr && <QrModal {...qr} onClose={() => setQr(null)} />}
+      {redeeming && <RedeemModal customerId={redeeming.customer_id} name={redeeming.name} onClose={() => setRedeeming(null)} />}
       {buzzing && <BuzzModal guest={buzzing} unit={unit} onClose={() => setBuzzing(null)} onDone={() => setBuzzing(null)} />}
     </>
   );

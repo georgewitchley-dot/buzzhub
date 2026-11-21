@@ -389,3 +389,14 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 
 .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .codes code { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px; text-align: center; font-size: 15px; letter-spacing: 1px; }
+
+.stars { display: flex; gap: 6px; }
+.stars button { background: none; border: 0; font-size: 46px; line-height: 1; color: var(--line-2); padding: 4px; transition: transform .1s, color .1s; }
+.stars button.on { color: var(--accent); }
+.stars button:active { transform: scale(.9); }
+.meter { height: 10px; border-radius: 6px; background: var(--bg); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+.loyal-dots { display: flex; gap: 8px; flex-wrap: wrap; }
+.loyal-dots i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; font-style: normal; font-size: 13px; }
+.loyal-dots i.on { background: var(--accent); border-color: var(--accent); color: #1a1406; }
+.reward-code { font-family: var(--display); font-size: 2rem; letter-spacing: 4px; font-weight: 700; text-align: center; padding: 8px; border: 2px dashed var(--accent); border-radius: 12px; }

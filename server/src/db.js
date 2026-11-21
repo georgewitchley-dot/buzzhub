@@ -225,6 +225,14 @@ const DEFAULTS = {
   booking_reminder_minutes: '60',
   kds_late_minutes: '12',
   require_approved_devices: '0',
+  smart_waits: '1',
+  loyalty_enabled: '1',
+  loyalty_visits: '5',
+  loyalty_reward: 'A free drink',
+  feedback_enabled: '1',
+  feedback_delay_minutes: '60',
+  feedback_review_threshold: '4',
+  review_url: '',
 };
 
 /* ---------- business-local dates inside SQL: localdate(ts) / localtoday() ---------- */

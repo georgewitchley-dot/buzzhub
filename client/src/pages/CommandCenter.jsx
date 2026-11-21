@@ -16,6 +16,7 @@ import Reports from './Reports.jsx';
 import Cash from './Cash.jsx';
 import Shifts from './Shifts.jsx';
 import Security from './Security.jsx';
+import { FeedbackAdmin } from './Feedback.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -49,6 +50,7 @@ const NAV = [
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
+  { to: '/feedback', icon: 'star', label: 'Feedback', min: 'manager', when: (s) => s?.feedback_enabled === '1' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
@@ -168,6 +170,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="cash" element={<Cash />} />
                   <Route path="shifts" element={<Shifts />} />
                   {can('manager') && <Route path="reports" element={<Reports />} />}
+                  {can('manager') && <Route path="feedback" element={<FeedbackAdmin />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

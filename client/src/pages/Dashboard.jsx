@@ -46,7 +46,7 @@ export default function Dashboard() {
         <div className="kpi"><div className="v">{tableMap.seated || 0}/{totalTables}</div><div className="l">{settings.unit_label}s in use</div></div>
         <div className="kpi"><div className="v">{money(d.salesCents, cur)}</div><div className="l">Sales from {d.ordersPaid} orders</div></div>
         <div className="kpi"><div className="v">{d.coversToday}</div><div className="l">Guests served</div></div>
-        <div className="kpi"><div className="v">{d.buzzesToday}</div><div className="l">Buzzes sent</div></div>
+        <div className="kpi"><div className="v">{d.rating7 ?? '–'}{d.rating7 ? <small style={{ fontSize: '1rem' }}> / 5</small> : null}</div><div className="l">{d.ratings7 ? `Guest rating, ${d.ratings7} this week` : 'Guest rating this week'}</div></div>
       </div>
 
       <div className="grid-2" style={{ marginTop: 18 }}>

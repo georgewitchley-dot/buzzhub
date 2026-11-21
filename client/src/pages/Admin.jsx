@@ -167,6 +167,7 @@ export function SettingsAdmin() {
     e?.preventDefault();
     const keys = ['business_name', 'business_type', 'unit_label', 'accent', 'currency', 'tax_rate', 'avg_turn_minutes', 'idle_lock_minutes', 'self_checkin', 'welcome_message',
       'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
+      'smart_waits', 'loyalty_enabled', 'loyalty_visits', 'loyalty_reward', 'feedback_enabled', 'feedback_delay_minutes', 'feedback_review_threshold', 'review_url',
       'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
   };
@@ -208,6 +209,7 @@ export function SettingsAdmin() {
         </div></section>
 
         <section className="panel"><div className="panel-h"><h3>Waitlist and ordering ahead</h3></div><div className="panel-b stack">
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.smart_waits === '1'} onChange={flag('smart_waits')} /> Learn wait times from real seating data (uses the number below until there's enough history)</label>
           <label className="field"><span>Average minutes per party in line (for quoted waits)</span><input className="input" type="number" min={1} max={240} value={f.avg_turn_minutes} onChange={set('avg_turn_minutes')} /></label>
           <label className="field"><span>Send an "almost ready" alert when the wait is this many minutes or less</span><input className="input" type="number" min={0} max={240} value={f.heads_up_minutes} onChange={set('heads_up_minutes')} /><span className="dim" style={{ fontSize: 12.5 }}>0 turns it off. You can always send it by hand from the waitlist.</span></label>
           <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.preorder_enabled === '1'} onChange={flag('preorder_enabled')} /> Let waiting guests order ahead from their phone</label>
@@ -234,6 +236,27 @@ export function SettingsAdmin() {
                 <label className="field grow"><span>Remind them this many minutes before</span><input className="input" type="number" min={0} max={1440} value={f.booking_reminder_minutes} onChange={set('booking_reminder_minutes')} /></label>
               </div>
               <span className="dim" style={{ fontSize: 12.5 }}>"Bookings at the same time" is how many chairs, rooms or tables you can give out per time slot.</span>
+            </>
+          )}
+        </div></section>
+
+        <section className="panel"><div className="panel-h"><h3>Loyalty and feedback</h3></div><div className="panel-b stack">
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.loyalty_enabled === '1'} onChange={flag('loyalty_enabled')} /> Reward customers with accounts for repeat visits</label>
+          {f.loyalty_enabled === '1' && (
+            <div className="row">
+              <label className="field" style={{ width: 120 }}><span>Every</span><input className="input" type="number" min={2} max={50} value={f.loyalty_visits} onChange={set('loyalty_visits')} /></label>
+              <label className="field grow"><span>visits, they get</span><input className="input" value={f.loyalty_reward} onChange={set('loyalty_reward')} maxLength={60} /></label>
+            </div>
+          )}
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.feedback_enabled === '1'} onChange={flag('feedback_enabled')} /> Ask guests how it went after their visit</label>
+          {f.feedback_enabled === '1' && (
+            <>
+              <label className="field"><span>Send the question this many minutes after seating</span><input className="input" type="number" min={5} max={1440} value={f.feedback_delay_minutes} onChange={set('feedback_delay_minutes')} /></label>
+              <label className="field"><span>Your Google or Yelp review link</span><input className="input" type="url" value={f.review_url} onChange={set('review_url')} placeholder="https://g.page/r/…/review" /></label>
+              <label className="field"><span>Point guests to the review link when they rate at least</span>
+                <select className="input" value={f.feedback_review_threshold} onChange={set('feedback_review_threshold')}><option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option></select>
+              </label>
+              <span className="dim" style={{ fontSize: 12.5 }}>Lower ratings stay private, and 1–2 stars send an alert to managers.</span>
             </>
           )}
         </div></section>

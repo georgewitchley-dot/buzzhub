@@ -18,6 +18,7 @@ import {
 } from './security.js';
 import { registerOps } from './ops.js';
 import { registerGuard } from './guard.js';
+import { registerGrowth, smartEstimate, waitModelInfo } from './growth.js';
 const G = {}; // filled by registerGuard: authGate, managerOr, hasApproval, onBadPin, alertOwners
 import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, pushToUsers, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
 
@@ -75,14 +76,14 @@ function queueFor(kind) {
   return db.prepare("SELECT id FROM guests WHERE kind = ? AND status IN ('waiting','buzzed','acknowledged') ORDER BY created_at, id").all(kind).map((r) => r.id);
 }
 
-const estFor = (pos, s) => (pos ? Math.max(1, pos * Number(s.avg_turn_minutes || 10)) : 0);
+const estFor = (pos, s, size = 2) => smartEstimate(pos, size, s);
 const linkFor = (g) => `${process.env.PUBLIC_URL?.replace(/\/$/, '') || ''}/b/${g.token}`;
 
 /** Is this guest allowed to pre-order right now? */
 function preorderWindow(g, s, pos) {
   if (s.preorder_enabled !== '1' || g.kind !== 'table') return { enabled: false, open: false };
   if (!['waiting', 'buzzed', 'acknowledged'].includes(g.status)) return { enabled: true, open: false, closed: true };
-  const est = estFor(pos, s);
+  const est = estFor(pos, s, g.party_size);
   const open = g.preorder_open === 1 || g.status !== 'waiting' || est <= Number(s.preorder_open_minutes);
   return { enabled: true, open, opensInMinutes: open ? 0 : Math.max(1, est - Number(s.preorder_open_minutes)) };
 }
@@ -107,7 +108,7 @@ function guestPublicView(g) {
     partySize: g.party_size,
     status: g.status,
     position: pos || null,
-    estMinutes: estFor(pos, s),
+    estMinutes: estFor(pos, s, g.party_size),
     lastMessage: g.last_message,
     buzzCount: g.buzz_count,
     headsUp: Boolean(g.heads_up_at),
@@ -165,9 +166,9 @@ async function checkHeadsUps() {
     if (!limit) return;
     const queue = queueFor('table');
     for (const [i, id] of queue.entries()) {
-      if (estFor(i + 1, s) > limit) break;
       const g = db.prepare('SELECT * FROM guests WHERE id = ?').get(id);
-      if (g && g.status === 'waiting' && !g.heads_up_at) await sendHeadsUp(g);
+      if (!g || estFor(i + 1, s, g.party_size) > limit) continue;
+      if (g.status === 'waiting' && !g.heads_up_at) await sendHeadsUp(g);
     }
   } finally { headsUpRunning = false; }
 }
@@ -179,8 +180,9 @@ function pushAllWaiting() {
 
 function createGuest({ kind = 'table', name, phone, email, notifyEmail, party_size = 1, notes, source = 'staff', order_id = null, customer_id = null, booking_id = null }) {
   const token = newGuestToken();
-  const info = db.prepare('INSERT INTO guests (kind, name, phone, email, notify_email, party_size, notes, token, source, order_id, customer_id, booking_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(kind, name, phone || null, email || null, email && notifyEmail ? 1 : 0, party_size, notes || null, token, source, order_id, customer_id, booking_id);
+  const ahead = queueFor(kind).length;
+  const info = db.prepare('INSERT INTO guests (kind, name, phone, email, notify_email, party_size, notes, token, source, order_id, customer_id, booking_id, ahead_at_join) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(kind, name, phone || null, email || null, email && notifyEmail ? 1 : 0, party_size, notes || null, token, source, order_id, customer_id, booking_id, ahead);
   return db.prepare('SELECT * FROM guests WHERE id = ?').get(info.lastInsertRowid);
 }
 
@@ -503,6 +505,14 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     booking_days_ahead: z.coerce.number().int().min(1).max(120),
     booking_reminder_minutes: z.coerce.number().int().min(0).max(1440),
     kds_late_minutes: z.coerce.number().int().min(1).max(120),
+    smart_waits: z.union([z.literal('0'), z.literal('1')]),
+    loyalty_enabled: z.union([z.literal('0'), z.literal('1')]),
+    loyalty_visits: z.coerce.number().int().min(2).max(50),
+    loyalty_reward: z.string().trim().min(1).max(60),
+    feedback_enabled: z.union([z.literal('0'), z.literal('1')]),
+    feedback_delay_minutes: z.coerce.number().int().min(5).max(1440),
+    feedback_review_threshold: z.coerce.number().int().min(3).max(5),
+    review_url: z.string().trim().max(300).refine((u) => u === '' || /^https:\/\//.test(u), 'Review link must start with https://'),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -524,7 +534,8 @@ staff.get('/dashboard', (req, res) => {
   const hourly = db.prepare("SELECT CAST(strftime('%H', paid_at) AS INTEGER) h, SUM(total_cents) t FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday() GROUP BY h").all();
   const top = db.prepare("SELECT oi.name, SUM(oi.qty) q FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status='paid' AND localdate(o.paid_at) = localtoday() GROUP BY oi.name ORDER BY q DESC LIMIT 5").all();
   const activity = db.prepare('SELECT ts, user_name, action, detail FROM audit ORDER BY id DESC LIMIT 12').all();
-  res.json({ waiting, seatedToday: seatedToday.c, coversToday: seatedToday.covers, avgWait: avgWait ? Math.round(avgWait) : 0, salesCents: sales.total, ordersPaid: sales.n, tipsCents: sales.tips, openOrders, tables, buzzesToday, hourly, top, activity });
+  const rating7 = db.prepare("SELECT AVG(rating) a, COUNT(rating) n FROM feedback WHERE responded_at > datetime('now','-7 days')").get();
+  res.json({ rating7: rating7.a ? Math.round(rating7.a * 10) / 10 : null, ratings7: rating7.n, waitModel: waitModelInfo(), waiting, seatedToday: seatedToday.c, coversToday: seatedToday.covers, avgWait: avgWait ? Math.round(avgWait) : 0, salesCents: sales.total, ordersPaid: sales.n, tipsCents: sales.tips, openOrders, tables, buzzesToday, hourly, top, activity });
 });
 
 /* ---- guests / waitlist ---- */
@@ -532,10 +543,13 @@ staff.get('/guests', (req, res) => {
   const active = db.prepare(`SELECT g.*, t.label table_label, o.number order_number,
       (SELECT COUNT(*) FROM push_subs p WHERE p.guest_id = g.id OR (g.customer_id IS NOT NULL AND p.customer_id = g.customer_id)) devices,
       (SELECT po.status || ':' || po.number || ':' || (SELECT COALESCE(SUM(qty),0) FROM order_items WHERE order_id = po.id) FROM orders po WHERE po.guest_id = g.id AND po.source = 'guest' AND po.status <> 'void' ORDER BY po.id DESC LIMIT 1) preorder,
-      b.start_local booking_start, b.service_name booking_service
-    FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN bookings b ON b.id = g.booking_id
+      b.start_local booking_start, b.service_name booking_service, c.visits customer_visits,
+      (SELECT COUNT(*) FROM rewards r WHERE r.customer_id = g.customer_id AND r.status = 'active') rewards
+    FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN bookings b ON b.id = g.booking_id LEFT JOIN customers c ON c.id = g.customer_id
     WHERE g.status IN ('waiting','buzzed','acknowledged') ORDER BY g.created_at, g.id`).all()
     .map(({ token, ...g }) => g);
+  const s = getSettings(); const pos = { table: 0, order: 0 };
+  for (const g of active) { pos[g.kind] += 1; g.est_minutes = smartEstimate(pos[g.kind], g.party_size, s); }
   const recent = db.prepare("SELECT g.*, t.label table_label FROM guests g LEFT JOIN tables t ON t.id=g.table_id WHERE g.status NOT IN ('waiting','buzzed','acknowledged') AND localdate(g.created_at) = localtoday() ORDER BY g.id DESC LIMIT 30").all();
   res.json({ active, recent });
 });
@@ -630,6 +644,8 @@ staff.post('/guests/:id/seat', (req, res) => {
   });
   tx();
   const fired = g.kind === 'table' ? fireHeldPreorder(id, tid) : null;
+  Promise.resolve(G.countVisit?.(g.customer_id)).catch(() => {});
+  G.scheduleFeedback?.(id);
   if (g.booking_id) db.prepare("UPDATE bookings SET status='done' WHERE id=?").run(g.booking_id);
   audit(req.user, g.kind === 'order' ? 'guest.pickedup' : 'guest.seat', `${g.name}${tid ? ` → table ${tid}` : ''}`, clientIp(req));
   notifyStaff('guests'); notifyStaff('tables');
@@ -1074,6 +1090,7 @@ staff.get('/customers', requireAuth('manager'), (req, res) => {
 });
 
 registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
+registerGrowth({ app, staff, io, h: Object.assign(G, { parse, idParam, now, clientIp, requireAuth, notifyStaff, requireCustomer, publicLimiter }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 
 app.use('/api/staff', staff);
