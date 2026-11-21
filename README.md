@@ -104,6 +104,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Team app:** availability, time off, shift swaps, and team performance stats.
 - **Two-way messages** with guests on their buzzer.
 
+## Round 7: run the floor and the back office
+- **Lobby screen**: a TV shows order numbers being made and ready, plus the waitlist.
+- **Add-on suggestions**: "Goes great with" picks from what customers order together, on the register, online and kiosk.
+- **Referrals (optional, off until you turn it on)**: customers share a link; both get money off after the friend's first visit.
+- **Unhappy guest recovery**: a low rating gets an apology and a single-use come-back code automatically.
+- **Checklists and temperature logs**: opening, closing and cleaning lists; fridge and freezer logs with alerts and a printable inspection log.
+- **Event tickets**: sell or give seats, QR tickets, check in at the door.
+- **Menu sync**: owners send prices and details to other locations.
+- **Bank deposits**: record deposits (or import Stripe/Square payouts) and see what matches sales.
+- **Menu engineering**: stars, plowhorses, puzzles and dogs, with what to do about each.
+- **Prep list**: tomorrow's prep from past sales, and ingredients you're short on.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.

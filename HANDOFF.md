@@ -5,7 +5,7 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
-## 2. Current status (2026-11-20)
+## 2. Current status (2026-11-21, round 7 deployed)
 | Item | Status |
 |---|---|
 | App code (server + client) | ✅ Done, builds cleanly, end-to-end browser test passed |
@@ -92,6 +92,19 @@ New server modules:
 - orders.customer_id and orders.allergy_note; the kitchen shows allergies, including the customer's allergy tags.
 - Client: `Club.jsx`, `Reach.jsx`, `People.jsx`; `GuestMenu` takes `lang` and `viewOnly`.
 - `/healthz` is now registered before the static fallback.
+
+## 3g. Round 7 (2026-11-21)
+Server: `server/src/extras.js` (lobby screen, add-on pairs, referrals, recovery, menu sync) and `server/src/house.js` (checklists + temperature logs, event tickets, bank deposits, menu engineering, prep list). Client: `client/src/pages/House.jsx`; `PairsHint` in `order-ui.jsx`.
+- **Lobby screen** `/screen`: manager starts it from Settings; JWT in `localStorage.bh_screen`, sent as `X-Screen` (secret `jwt+':screen'`, revoked by bumping `screen_version`). Polls `/api/screen` every 5 s.
+- **Add-ons**: `/api/public/pairs` = item → top co-ordered items over 60 days (`upsell_enabled`). Shown in the register cart, online order and kiosk.
+- **Referrals (OPTIONAL, off by default: `referral_enabled='0'`)**: `customers.ref_code/referred_by/referral_rewarded`. `/account?ref=CODE` sends `ref` on sign-up; a 30-min job issues two single-use THANKS- codes once the friend has a visit.
+- **Recovery**: feedback at or below `recovery_max_rating` creates a single-use SORRY- code, shown on the thank-you page, pushed and emailed; `recoveries` table tracks came-back.
+- **Menu sync**: `POST /staff/menu/sync` (owner) matches items by name across locations via `runIn`.
+- **Checklists/temps**: `checklist_templates`, `checklist_runs` (done JSON per item), `temp_units`, `temp_logs`; out-of-range requires a corrective action and alerts managers; 10-min job alerts overdue lists once a day (`house_alerts`). `/staff/inspection-log` feeds a printable report.
+- **Events**: `events`, `tickets` (code, qty, status). Public `/events`, ticket `/ticket/:code` (API `/api/e/:code`, added to `resolveSlug`). Paid tickets use pay kind `ticket` → `h.payHooks.ticket`. Pending holds expire after 45 min. Staff page path is `/ticketing` (public `/events` owns that path).
+- **Bank deposits**: `bank_deposits`; expected = `dailyBooks` by method group (cash/card/app) minus cash tip payouts; fees estimated from `fee_rates`. Import pulls Stripe payouts and Square payouts (`h.squareGet`).
+- **Menu engineering**: `menuEngineering(days)`; popularity line 70% of equal share, margin vs weighted average; recipe cost or `food_cost_target` estimate. Tab in Purchasing.
+- **Prep list**: same weekday over 8 weeks × (1 + `prep_buffer_pct`), ingredient needs via recipes vs stock.
 
 ## 4. Architecture
 ```
