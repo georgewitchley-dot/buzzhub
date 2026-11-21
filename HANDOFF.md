@@ -156,6 +156,22 @@ Server: `server/src/smart.js`. Client: `client/src/pages/Smart.jsx`.
 - **Review themes**: keyword groups over feedback comments (praise 4–5★, complaints 1–2★) on the Feedback page.
 - **Safe log (optional, `safe_log_enabled='0'` by default)**: `safe_log` counts/drops/bank runs/adjustments; `safe_two_person` requires a different user's PIN (rate-limited with the login lockout); drops also leave the open cash drawer; owner alert when a count is off by $1+.
 
+## 3l. Round 12 (2026-11-21)
+Server: `server/src/timeclock.js`, `server/src/desk.js`. Client: `client/src/pages/Clock.jsx`, `client/src/pages/Desk.jsx`.
+- **Flicker fix**: `Modal` (ui.jsx) keeps `onClose` in a ref so its GSAP/focus effect runs once; parents with ticking clocks no longer re-animate open windows.
+- **Trusted-device rate limits**: `isTrustedDevice(req)` skips `apiLimiter`/`publicLimiter` for a valid staff cookie or X-Kiosk / X-Screen / X-Display / X-Clock token (devices in one business share one IP).
+- **Time clock screen** `/timeclock`: token from `POST /staff/timeclock/start` (manager) in `localStorage.bh_clock`, sent as `X-Clock`, revoked by `clock_version`. `POST /api/clock/punch {pin, action}` (check → choices → in/out/break_start/break_end) uses the login lockout. Shows who's on with break timers; `clock_message` banner. `shifts.break_started`, `shifts.source`.
+- **Who's on** (`GET /staff/whos-on`): Dashboard, Shifts, top-bar chip; managers can start/end breaks and clock people out. **My time card** (`/staff/me/timecard`) on My shifts; phone punching only when `app_punch='1'`.
+- **Allergen chart**: `/allergens-chart` (staff, printable) and public `/allergens`.
+- **Seating rotation**: `/staff/rotation` → "Seat next" on Waitlist and Floor.
+- **Supplier credits**: `supplier_credits`; auto-applied to the open bill for the same PO, else applied manually (bill_payments method `credit`, journal Dr AP / Cr expense).
+- **Sales tax report** `/sales-tax` (owner) by month/quarter/year, CSV.
+- **Stock transfers**: Purchasing → Transfers; matches ingredients by name at the other location (creates if missing).
+- **Certificates** `/certificates`: photo upload, verify, `required_certs`, missing list, alerts 30/7/0 days.
+- **Cash flow** `/cash-flow` (owner): `cash_balance_cents`, `fixed_costs`, `payroll_dow`, `payroll_every`.
+- **Delivery zones** `/delivery-zones`: Leaflet polygons with fee/minimum; `h.deliveryZone` used at checkout and `/api/o/delivery-quote`; outside all zones = error; no zones = flat fee.
+- **Catering follow-up**: day-after email (`catering_followup='1'`) to `/rate/:token`; ratings list on Catering.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

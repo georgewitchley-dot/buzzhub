@@ -163,6 +163,20 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 12: the clock and the back office
+- **Time clock screen**: a big clock and PIN pad on any tablet for clocking in, out and breaks, with who's on.
+- **Who's on** everywhere: dashboard, shifts, top bar, plus each person's own time card.
+- **Allergen chart**, printable and online for guests.
+- **Seating rotation**: who to seat next.
+- **Supplier credits** for short or damaged deliveries.
+- **Sales tax report** with CSV.
+- **Stock transfers** between locations.
+- **Staff certificates** with expiry reminders.
+- **Cash flow forecast.**
+- **Delivery zones** drawn on a map, each with its own fee and minimum.
+- **Catering follow-up** emails with ratings.
+- Fixed: windows flickering while open.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
