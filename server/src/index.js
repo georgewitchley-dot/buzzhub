@@ -18,6 +18,11 @@ import {
 } from './security.js';
 import { registerOps } from './ops.js';
 import { registerTeam } from './team.js';
+import { registerPro } from './pro.js';
+import { registerCrm } from './crm.js';
+import { registerBack } from './back.js';
+import { registerDelivery } from './delivery.js';
+import { registerPayments } from './payments.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -41,9 +46,10 @@ app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      'script-src': ["'self'"],
-      'img-src': ["'self'", 'data:', 'blob:'],
-      'connect-src': ["'self'", 'wss:', 'ws:'],
+      'script-src': ["'self'", 'https://www.paypal.com'],
+      'frame-src': ["'self'", 'https://www.paypal.com', 'https://*.paypal.com', 'https://*.venmo.com'],
+      'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org', 'https://*.paypal.com', 'https://*.paypalobjects.com'],
+      'connect-src': ["'self'", 'wss:', 'ws:', 'https://*.paypal.com'],
       'worker-src': ["'self'"],
       'media-src': ["'self'", 'data:'],
     },
@@ -53,7 +59,7 @@ app.use(helmet({
 const smallJson = express.json({ limit: '64kb' });
 const logoJson = express.json({ limit: '900kb' });
 const stripeRaw = express.raw({ type: 'application/json', limit: '1mb' });
-app.use((req, res, next) => (req.path === '/api/stripe/webhook' ? stripeRaw : req.path === '/api/staff/logo' ? logoJson : smallJson)(req, res, next));
+app.use((req, res, next) => (req.path === '/api/stripe/webhook' || req.path === '/api/square/webhook' ? stripeRaw : req.path === '/api/staff/logo' ? logoJson : smallJson)(req, res, next));
 app.use(cookieParser());
 app.use(locationMiddleware);
 app.use('/api', csrfGuard);
@@ -129,6 +135,7 @@ function guestPublicView(g) {
     customer: Boolean(g.customer_id),
     pushDevices: devices,
     preorder: { ...preorderWindow(g, s, pos), order: preorderFor(g.id) },
+    delivery: G.deliveryView ? G.deliveryView(g.order_id) : null,
     business: { slug: currentSlug(), name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
   };
 }
@@ -242,6 +249,7 @@ if (!userCount()) {
 }
 
 app.post('/api/stripe/webhook', (req, res) => (G.stripeWebhook ? G.stripeWebhook(req, res) : res.status(404).end()));
+app.post('/api/square/webhook', (req, res) => (G.squareWebhook ? G.squareWebhook(req, res) : res.status(404).end()));
 
 app.get('/api/setup/status', (req, res) => res.json({ needsSetup: userCount() === 0 }));
 
@@ -524,6 +532,35 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     forecast_rain_pct: z.coerce.number().int().min(-60).max(60),
     staff_sales_per_hour_cents: z.coerce.number().int().min(1000).max(1000000),
     staff_min: z.coerce.number().int().min(0).max(20),
+    booking_deposit_cents: z.coerce.number().int().min(0).max(100000),
+    deposit_refund_hours: z.coerce.number().int().min(0).max(168),
+    auto_birthday: z.union([z.literal('0'), z.literal('1')]),
+    auto_winback: z.union([z.literal('0'), z.literal('1')]),
+    auto_welcome: z.union([z.literal('0'), z.literal('1')]),
+    insights_summary: z.union([z.literal('0'), z.literal('1')]),
+    insights_alerts: z.union([z.literal('0'), z.literal('1')]),
+    auto_birthday_pct: z.coerce.number().int().min(1).max(100),
+    auto_winback_pct: z.coerce.number().int().min(1).max(100),
+    auto_welcome_pct: z.coerce.number().int().min(1).max(100),
+    auto_winback_days: z.coerce.number().int().min(14).max(365),
+    insights_hour: z.coerce.number().int().min(0).max(23),
+    ot_weekly_hours: z.coerce.number().int().min(20).max(80),
+    payroll_week_start: z.coerce.number().int().min(0).max(6),
+    ot_alerts: z.union([z.literal('0'), z.literal('1')]),
+    break_after_hours: z.coerce.number().min(2).max(12),
+    food_cost_target: z.coerce.number().int().min(5).max(80),
+    kiosk_reader_id: z.string().regex(/^(tmr_[A-Za-z0-9]+)?$/),
+    kiosk_message: z.string().trim().max(120),
+    pay_handles_enabled: z.union([z.literal('0'), z.literal('1')]),
+    pay_cashapp: z.string().trim().regex(/^(\$[A-Za-z][A-Za-z0-9_-]{0,20})?$/, 'Cash App $cashtag looks wrong'),
+    pay_venmo: z.string().trim().regex(/^(@?[A-Za-z0-9_-]{3,30})?$/, 'Venmo username looks wrong'),
+    pay_paypalme: z.string().trim().regex(/^([A-Za-z0-9]{1,20})?$/, 'PayPal.me name looks wrong'),
+    pay_zelle: z.string().trim().max(80),
+    card_provider: z.enum(['auto', 'square', 'stripe']),
+    cash_discount_pct: z.coerce.number().min(0).max(4),
+    fee_rates: z.string().max(600).refine((v) => { try { const o = JSON.parse(v); return Object.values(o).every((r) => Array.isArray(r) && r.length === 2 && r.every((n) => typeof n === 'number' && n >= 0 && n < 100)); } catch { return false; } }, 'Fee rates look wrong'),
+    insights_void_limit: z.coerce.number().int().min(1).max(50),
+    insights_refund_cents: z.coerce.number().int().min(100).max(10000000),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -554,7 +591,7 @@ staff.get('/guests', (req, res) => {
   const active = db.prepare(`SELECT g.*, t.label table_label, o.number order_number,
       (SELECT COUNT(*) FROM push_subs p WHERE p.guest_id = g.id OR (g.customer_id IS NOT NULL AND p.customer_id = g.customer_id)) devices,
       (SELECT po.status || ':' || po.number || ':' || (SELECT COALESCE(SUM(qty),0) FROM order_items WHERE order_id = po.id) FROM orders po WHERE po.guest_id = g.id AND po.source = 'guest' AND po.status <> 'void' ORDER BY po.id DESC LIMIT 1) preorder,
-      b.start_local booking_start, b.service_name booking_service, c.visits customer_visits,
+      b.start_local booking_start, b.service_name booking_service, c.visits customer_visits, c.tags customer_tags, c.notes customer_notes, c.birthday customer_birthday,
       (SELECT COUNT(*) FROM rewards r WHERE r.customer_id = g.customer_id AND r.status = 'active') rewards
     FROM guests g LEFT JOIN tables t ON t.id=g.table_id LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN bookings b ON b.id = g.booking_id LEFT JOIN customers c ON c.id = g.customer_id
     WHERE g.status IN ('waiting','buzzed','acknowledged') ORDER BY g.created_at, g.id`).all()
@@ -799,11 +836,20 @@ staff.post('/orders/:id/fire', (req, res) => {
 staff.post('/orders/:id/pay', (req, res) => {
   const id = idParam(req);
   const b = parse(z.object({ method: z.enum(['cash', 'card', 'other']), tipCents: z.number().int().min(0).max(1_000_000).optional(), tenderedCents: z.number().int().min(0).optional() }), req.body);
-  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(id);
+  let o = db.prepare('SELECT * FROM orders WHERE id=?').get(id);
   if (!o || ['paid', 'void'].includes(o.status)) return res.status(409).json({ error: 'Order already closed' });
   if (o.guest_id) setTimeout(() => pushGuest(o.guest_id), 0);
   const tip = b.tipCents || 0;
   if (o.prepaid) return res.status(409).json({ error: 'This order was already paid online' });
+  // cash discount: posted prices are card prices; paying cash takes a little off
+  const cashPct = Number(getSettings().cash_discount_pct) || 0;
+  let cashOff = 0;
+  if (b.method === 'cash' && cashPct > 0) {
+    cashOff = Math.round((o.subtotal_cents - o.discount_cents) * cashPct / 100);
+    const disc = o.discount_cents + cashOff;
+    db.prepare('UPDATE orders SET discount_cents = ?, tax_cents = ? WHERE id = ?').run(disc, Math.round((o.subtotal_cents - disc) * Number(getSettings().tax_rate) / 100), o.id);
+    o = db.prepare('SELECT * FROM orders WHERE id=?').get(id);
+  }
   const total = o.subtotal_cents - o.discount_cents + o.tax_cents + (o.fee_cents || 0) + tip;
   const owed = dueOf(o) + tip;
   if (b.method === 'cash' && b.tenderedCents !== undefined && b.tenderedCents < owed) return res.status(400).json({ error: 'Not enough cash tendered' });
@@ -814,7 +860,7 @@ staff.post('/orders/:id/pay', (req, res) => {
   if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='done', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); pushGuest(o.guest_id); }
   audit(req.user, 'order.pay', `#${o.number} ${b.method} ${(total / 100).toFixed(2)}`, clientIp(req));
   notifyStaff('orders'); notifyStaff('guests');
-  res.json({ ok: true, totalCents: owed, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - owed : 0 });
+  res.json({ ok: true, totalCents: owed, cashDiscountCents: cashOff, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - owed : 0 });
 });
 
 staff.post('/orders/:id/void', (req, res, next) => G.managerOr('void')(req, res, next), (req, res) => {
@@ -832,7 +878,7 @@ staff.post('/orders/:id/void', (req, res, next) => G.managerOr('void')(req, res,
 
 /* ---- staff / users (manager+) ---- */
 staff.get('/users', requireAuth('manager'), (req, res) => {
-  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at, hourly_cents, totp_enabled FROM users ORDER BY active DESC, role DESC, name').all().map((u) => (req.user.role === 'owner' ? u : { ...u, hourly_cents: undefined })));
+  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at, hourly_cents, totp_enabled, is_driver FROM users ORDER BY active DESC, role DESC, name').all().map((u) => (req.user.role === 'owner' ? u : { ...u, hourly_cents: undefined })));
 });
 staff.post('/users', requireAuth('manager'), wrap(async (req, res) => {
   const b = parse(z.object({ name: z.string().trim().min(1).max(40), role: z.enum(['owner', 'manager', 'staff']), pin: z.string() }), req.body);
@@ -974,7 +1020,8 @@ app.get('/api/c/booking-info', (req, res) => {
   const days = [];
   for (let i = 0; i <= Number(s.booking_days_ahead); i++) { const d = addDays(today, i); if (s.booking_days[dow(d)] === '1') days.push(d); }
   const services = s.business_type === 'service' ? db.prepare('SELECT id, name, category, price_cents FROM menu_items WHERE active = 1 ORDER BY sort, id').all() : [];
-  res.json({ enabled: s.booking_enabled === '1', days, services, slotMinutes: Number(s.booking_slot_minutes), currency: s.currency, unitLabel: s.unit_label, type: s.business_type });
+  res.json({ enabled: s.booking_enabled === '1', days, services, slotMinutes: Number(s.booking_slot_minutes), currency: s.currency, unitLabel: s.unit_label, type: s.business_type,
+    depositCents: G.depositOn?.() ? Number(s.booking_deposit_cents) : 0, refundHours: Number(s.deposit_refund_hours) });
 });
 
 app.get('/api/c/slots', publicLimiter, (req, res) => {
@@ -990,11 +1037,12 @@ app.get('/api/c/bookings', requireCustomer, (req, res) => {
     const until = minutesUntil(b.start_local, s.timezone);
     return { id: b.id, start: b.start_local, service: b.service_name, partySize: b.party_size, notes: b.notes, status: b.status,
       buzzer: b.status === 'checked_in' && b.token ? `/b/${b.token}` : null,
-      canCheckIn: b.status === 'booked' && until <= 60 && until >= -60, minutesUntil: Math.round(until) };
+      canCheckIn: b.status === 'booked' && until <= 60 && until >= -60 && b.deposit_status !== 'pending', minutesUntil: Math.round(until),
+      deposit: b.deposit_cents ? { cents: b.deposit_cents, status: b.deposit_status, code: b.deposit_code } : null };
   }));
 });
 
-app.post('/api/c/bookings', requireCustomer, custLimiter, (req, res) => {
+app.post('/api/c/bookings', requireCustomer, custLimiter, wrap(async (req, res) => {
   const s = getSettings();
   if (s.booking_enabled !== '1') return res.status(403).json({ error: 'Online booking is turned off.' });
   const b = parse(z.object({
@@ -1012,17 +1060,21 @@ app.post('/api/c/bookings', requireCustomer, custLimiter, (req, res) => {
       .run(req.customer.id, service?.id || null, service?.name || null, b.partySize || 1, start, b.notes || null).lastInsertRowid;
   }).immediate();
   audit(null, 'booking.create', `${req.customer.name} — ${start}${service ? ` (${service.name})` : ''}`, clientIp(req));
+  let depositUrl = null;
+  try { depositUrl = (await G.startDeposit?.(id, req))?.url || null; } catch (e) { db.prepare("UPDATE bookings SET status='cancelled', deposit_status='none' WHERE id=?").run(id); throw e; }
   notifyStaff('bookings');
-  res.json({ ok: true, id });
-});
+  res.json({ ok: true, id, depositUrl });
+}));
 
-app.post('/api/c/bookings/:id/cancel', requireCustomer, (req, res) => {
-  const r = db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND customer_id = ? AND status = 'booked'").run(idParam(req), req.customer.id);
-  if (!r.changes) return res.status(409).json({ error: 'That booking can no longer be cancelled here.' });
+app.post('/api/c/bookings/:id/cancel', requireCustomer, wrap(async (req, res) => {
+  const bk = db.prepare("SELECT * FROM bookings WHERE id = ? AND customer_id = ? AND status = 'booked'").get(idParam(req), req.customer.id);
+  if (!bk) return res.status(409).json({ error: 'That booking can no longer be cancelled here.' });
+  db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").run(bk.id);
+  const note = await G.onBookingCancel?.(bk, { minutesUntil: minutesUntil(bk.start_local, getSettings().timezone) });
   audit(null, 'booking.cancel', `${req.customer.name} #${req.params.id}`, clientIp(req));
   notifyStaff('bookings');
-  res.json({ ok: true });
-});
+  res.json({ ok: true, note: note || null });
+}));
 
 function checkInBooking(bk, customer, by = null) {
   const [h, m] = bk.start_local.slice(11).split(':').map(Number);
@@ -1030,6 +1082,7 @@ function checkInBooking(bk, customer, by = null) {
   const g = createGuest({ name: customer.name, phone: customer.phone, email: customer.email, notifyEmail: true, party_size: bk.party_size,
     notes: bk.notes || null, source: 'booking', customer_id: customer.id, booking_id: bk.id });
   db.prepare("UPDATE bookings SET status = 'checked_in', guest_id = ? WHERE id = ?").run(g.id, bk.id);
+  G.onBookingCheckin?.(bk, customer);
   audit(by, 'booking.checkin', `${customer.name} — ${bk.start_local}`, null);
   io.to('staff').emit('booking:arrived', { name: customer.name, time });
   notifyStaff('guests'); notifyStaff('bookings'); pushAllWaiting();
@@ -1083,15 +1136,17 @@ staff.post('/bookings/:id/checkin', (req, res) => {
   checkInBooking(bk, c, req.user);
   res.json({ ok: true });
 });
-staff.post('/bookings/:id/status', (req, res) => {
+staff.post('/bookings/:id/status', wrap(async (req, res) => {
   const { status } = parse(z.object({ status: z.enum(['cancelled', 'noshow', 'done']) }), req.body);
   const bk = db.prepare('SELECT * FROM bookings WHERE id = ?').get(idParam(req));
   if (!bk) return res.status(404).json({ error: 'Not found' });
   db.prepare('UPDATE bookings SET status = ? WHERE id = ?').run(status, bk.id);
+  if (status === 'cancelled' && bk.status === 'booked') await G.onBookingCancel?.(bk, { byBusiness: true });
+  if (status === 'noshow') G.onBookingNoShow?.(bk);
   audit(req.user, `booking.${status}`, `#${bk.id} ${bk.start_local}`, clientIp(req));
   notifyStaff('bookings');
   res.json({ ok: true });
-});
+}));
 staff.get('/customers', requireAuth('manager'), (req, res) => {
   res.json(db.prepare(`SELECT c.id, c.name, c.email, c.phone, c.created_at, c.last_login_at,
     (SELECT COUNT(*) FROM bookings b WHERE b.customer_id = c.id) bookings,
@@ -1104,6 +1159,11 @@ registerFloorPay({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, n
 registerLocations({ app, staff, h: { parse, clientIp, requireAuth, issueSession, wrap, seedDemoData } });
 registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
 registerGrowth({ app, staff, io, h: Object.assign(G, { parse, idParam, now, clientIp, requireAuth, notifyStaff, requireCustomer, publicLimiter }) });
+registerPro({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
+registerCrm({ app, staff, h: G });
+registerBack({ app, staff, h: G });
+registerPayments({ app, staff, io, h: G });
+registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 

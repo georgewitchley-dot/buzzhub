@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { api, fmtSlot } from '../lib.js';
 import { useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { useCustomerModal } from './Field.jsx';
 
 const STATUS = { booked: ['Booked', 'blue'], checked_in: ['Here now', 'teal'], done: ['Done', ''], cancelled: ['Cancelled', 'rose'], noshow: ['No-show', 'rose'] };
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
 export default function Bookings() {
+  const [customerModal, openCustomer] = useCustomerModal();
   const { can } = useCC();
   const toast = useToast();
   const [from, setFrom] = useState('');
@@ -36,7 +38,7 @@ export default function Bookings() {
         <section className="panel"><table className="list">
           <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Bookings</th><th>Visits</th><th>Joined</th></tr></thead>
           <tbody>{(customers || []).map((c) => (
-            <tr key={c.id}><td>{c.name}</td><td className="muted">{c.email}</td><td className="muted">{c.phone || ''}</td><td className="num">{c.bookings}</td><td className="num">{c.visits}</td><td className="muted">{new Date(c.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}</td></tr>
+            <tr key={c.id} onClick={() => openCustomer(c.id)} style={{ cursor: 'pointer' }}><td><b>{c.name}</b></td><td className="muted">{c.email}</td><td className="muted">{c.phone || ''}</td><td className="num">{c.bookings}</td><td className="num">{c.visits}</td><td className="muted">{new Date(c.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}</td></tr>
           ))}</tbody>
         </table></section>
       ) : (
@@ -53,7 +55,7 @@ export default function Bookings() {
                     return (
                       <tr key={b.id} style={{ opacity: ['cancelled', 'noshow'].includes(b.status) ? 0.55 : 1 }}>
                         <td className="num" style={{ width: 90 }}><b>{fmtSlot(b.start_local).time}</b></td>
-                        <td><b>{b.name}</b><div className="muted" style={{ fontSize: 13 }}>{b.service_name || `Party of ${b.party_size}`}{b.notes ? `. ${b.notes}` : ''}</div></td>
+                        <td><button className="linkish" onClick={() => openCustomer(b.customer_id)}><b>{b.name}</b></button>{b.deposit_cents > 0 && <span className={`chip ${b.deposit_status === 'paid' || b.deposit_status === 'applied' ? 'teal' : b.deposit_status === 'pending' ? 'amber' : ''}`} style={{ marginLeft: 6 }}>Deposit {b.deposit_status}</span>}<div className="muted" style={{ fontSize: 13 }}>{b.service_name || `Party of ${b.party_size}`}{b.notes ? `. ${b.notes}` : ''}</div></td>
                         <td className="muted" style={{ fontSize: 13 }}>{b.phone || b.email}</td>
                         <td><span className={`chip ${tone}`}>{label}</span></td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -72,6 +74,7 @@ export default function Bookings() {
           })}
         </div>
       )}
+      {customerModal}
     </>
   );
 }

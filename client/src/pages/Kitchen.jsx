@@ -3,12 +3,16 @@ import { gsap } from 'gsap';
 import { api, minutesSince, playChime, useTick } from '../lib.js';
 import { Icon, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { TicketPrint, printPart } from '../pro-ui.jsx';
 
 export default function Kitchen() {
   const { settings } = useCC();
   const toast = useToast();
   const [data] = useLive(['orders'], () => api('/staff/kitchen'));
   const seen = useRef(null);
+  const [station, setStation] = useState(() => localStorage.getItem('bh_print_station') === '1');
+  const [toPrint, setToPrint] = useState([]);
+  const stationRef = useRef(station); stationRef.current = station;
   const boardRef = useRef(null);
   useTick(15000);
 
@@ -20,6 +24,7 @@ export default function Kitchen() {
       const fresh = [...ids].filter((id) => !seen.current.has(id));
       if (fresh.length) {
         playChime();
+        if (stationRef.current) { setToPrint(data.orders.filter((o) => fresh.includes(o.id))); setTimeout(() => printPart('printing-ticket'), 120); }
         requestAnimationFrame(() => fresh.forEach((id) => { const el = boardRef.current?.querySelector(`[data-id="${id}"]`); if (el) gsap.fromTo(el, { boxShadow: '0 0 0 4px rgba(var(--accent-rgb), .9)' }, { boxShadow: '0 0 0 0px rgba(var(--accent-rgb), 0)', duration: 1.6 }); }));
       }
     }
@@ -36,6 +41,7 @@ export default function Kitchen() {
   return (
     <>
       <PageHead title="Kitchen" sub={`${cooking.length} ticket${cooking.length === 1 ? '' : 's'} to make${data.held ? `, ${data.held} pre-order${data.held === 1 ? '' : 's'} waiting for a table` : ''}. Tickets turn red after ${late} minutes.`}>
+        <label className="btn" title="Prints each new ticket on this device's printer. In Chrome, start with --kiosk-printing to skip the print dialog."><input type="checkbox" checked={station} onChange={(e) => { setStation(e.target.checked); localStorage.setItem('bh_print_station', e.target.checked ? '1' : '0'); }} />Print new tickets here</label>
         <button className="btn" onClick={full}><Icon name="expand" size={17} />Full screen</button>
       </PageHead>
       {cooking.length === 0 && <div className="panel empty"><b>All caught up</b><span>New orders from the register and pre-orders from called parties show up here.</span></div>}
@@ -75,6 +81,7 @@ export default function Kitchen() {
           ))}</div>
         </section>
       )}
+      <TicketPrint orders={toPrint} unit={settings.unit_label} />
     </>
   );
 }

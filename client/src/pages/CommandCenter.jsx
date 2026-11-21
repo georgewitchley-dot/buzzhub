@@ -21,6 +21,8 @@ import { FeedbackAdmin } from './Feedback.jsx';
 import Locations, { switchLocation } from './Locations.jsx';
 import { GiftCards, Inventory } from './Commerce.jsx';
 import { Marketing, Tips } from './Team.jsx';
+import { Insights, Payroll, Purchasing } from './Back.jsx';
+import { Deliveries, PaymentClaims } from './Field.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -45,6 +47,7 @@ export function useLive(scopes, fetcher, deps = []) {
 
 const NAV = [
   { to: '/', icon: 'home', label: 'Overview', end: true },
+  { to: '/insights', icon: 'chart', label: 'Insights', min: 'manager' },
   { to: '/locations', icon: 'pin', label: 'All locations', min: 'manager' },
   { to: '/waitlist', icon: 'list', label: 'Waitlist', count: true },
   { to: '/bookings', icon: 'calendar', label: 'Bookings', when: (s) => s?.booking_enabled === '1' },
@@ -52,15 +55,18 @@ const NAV = [
   { to: '/register', icon: 'register', label: 'Register' },
   { to: '/orders', icon: 'ticket', label: 'Orders' },
   { to: '/kitchen', icon: 'flame', label: 'Kitchen', when: (s) => s?.business_type !== 'service' },
+  { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/feedback', icon: 'star', label: 'Feedback', min: 'manager', when: (s) => s?.feedback_enabled === '1' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
   { to: '/inventory', icon: 'box', label: 'Inventory', min: 'manager' },
+  { to: '/purchasing', icon: 'bag', label: 'Purchasing', min: 'manager' },
   { to: '/giftcards', icon: 'gift', label: 'Gift cards', min: 'manager' },
   { to: '/marketing', icon: 'bell', label: 'Marketing', min: 'manager' },
   { to: '/tips', icon: 'cash', label: 'Tips', min: 'manager' },
+  { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
@@ -137,7 +143,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('preorder:new', ({ name, count, updated }) => { playChime(); toast(`${name} ${updated ? 'changed their order' : `ordered ${count} item${count === 1 ? '' : 's'} ahead`}`, 'ok'); });
     s.on('preorder:fired', ({ number, table }) => toast(`Pre-order #${number} sent to make${table ? ` for ${table}` : ''}`, 'ok'));
     s.on('paid:phone', ({ number, totalCents }) => { playChime(); toast(`Order #${number} paid by phone, ${money(totalCents, settings?.currency || 'USD')}`, 'ok'); });
-    s.on('online:new', ({ number, name, fulfillment }) => { playChime(); toast(fulfillment === 'paid' ? 'An online order was paid' : `New ${fulfillment === 'table' ? 'table' : fulfillment} order${number ? ` #${number}` : ''} from ${name}`, 'ok'); });
+    s.on('online:new', ({ number, name, fulfillment, kind }) => { playChime(); toast(kind === 'kiosk' ? `New kiosk order #${number}` : fulfillment === 'paid' ? 'An online order was paid' : `New ${fulfillment === 'table' ? 'table' : fulfillment} order${number ? ` #${number}` : ''} from ${name}`, 'ok'); });
+    s.on('pay:claim', ({ text }) => { playChime(); toast(text, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
     s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
@@ -190,6 +197,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
           </header>
           <div className="scroller" ref={scrollRef}>
             <div className="content" ref={contentRef}>
+              {settings && socket && <PaymentClaims />}
               {settings && socket && (
                 <Routes>
                   <Route index element={<Dashboard />} />
@@ -206,6 +214,10 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('manager') && <Route path="giftcards" element={<GiftCards />} />}
                   {can('manager') && <Route path="marketing" element={<Marketing />} />}
                   {can('manager') && <Route path="tips" element={<Tips />} />}
+                  {can('manager') && <Route path="insights" element={<Insights />} />}
+                  {can('manager') && <Route path="purchasing" element={<Purchasing />} />}
+                  {can('owner') && <Route path="payroll" element={<Payroll />} />}
+                  <Route path="deliveries" element={<Deliveries />} />
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

@@ -120,7 +120,7 @@ export function requireAuth(minRole = 'staff') {
  * Combined with SameSite=Strict cookies.
  */
 export function csrfGuard(req, res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/stripe/webhook') return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/stripe/webhook' || req.path === '/square/webhook') return next();
   if (req.get('X-BuzzHub') !== '1') return res.status(403).json({ error: 'Bad request origin' });
   next();
 }

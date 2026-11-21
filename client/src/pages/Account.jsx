@@ -50,7 +50,8 @@ function Booker({ info, onBooked }) {
   const book = async () => {
     setBusy(true); setErr('');
     try {
-      await api('/c/bookings', { method: 'POST', body: { date, time, serviceId: serviceId ? Number(serviceId) : undefined, partySize: party, notes: notes || undefined } });
+      const r = await api('/c/bookings', { method: 'POST', body: { date, time, serviceId: serviceId ? Number(serviceId) : undefined, partySize: party, notes: notes || undefined } });
+      if (r.depositUrl) { location.href = r.depositUrl; return; }
       setTime(''); setNotes(''); onBooked(); loadSlots();
     } catch (e) { setErr(e.message); loadSlots(); } finally { setBusy(false); }
   };
@@ -101,6 +102,7 @@ export default function Account() {
   const [msg, setMsg] = useState('');
   const [loyal, setLoyal] = useState(null);
   const [offers, setOffers] = useState(null);
+  const [bday, setBday] = useState('');
   useLenis();
 
   const loadBookings = useCallback(() => api('/c/bookings').then(setBookings).catch(() => {}), []);
@@ -110,11 +112,17 @@ export default function Account() {
     api('/c/booking-info').then(setInfo);
     api('/c/me').then(({ customer }) => setMe(customer)).catch(() => setMe(null));
   }, []);
-  useEffect(() => { if (me) { api('/c/marketing').then((r) => setOffers(r.optIn)).catch(() => {}); api('/c/loyalty').then(setLoyal).catch(() => {}); loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
+  useEffect(() => { if (me) { api('/c/profile').then((r) => setBday(r.birthday || '')).catch(() => {}); const dep = new URLSearchParams(location.search).get('deposit'); if (dep) api('/c/deposit/confirm', { method: 'POST', body: { sessionId: dep } }).then(() => { setMsg('Deposit paid. Your booking is confirmed.'); loadBookings(); history.replaceState(null, '', location.pathname + location.search.replace(/[?&]deposit=[^&]+/, '').replace(/^&/, '?')); }).catch(() => {}); api('/c/marketing').then((r) => setOffers(r.optIn)).catch(() => {}); api('/c/loyalty').then(setLoyal).catch(() => {}); loadBookings(); pushIsOn('/c/push').then((on) => on && setAlerts('on')); } }, [me, loadBookings]);
 
   const turnOn = async () => { try { const r = await enablePush('/c/push'); setAlerts(r); } catch { setAlerts('unsupported'); } };
   const checkIn = async (b) => { try { const r = await api(`/c/bookings/${b.id}/checkin`, { method: 'POST' }); nav(r.buzzer); } catch (e) { setMsg(e.message); } };
-  const cancel = async (b) => { if (!confirm('Cancel this booking?')) return; try { await api(`/c/bookings/${b.id}/cancel`, { method: 'POST' }); loadBookings(); } catch (e) { setMsg(e.message); } };
+  const cancel = async (b) => {
+    const warn = b.deposit?.status === 'paid' ? (b.minutesUntil >= (info?.refundHours || 0) * 60 ? ' Your deposit will be refunded.' : ` It's less than ${info?.refundHours} hours away, so the deposit is kept.`) : '';
+    if (!confirm(`Cancel this booking?${warn}`)) return;
+    try { const r = await api(`/c/bookings/${b.id}/cancel`, { method: 'POST' }); if (r.note) setMsg(r.note); loadBookings(); } catch (e) { setMsg(e.message); }
+  };
+  const payDeposit = async (b) => { try { const r = await api(`/c/bookings/${b.id}/deposit`, { method: 'POST' }); location.href = r.url; } catch (e) { setMsg(e.message); } };
+  const saveBirthday = async (v) => { try { await api('/c/profile', { method: 'PUT', body: { birthday: v || null } }); setBday(v); } catch (e) { setMsg(e.message); } };
   const signOut = async () => { await api('/c/logout', { method: 'POST' }); setMe(null); setBookings([]); };
 
   if (!biz || me === undefined) return <div className="guest" />;
@@ -148,6 +156,10 @@ export default function Account() {
               )}
             </div>
 
+            <label className="card row" style={{ fontSize: 14.5 }}><span className="grow"><b>Your birthday</b><br /><span className="muted">For a treat on your day. Month and day only.</span></span>
+              <select className="input" style={{ width: 90 }} value={bday.slice(0, 2)} onChange={(e) => saveBirthday(e.target.value ? `${e.target.value}-${bday.slice(3) || '01'}` : '')} aria-label="Birth month"><option value="">Month</option>{Array.from({ length: 12 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{new Date(2000, i, 1).toLocaleDateString([], { month: 'short' })}</option>)}</select>
+              <select className="input" style={{ width: 70 }} value={bday.slice(3)} disabled={!bday} onChange={(e) => saveBirthday(`${bday.slice(0, 2)}-${e.target.value}`)} aria-label="Birth day">{Array.from({ length: 31 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{i + 1}</option>)}</select></label>
+
             {offers !== null && (
               <label className="card row" style={{ fontSize: 14.5 }}><input type="checkbox" checked={offers} onChange={(e) => api('/c/marketing', { method: 'PUT', body: { optIn: e.target.checked } }).then((r) => setOffers(r.optIn))} /><span className="grow"><b>Offers and news</b><br /><span className="muted">{offers ? "You'll get the occasional deal on this phone and by email." : 'Off. You still get booking reminders and buzzes.'}</span></span></label>
             )}
@@ -172,8 +184,8 @@ export default function Account() {
                 <b>Your bookings</b>
                 {upcoming.map((b) => { const f = fmtSlot(b.start); return (
                   <div key={b.id} className="booking-row">
-                    <div className="grow"><b>{f.day}, {f.time}</b><div className="muted" style={{ fontSize: 14 }}>{b.service || `Party of ${b.partySize}`}</div></div>
-                    {b.buzzer ? <button className="btn primary sm" onClick={() => nav(b.buzzer)}>Open my buzzer</button>
+                    <div className="grow"><b>{f.day}, {f.time}</b><div className="muted" style={{ fontSize: 14 }}>{b.service || `Party of ${b.partySize}`}{b.deposit && ` · ${b.deposit.status === 'paid' ? `${money(b.deposit.cents, info?.currency)} deposit paid` : b.deposit.status === 'applied' ? `${money(b.deposit.cents, info?.currency)} deposit off your bill, code ${b.deposit.code}` : b.deposit.status === 'pending' ? 'Deposit not paid yet' : `Deposit ${b.deposit.status}`}`}</div></div>
+                    {b.deposit?.status === 'pending' ? <button className="btn primary sm" onClick={() => payDeposit(b)}>Pay deposit</button> : b.buzzer ? <button className="btn primary sm" onClick={() => nav(b.buzzer)}>Open my buzzer</button>
                       : b.canCheckIn ? <button className="btn primary sm" onClick={() => checkIn(b)}>I'm here</button>
                       : <button className="btn ghost sm danger" onClick={() => cancel(b)}>Cancel</button>}
                   </div>

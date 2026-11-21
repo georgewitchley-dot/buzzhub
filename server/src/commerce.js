@@ -45,7 +45,7 @@ const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 export const stripeEnabled = () => /^sk_(live|test)_/.test(STRIPE_KEY);
 export const stripeStatus = () => ({ cardsEnabled: stripeEnabled(), webhook: Boolean(WEBHOOK_SECRET), mode: STRIPE_KEY.startsWith('sk_live_') ? 'live' : STRIPE_KEY ? 'test' : null });
-async function stripe(method, path, form) {
+export async function stripe(method, path, form) {
   let r;
   try {
     r = await fetch(`https://api.stripe.com/v1${path}`, { method, headers: { Authorization: `Bearer ${STRIPE_KEY}`, ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}), 'Stripe-Version': '2024-06-20' }, body: form ? new URLSearchParams(form) : undefined });
@@ -108,7 +108,10 @@ function takeStock(lines, userId, reason) {
     else if (m.stock > 0 && m.stock <= m.low_stock) onStockEvent('low', m);
   }
 }
+/** Other modules (recipes) listen for sales and voids. */
+export const orderHooks = { inserted: [], voided: [] };
 export function returnStock(orderId, userId) {
+  for (const f of orderHooks.voided) { try { f(orderId, userId); } catch (e) { console.error('void hook', e.message); } }
   const lines = db.prepare('SELECT item_id, qty FROM order_items WHERE order_id = ?').all(orderId);
   for (const l of lines) {
     const r = db.prepare('UPDATE menu_items SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').run(l.qty, l.item_id);
@@ -136,6 +139,7 @@ export function insertOrder({ lines, status = 'sent', source = 'staff', tableId 
     const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note, mods) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const l of lines) ins.run(id, l.item_id, l.name, l.qty, l.price_cents, l.note, l.mods?.length ? JSON.stringify(l.mods) : null);
     takeStock(lines, createdBy, `order #${number}`);
+    for (const f of orderHooks.inserted) f(id, lines, createdBy);
     return { id, number };
   })();
 }
@@ -209,6 +213,7 @@ export function registerCommerce({ app, staff, io, h }) {
     db.prepare('INSERT INTO gift_txns (card_id, delta_cents, method, user_id) VALUES (?, ?, ?, ?)').run(id, cents, method, userId || null);
     return { id, code };
   }
+  h.issueCard = issueCard;
   async function emailCard(card, cents) {
     const s = getSettings();
     if (!card.email || !emailEnabled()) return;
@@ -264,32 +269,26 @@ export function registerCommerce({ app, staff, io, h }) {
   // public: buy online + check balance
   app.get('/api/public/gift', publicLimiter, (req, res) => {
     const s = getSettings();
-    const out = { business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null, slug: currentSlug() }, cardsEnabled: stripeEnabled(), currency: s.currency };
+    const out = { business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null, slug: currentSlug() }, cardsEnabled: h.onlinePayEnabled(), currency: s.currency };
     if (req.query.code) {
       const c = db.prepare('SELECT balance_cents, status FROM gift_cards WHERE code = ?').get(normCode(req.query.code));
       out.balance = c && c.status === 'active' ? c.balance_cents : null;
     }
-    const sid = String(req.query.session_id || '');
-    if (/^cs_(test|live)_[A-Za-z0-9]+$/.test(sid)) {
-      const p = db.prepare("SELECT * FROM payments WHERE kind = 'giftcard' AND stripe_session = ?").get(sid);
+    const tok = String(req.query.paid || '');
+    if (/^[A-Za-z0-9_-]{20,30}$/.test(tok)) {
+      const p = db.prepare("SELECT * FROM payments WHERE kind = 'giftcard' AND pay_token = ?").get(tok);
       if (p?.status === 'paid') out.purchased = JSON.parse(p.meta || '{}');
+      else if (p?.claimed_at) out.awaiting = true;
     }
     res.json(out);
   });
   app.post('/api/public/gift/checkout', publicLimiter, wrap(async (req, res) => {
-    if (!stripeEnabled()) return res.status(503).json({ error: 'Online gift cards are not available yet.' });
+    if (!h.onlinePayEnabled()) return res.status(503).json({ error: 'Online gift cards are not available yet.' });
     const b = parse(z.object({ amountCents: z.number().int().min(1000).max(50000), name: z.string().trim().min(1).max(40), email: z.string().trim().email().max(120) }), req.body);
     const s = getSettings(); const base = publicBase(req); const l = currentSlug() === 'main' ? '' : `l=${currentSlug()}&`;
     const pid = db.prepare("INSERT INTO payments (kind, amount_cents, method, label, meta) VALUES ('giftcard', ?, 'card', ?, ?)").run(b.amountCents, `Gift card for ${b.name}`, JSON.stringify({ name: b.name, email: b.email })).lastInsertRowid;
-    const sess = await stripe('POST', '/checkout/sessions', {
-      mode: 'payment', customer_email: b.email,
-      success_url: `${base}/gift?${l}session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${base}/gift${l ? `?${l.slice(0, -1)}` : ''}`,
-      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': s.currency.toLowerCase(), 'line_items[0][price_data][unit_amount]': String(b.amountCents),
-      'line_items[0][price_data][product_data][name]': `${s.business_name} gift card`,
-      'metadata[payment_id]': String(pid), 'metadata[loc]': currentSlug(),
-    });
-    db.prepare('UPDATE payments SET stripe_session = ? WHERE id = ?').run(sess.id, pid);
-    res.json({ url: sess.url });
+    const url = h.startPay(pid, { base, lines: [{ name: `${s.business_name} gift card`, cents: b.amountCents }], successUrl: `${base}/gift?${l}paid={TOKEN}`, cancelUrl: `${base}/gift${l ? `?${l.slice(0, -1)}` : ''}`, email: b.email, descr: 'Gift card' });
+    res.json({ url });
   }));
 
   /* ================= Bills and split payments ================= */
@@ -322,7 +321,7 @@ export function registerCommerce({ app, staff, io, h }) {
       dueCents: due, paidCents, remainingCents: Math.max(0, due - paidCents), tipCents: paid.reduce((a, p) => a + p.tip_cents, 0),
       payments: paid.map((p) => ({ label: p.label, method: p.method, amountCents: p.amount_cents, tipCents: p.tip_cents })),
       business: { name: s.business_name, accent: s.accent, unitLabel: s.unit_label, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
-      cardsEnabled: stripeEnabled(),
+      cardsEnabled: h.onlinePayEnabled ? h.onlinePayEnabled() : stripeEnabled(),
     };
   }
   /** When the bill is covered, close its orders (prepaid ones keep cooking until served/picked up). */
@@ -350,6 +349,7 @@ export function registerCommerce({ app, staff, io, h }) {
     return true;
   }
   h.settleBill = settleBill;
+  h.billSummary = billSummary;
   function billFor({ orderId, tableId }) {
     if (tableId) {
       let b = db.prepare("SELECT * FROM bills WHERE table_id = ? AND status = 'open' ORDER BY id DESC").get(tableId);
@@ -372,8 +372,10 @@ export function registerCommerce({ app, staff, io, h }) {
     }
     return sum.remainingCents;
   }
+  h.shareAmount = (sum, b) => shareAmount(sum, b);
   const shareSchema = z.object({ split: z.enum(['full', 'even', 'items']).default('full'), ways: z.number().int().min(2).max(20).optional(), itemIds: z.array(z.number().int()).max(200).optional(), tipCents: z.number().int().min(0).max(1_000_000).default(0) })
     .refine((b) => b.split !== 'even' || b.ways, 'Pick how many ways to split').refine((b) => b.split !== 'items' || (b.itemIds && b.itemIds.length), 'Pick your items');
+  h.shareSchema = shareSchema;
 
   // staff: open a bill for an order or a table, then record payments against it (cash/card/other)
   staff.post('/bills', (req, res) => {
@@ -415,6 +417,7 @@ export function registerCommerce({ app, staff, io, h }) {
   function completePayment(p, sessionId) {
     const r = db.prepare("UPDATE payments SET status='paid', paid_at=?, stripe_session=? WHERE id=? AND status <> 'paid'").run(now(), sessionId, p.id);
     if (!r.changes) return;
+    if (p.kind === 'deposit') { h.onDepositPaid?.(p, sessionId); return; }
     if (p.kind === 'giftcard') {
       const meta = JSON.parse(p.meta || '{}');
       const card = issueCard({ cents: p.amount_cents, name: meta.name, email: meta.email, source: 'online', method: 'card' });
@@ -440,7 +443,7 @@ export function registerCommerce({ app, staff, io, h }) {
     const bill = billByToken(req.params.token);
     if (!bill) return res.status(404).json({ error: 'This check link is not valid.' });
     if (bill.status !== 'open') return res.status(409).json({ error: 'This check is already paid. Thank you!' });
-    if (!stripeEnabled()) return res.status(503).json({ error: 'Paying by phone is not set up yet. Please pay your server.' });
+    if (!h.onlinePayEnabled()) return res.status(503).json({ error: 'Paying by phone is not set up yet. Please pay your server.' });
     const b = parse(shareSchema, req.body);
     const sum = billSummary(bill);
     if (sum.remainingCents <= 0) return res.status(409).json({ error: 'This check is already paid. Thank you!' });
@@ -448,17 +451,10 @@ export function registerCommerce({ app, staff, io, h }) {
     if (b.tipCents > Math.max(amount, 2000) * 2) return res.status(400).json({ error: 'That tip looks too high' });
     const label = b.split === 'even' ? `1 of ${b.ways}` : b.split === 'items' ? 'Own items' : 'Full check';
     const pid = db.prepare("INSERT INTO payments (bill_id, amount_cents, tip_cents, method, label, items) VALUES (?, ?, ?, 'card', ?, ?)").run(bill.id, amount, b.tipCents, label, JSON.stringify(b.itemIds || [])).lastInsertRowid;
-    const s = getSettings(); const base = publicBase(req); const cur = s.currency.toLowerCase();
-    const form = {
-      mode: 'payment', success_url: `${base}/p/${bill.token}?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${base}/p/${bill.token}`,
-      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': cur, 'line_items[0][price_data][unit_amount]': String(amount),
-      'line_items[0][price_data][product_data][name]': `${s.business_name}, ${sum.table ? `${s.unit_label.toLowerCase()} ${sum.table}` : `order #${sum.numbers.join(', #')}`}${b.split !== 'full' ? ` (${label})` : ''}`,
-      'metadata[payment_id]': String(pid), 'metadata[loc]': currentSlug(),
-    };
-    if (b.tipCents > 0) Object.assign(form, { 'line_items[1][quantity]': '1', 'line_items[1][price_data][currency]': cur, 'line_items[1][price_data][unit_amount]': String(b.tipCents), 'line_items[1][price_data][product_data][name]': 'Tip' });
-    const sess = await stripe('POST', '/checkout/sessions', form);
-    db.prepare('UPDATE payments SET stripe_session = ? WHERE id = ?').run(sess.id, pid);
-    res.json({ url: sess.url });
+    const s = getSettings(); const base = publicBase(req);
+    const name = `${s.business_name}, ${sum.table ? `${s.unit_label.toLowerCase()} ${sum.table}` : `order #${sum.numbers.join(', #')}`}${b.split !== 'full' ? ` (${label})` : ''}`;
+    const url = h.startPay(pid, { base, lines: [{ name, cents: amount }, ...(b.tipCents > 0 ? [{ name: 'Tip', cents: b.tipCents }] : [])], successUrl: `${base}/p/${bill.token}?paid=1`, cancelUrl: `${base}/p/${bill.token}`, descr: sum.table ? `${s.unit_label} ${sum.table}` : `order #${sum.numbers.join(', #')}` });
+    res.json({ url });
   }));
 
   // staff: "let them pay by phone" for one order (creates the bill and its QR)
@@ -470,7 +466,7 @@ export function registerCommerce({ app, staff, io, h }) {
     let pushed = 0;
     if (req.body?.notify && o.guest_id) pushed = (await pushToGuest(o.guest_id, { title: `${getSettings().business_name}: your check`, body: `Your check is ready. Tap to pay from your phone, split it if you like.`, tag: 'check', url: `/p/${bill.token}` }).catch(() => ({ sent: 0 }))).sent;
     audit(req.user, 'order.paylink', `#${o.number}${pushed ? ' sent to guest phone' : ''}`, clientIp(req));
-    res.json({ link, svg: await QRCode.toString(link, { type: 'svg', margin: 1 }), pushed, cardsEnabled: stripeEnabled(), billId: bill.id });
+    res.json({ link, svg: await QRCode.toString(link, { type: 'svg', margin: 1 }), pushed, cardsEnabled: h.onlinePayEnabled(), billId: bill.id });
   }));
 
   // Stripe webhook: completes bill and gift card payments even if the guest closes the page
@@ -483,6 +479,10 @@ export function registerCommerce({ app, staff, io, h }) {
     const ok = parts.v1 && parts.v1.length === expected.length && crypto.timingSafeEqual(Buffer.from(parts.v1), Buffer.from(expected));
     if (!ok || Math.abs(Date.now() / 1000 - Number(parts.t)) > 300) return res.status(400).send('bad signature');
     let event; try { event = JSON.parse(payload); } catch { return res.status(400).end(); }
+    if (event.type === 'payment_intent.succeeded') {
+      const pi = event.data.object; const loc = pi.metadata?.loc || 'main';
+      if (locationExists(loc)) runIn(loc, () => h.onIntentSucceeded?.(pi));
+    }
     if (event.type === 'checkout.session.completed' && event.data?.object?.payment_status === 'paid') {
       const sess = event.data.object; const loc = sess.metadata?.loc || 'main';
       if (locationExists(loc)) runIn(loc, () => {
@@ -500,7 +500,7 @@ export function registerCommerce({ app, staff, io, h }) {
     return {
       enabled: s.online_enabled === '1', pickup: s.online_pickup === '1', delivery: s.online_delivery === '1',
       deliveryFeeCents: Number(s.delivery_fee_cents), deliveryMinCents: Number(s.delivery_min_cents), deliveryArea: s.delivery_area,
-      readyInMinutes: Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: stripeEnabled(), payAtPickup: s.online_pay_later === '1' || !stripeEnabled(),
+      readyInMinutes: Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
       taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1',
       business: { name: s.business_name, accent: s.accent, type: s.business_type, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
     };
@@ -540,17 +540,9 @@ export function registerCommerce({ app, staff, io, h }) {
     const bill = billFor({ orderId: o.id });
     const sum = billSummary(bill);
     const pid = db.prepare("INSERT INTO payments (bill_id, amount_cents, tip_cents, method, label) VALUES (?, ?, ?, 'card', 'Online order')").run(bill.id, sum.remainingCents, b.tipCents).lastInsertRowid;
-    const s = getSettings(); const base = publicBase(req); const cur = s.currency.toLowerCase();
-    const form = {
-      mode: 'payment', success_url: `${base}${buzzer}?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${base}/order${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}`,
-      'line_items[0][quantity]': '1', 'line_items[0][price_data][currency]': cur, 'line_items[0][price_data][unit_amount]': String(sum.remainingCents),
-      'line_items[0][price_data][product_data][name]': `${s.business_name} order #${o.number} (${b.fulfillment})`, 'metadata[payment_id]': String(pid), 'metadata[loc]': currentSlug(),
-    };
-    if (b.email) form.customer_email = b.email;
-    if (b.tipCents > 0) Object.assign(form, { 'line_items[1][quantity]': '1', 'line_items[1][price_data][currency]': cur, 'line_items[1][price_data][unit_amount]': String(b.tipCents), 'line_items[1][price_data][product_data][name]': 'Tip' });
-    const sess = await stripe('POST', '/checkout/sessions', form);
-    db.prepare('UPDATE payments SET stripe_session = ? WHERE id = ?').run(sess.id, pid);
-    res.json({ ok: true, number: o.number, url: sess.url });
+    const s = getSettings(); const base = publicBase(req);
+    const url = h.startPay(pid, { base, lines: [{ name: `${s.business_name} order #${o.number} (${b.fulfillment})`, cents: sum.remainingCents }, ...(b.tipCents > 0 ? [{ name: 'Tip', cents: b.tipCents }] : [])], successUrl: `${base}${buzzer}?paid=1`, cancelUrl: `${base}/order${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}`, email: b.email, descr: `order #${o.number}` });
+    res.json({ ok: true, number: o.number, url });
   }));
   // the buzzer page confirms an online payment on return from Stripe
   app.get('/api/g/:token/confirm', publicLimiter, wrap(async (req, res) => {

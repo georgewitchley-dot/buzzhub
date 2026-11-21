@@ -145,13 +145,14 @@ export function GiftPage() {
   const [balance, setBalance] = useState(undefined);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { const sid = new URLSearchParams(location.search).get('session_id'); api(`/public/gift${sid ? `?session_id=${sid}` : ''}`).then((x) => { setD(x); applyAccent(x.business.accent); }); }, []);
+  useEffect(() => { const sid = new URLSearchParams(location.search).get('paid'); api(`/public/gift${sid ? `?paid=${encodeURIComponent(sid)}` : ''}`).then((x) => { setD(x); applyAccent(x.business.accent); }); }, []);
   if (!d) return <div className="guest" />;
   const buy = async () => { setBusy(true); setErr(''); try { const r = await api('/public/gift/checkout', { method: 'POST', body: { amountCents: amount * 100, ...f } }); window.location.href = r.url; } catch (e) { setErr(e.message); setBusy(false); } };
   const check = async () => { const r = await api(`/public/gift?code=${encodeURIComponent(code)}`); setBalance(r.balance); };
   return (
     <Shell biz={d.business}>
       <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{d.business.name} gift cards</h1></div>
+      {d.awaiting && <div className="card"><b>Thanks! We're checking your payment</b><span className="muted" style={{ fontSize: 14 }}>As soon as the team confirms it, your gift card code is emailed to you.</span></div>}
       {d.purchased && (
         <div className="card"><b>Thank you! Here's your gift card</b><span className="muted" style={{ fontSize: 14 }}>{money(d.purchased.amountCents, d.currency)} for {d.purchased.name}. Show this code when you pay. {d.purchased.email ? 'We emailed it too, if email is set up.' : ''}</span><div className="reward-code num" style={{ fontSize: '1.4rem' }}>{d.purchased.code}</div></div>
       )}

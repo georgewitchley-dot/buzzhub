@@ -18,8 +18,8 @@ function slugForToken(table, token, column = 'token') {
   return null;
 }
 export function resolveSlug(req) {
-  const m = /^\/api\/(g|f|p|t)\/([A-Za-z0-9_-]{16,40})/.exec(req.path);
-  if (m) { const s = m[1] === 'p' ? slugForToken('bills', m[2]) : m[1] === 't' ? slugForToken('tables', m[2], 'qr_token') : slugForToken(m[1] === 'g' ? 'guests' : 'feedback', m[2]); if (s) return s; }
+  const m = /^\/api\/(g|f|p|t|r)\/([A-Za-z0-9_-]{16,40})/.exec(req.path);
+  if (m) { const s = m[1] === 'p' ? slugForToken('bills', m[2]) : m[1] === 't' ? slugForToken('tables', m[2], 'qr_token') : m[1] === 'r' ? slugForToken('orders', m[2], 'receipt_token') : slugForToken(m[1] === 'g' ? 'guests' : 'feedback', m[2]); if (s) return s; }
   const pick = [req.get('X-Location'), req.query?.l, locOfToken(req.cookies?.[SESSION_COOKIE] || ''), locOfToken(req.cookies?.[CUSTOMER_COOKIE] || ''), req.cookies?.bh_loc];
   for (const p of pick) if (typeof p === 'string' && p && locationExists(p)) return p;
   return 'main';

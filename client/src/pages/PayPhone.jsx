@@ -16,7 +16,7 @@ export default function PayPhone() {
   const [pct, setPct] = useState(18);
   const [custom, setCustom] = useState('');
   const [busy, setBusy] = useState(false);
-  const just = Boolean(params.get('session_id'));
+  const just = Boolean(params.get('session_id') || params.get('paid'));
 
   const load = () => { const sid = params.get('session_id'); return api(`/p/${token}${sid ? `?session_id=${encodeURIComponent(sid)}` : ''}`).then((d) => { setB(d); applyAccent(d.business.accent); document.title = `${d.business.name}: your check`; }).catch((e) => setErr(e.message)); };
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps

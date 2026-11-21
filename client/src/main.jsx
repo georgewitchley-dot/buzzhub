@@ -1,3 +1,6 @@
+import PayPage from './pages/PayPage.jsx';
+import Receipt from './pages/Receipt.jsx';
+import Kiosk from './pages/Kiosk.jsx';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
@@ -25,6 +28,9 @@ createRoot(document.getElementById('root')).render(
           <Route path="/order" element={<OrderOnline />} />
           <Route path="/t/:token" element={<TableOrder />} />
           <Route path="/gift" element={<GiftPage />} />
+          <Route path="/pay/:token" element={<PayPage />} />
+          <Route path="/r/:token" element={<Receipt />} />
+          <Route path="/kiosk" element={<Kiosk />} />
           <Route path="/*" element={<CommandCenter />} />
         </Routes>
       </BrowserRouter>

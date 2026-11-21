@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ReceiptModal } from '../pro-ui.jsx';
 import { api, minutesSince, money, timeOf, useTick } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
@@ -31,6 +32,7 @@ export default function Orders() {
   const [orders] = useLive(['orders'], () => api(`/staff/orders?scope=${scope}`), [scope]);
   const [paying, setPaying] = useState(null);
   const [refunding, setRefunding] = useState(null);
+  const [receipt, setReceipt] = useState(null);
   useTick(30000);
 
   const act = async (path, msg) => { try { const r = await api(path, { method: 'POST' }); toast(r.buzz ? `${msg}. Customer buzzed.` : msg, 'ok'); } catch (e) { toast(e.message, 'err'); } };
@@ -66,6 +68,7 @@ export default function Orders() {
               <span className="grow muted">{o.payment_method ? `Paid by ${o.payment_method}` : 'Unpaid'}</span>
               <b className="num">{money(o.total_cents, cur)}</b>
             </div>
+            {o.paid_at && <button className="btn sm ghost" onClick={() => setReceipt(o)}>Receipt</button>}
             {scope !== 'open' && o.status === 'paid' && <button className="btn sm ghost" onClick={() => setRefunding(o)}>Refund</button>}
             {scope === 'open' && (
               <div className="row wrap">
@@ -78,6 +81,7 @@ export default function Orders() {
           </article>
         ))}
       </div>
+      {receipt && <ReceiptModal order={receipt} onClose={() => setReceipt(null)} />}
       {refunding && <RefundModal order={refunding} currency={cur} onClose={() => setRefunding(null)} />}
       {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => setPaying(null)} />}
     </>

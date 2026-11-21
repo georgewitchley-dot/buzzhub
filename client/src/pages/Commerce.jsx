@@ -161,7 +161,7 @@ export function OnlinePanel({ f, setF }) {
             </>
           )}
           <label className="field"><span>Usual minutes to have an order ready (busy times add more)</span><input className="input" type="number" min={1} max={180} value={f.online_prep_minutes} onChange={(e) => setF({ ...f, online_prep_minutes: e.target.value })} /></label>
-          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.online_pay_later === '1'} onChange={flag('online_pay_later')} /> Let customers pay at pickup or the door (with Stripe connected, they can also pay online)</label>
+          <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.online_pay_later === '1'} onChange={flag('online_pay_later')} /> Let customers pay at pickup or the door (with any way to get paid turned on, they can also pay online)</label>
           <label className="field"><span>Your ordering page</span><input className="input" readOnly value={link} onFocus={(e) => e.target.select()} /></label>
         </>
       )}

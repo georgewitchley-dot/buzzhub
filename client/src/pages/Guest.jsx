@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { gsap } from 'gsap';
+import { DeliveryMap } from '../track.jsx';
+import { LangSwitch, useLang } from '../i18n.jsx';
 import Aurora from '../bits/Aurora.jsx';
 import StarBorder from '../bits/StarBorder.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
@@ -55,6 +57,7 @@ function MenuSheet({ token, g, onClose }) {
 }
 
 export default function Guest() {
+  const { lang, setLang, t } = useLang();
   const { token } = useParams();
   const [g, setG] = useState(null);
   const [err, setErr] = useState('');
@@ -133,20 +136,27 @@ export default function Guest() {
   const unit = g.business.unitLabel.toLowerCase();
   let headline; let sub; let core;
   if (g.status === 'buzzed') {
-    headline = isOrder ? 'Your order is ready' : `Your ${unit} is ready`;
+    headline = isOrder ? t('Your order is ready') : t('Your {unit} is ready', { unit });
     sub = g.lastMessage; core = <><b style={{ fontSize: 'clamp(3rem,16vw,4.5rem)' }}>{g.tableLabel || (isOrder ? `#${g.orderNumber}` : 'Now')}</b><span>{g.tableLabel ? g.business.unitLabel : 'Head over'}</span></>;
   } else if (g.status === 'acknowledged') {
-    headline = 'See you in a moment'; sub = "We've let the team know you're on the way.";
+    headline = t('See you in a moment'); sub = t("We've let the team know you're on the way.");
     core = <><b style={{ fontSize: 'clamp(3rem,16vw,4.5rem)' }}>{g.tableLabel || '✓'}</b><span>{g.tableLabel ? g.business.unitLabel : 'On the way'}</span></>;
   } else if (g.status === 'waiting') {
-    headline = isOrder ? `Thanks ${g.name}, your order is in` : g.headsUp ? 'Almost your turn' : `Hi ${g.name}, you're on the list`;
-    sub = isOrder ? `Order #${g.orderNumber} is being made. We'll buzz your phone when it's ready.` : g.headsUp ? 'Please stay close. We will buzz you any minute.' : g.business.welcome;
-    core = isOrder ? <><b>#{g.orderNumber}</b><span>Order</span></> : <><b>{g.position}</b><span>{g.position === 1 ? "You're next" : 'in line'}</span></>;
+    headline = isOrder ? t('Thanks {name}, your order is in', { name: g.name }) : g.headsUp ? t('Almost your turn') : t("Hi {name}, you're on the list", { name: g.name });
+    sub = isOrder ? t("Order #{n} is being made. We'll buzz your phone when it's ready.", { n: g.orderNumber }) : g.headsUp ? t('Please stay close. We will buzz you any minute.') : g.business.welcome;
+    core = isOrder ? <><b>#{g.orderNumber}</b><span>Order</span></> : <><b>{g.position}</b><span>{g.position === 1 ? t("You're next") : t('in line')}</span></>;
   } else {
-    headline = ['seated', 'done'].includes(g.status) ? 'Enjoy!' : "You're off the list";
+    headline = ['seated', 'done'].includes(g.status) ? t('Enjoy!') : t("You're off the list");
     sub = ['seated', 'done'].includes(g.status) ? `Thanks for visiting ${g.business.name}.` : 'If this was a mistake, see the host.';
     core = <><b style={{ fontSize: 'clamp(3rem,16vw,4.5rem)' }}>{['seated', 'done'].includes(g.status) ? '✓' : '—'}</b></>;
   }
+  const dv = g.delivery;
+  if (dv?.status === 'out' && ACTIVE.includes(g.status)) {
+    headline = t('On its way');
+    sub = `${dv.driverName || t('Your driver')} ${t('is bringing your order')}.${dv.etaMinutes ? ` ${t('About {n} minutes away', { n: dv.etaMinutes })}.` : ''}`;
+    core = <><b>{dv.etaMinutes ? `${dv.etaMinutes}′` : '🚗'}</b><span>{dv.etaMinutes ? 'ETA' : `#${g.orderNumber}`}</span></>;
+  }
+  if (dv?.status === 'delivered') { headline = t('Delivered. Enjoy!'); }
   const active = ACTIVE.includes(g.status);
   const po = g.preorder;
 
@@ -155,6 +165,7 @@ export default function Guest() {
       <div className="guest-bg"><Aurora colorStops={[g.business.accent, '#2a1f55', g.business.accent]} amplitude={g.status === 'buzzed' ? 1.4 : 0.7} speed={g.status === 'buzzed' ? 1.6 : 0.4} mouseInteraction={false} /></div>
       <div className="flash" ref={flashRef} />
       <main className="guest-in">
+        <LangSwitch lang={lang} setLang={setLang} />
         {g.business.logo ? <img className="guest-logo" src={g.business.logo} alt={g.business.name} /> : <div className="guest-biz">{g.business.name}</div>}
         <div className="big-puck" ref={puckRef} data-state={g.status} role="img" aria-label={headline}>
           <span className="wave" /><span className="wave" /><span className="wave" />
@@ -165,13 +176,14 @@ export default function Guest() {
           <h1>{headline}</h1>
           {sub && <p>{sub}</p>}
         </div>
+        {dv?.status === 'out' && dv.driver && <DeliveryMap driver={dv.driver} drop={dv.drop} />}
         {banner && g.status === 'waiting' && <div className="card banner" role="status">{banner}</div>}
 
-        {g.status === 'buzzed' && <button className="btn primary lg block" onClick={ack} style={{ height: 64, fontSize: 19 }}>I'm on my way</button>}
+        {g.status === 'buzzed' && <button className="btn primary lg block" onClick={ack} style={{ height: 64, fontSize: 19 }}>{t("I'm on my way")}</button>}
 
         {active && alerts === 'off' && !(isIOS() && !isStandalone()) && (
           <StarBorder as="button" onClick={turnOn} color={g.business.accent} radius={16} style={{ width: '100%' }}>
-            <span style={{ display: 'block', padding: '6px 0', fontWeight: 700, fontSize: 17 }}>Turn on alerts</span>
+            <span style={{ display: 'block', padding: '6px 0', fontWeight: 700, fontSize: 17 }}>{t('Turn on alerts')}</span>
           </StarBorder>
         )}
 

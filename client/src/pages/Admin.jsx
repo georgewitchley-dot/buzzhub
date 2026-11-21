@@ -4,6 +4,7 @@ import { Icon, Modal, useToast } from '../ui.jsx';
 import { PrintSign } from './PrintSign.jsx';
 import { OnlinePanel, OptionsAdmin } from './Commerce.jsx';
 import { TeamPanel } from './Team.jsx';
+import { KioskPanel, MorePanel, PaymentsSetup, ReadersPanel } from './Field.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 
 /* ================= Menu ================= */
@@ -110,7 +111,8 @@ export function StaffAdmin() {
         <tbody>{(people || []).map((p) => (
           <tr key={p.id} style={{ opacity: p.active ? 1 : 0.5 }}>
             <td>{p.name}{p.id === user.id && <span className="chip" style={{ marginLeft: 8 }}>You</span>}</td>
-            <td style={{ textTransform: 'capitalize' }}>{p.role}{p.totp_enabled ? <span className="chip teal" style={{ marginLeft: 8, textTransform: 'none' }}>Two-step</span> : null}</td>
+            <td style={{ textTransform: 'capitalize' }}>{p.role}{p.totp_enabled ? <span className="chip teal" style={{ marginLeft: 8, textTransform: 'none' }}>Two-step</span> : null}
+              <button className={`chip ${p.is_driver ? 'blue' : ''}`} style={{ marginLeft: 8, textTransform: 'none', cursor: 'pointer', border: 0 }} onClick={() => api(`/staff/users/${p.id}/driver`, { method: 'PUT', body: { driver: !p.is_driver } }).then(reload)} title="Drivers see their deliveries and share their location while delivering">{p.is_driver ? 'Driver' : 'Not a driver'}</button></td>
             <td className="muted">{p.last_login_at ? `${new Date(p.last_login_at.replace(' ', 'T') + 'Z').toLocaleDateString()} ${timeOf(p.last_login_at)}` : 'Never'}</td>
             <td style={{ textAlign: 'right' }}>
               <button className="btn sm ghost" onClick={() => setEdit(p)}>Edit</button>
@@ -188,6 +190,7 @@ export function SettingsAdmin() {
       'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
       'online_enabled', 'online_pickup', 'online_delivery', 'delivery_fee_cents', 'delivery_min_cents', 'delivery_area', 'online_prep_minutes', 'online_pay_later', 'table_ordering',
       'tip_pool_enabled', 'tip_pool_managers', 'forecast_city', 'forecast_rain_pct', 'staff_sales_per_hour_cents', 'staff_min',
+      'booking_deposit_cents', 'deposit_refund_hours', 'ot_weekly_hours', 'payroll_week_start', 'ot_alerts', 'break_after_hours', 'food_cost_target', 'insights_summary', 'insights_hour', 'insights_alerts', 'insights_void_limit', 'insights_refund_cents', 'kiosk_reader_id', 'kiosk_message', 'pay_handles_enabled', 'pay_cashapp', 'pay_venmo', 'pay_paypalme', 'pay_zelle', 'card_provider', 'cash_discount_pct', 'fee_rates',
       'smart_waits', 'loyalty_enabled', 'loyalty_visits', 'loyalty_reward', 'feedback_enabled', 'feedback_delay_minutes', 'feedback_review_threshold', 'review_url',
       'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
@@ -285,6 +288,14 @@ export function SettingsAdmin() {
         <OnlinePanel f={f} setF={setF} />
 
         <TeamPanel f={f} setF={setF} />
+
+        <PaymentsSetup f={f} setF={setF} />
+
+        <MorePanel f={f} setF={setF} />
+
+        <ReadersPanel f={f} setF={setF} />
+
+        <KioskPanel f={f} setF={setF} />
 
         <PaymentsPanel />
 

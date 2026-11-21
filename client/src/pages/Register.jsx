@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ReaderCharge } from '../pro-ui.jsx';
 import { gsap } from 'gsap';
 import SpotlightCard from '../bits/SpotlightCard.jsx';
 import ClickSpark from '../bits/ClickSpark.jsx';
@@ -59,6 +60,7 @@ export function SplitModal({ order, tableId, currency, onClose }) {
         <div className="seg">{['card', 'cash', 'other'].map((m) => <button key={m} aria-pressed={method === m} onClick={() => setMethod(m)} style={{ textTransform: 'capitalize' }}>{m}</button>)}</div>
         <input className="input grow" inputMode="decimal" placeholder="Tip" value={tip} onChange={(e) => setTip(e.target.value)} aria-label="Tip for this share" />
       </div>
+      {method === 'card' && share > 0 && <ReaderCharge currency={currency} label={`Charge ${money(share + dollars(tip), currency)} on reader`} body={{ billId: bill.id, split: mode, ways: mode === 'even' ? ways : undefined, itemIds: mode === 'items' ? picked : undefined, tipCents: dollars(tip) }} onPaid={() => api('/staff/bills', { method: 'POST', body: tableId ? { tableId } : { orderId: order.id } }).then((b) => { setBill(b); setPicked([]); setTip(''); if (b.status === 'paid' || b.remainingCents <= 0) onClose(); })} />}
       <button className="btn primary lg block" disabled={share <= 0} onClick={record}>Record {money(share, currency)}{tip ? ` + ${money(dollars(tip), currency)} tip` : ''}</button>
       {bill.payments.length > 0 && <div className="dim" style={{ fontSize: 13 }}>{bill.payments.map((p, i) => <div key={i}>{p.label}: {money(p.amountCents, currency)} by {p.method}{p.tipCents ? ` + ${money(p.tipCents, currency)} tip` : ''}</div>)}</div>}
       {!qr ? <button className="btn block" onClick={showQr}>Let everyone pay their share by phone</button> : (
@@ -83,7 +85,9 @@ export function PayModal({ order, currency, onClose, onPaid }) {
   const [tendered, setTendered] = useState('');
   const [busy, setBusy] = useState(false);
   const tip = customTip !== '' ? dollars(customTip) : Math.round((order.subtotal_cents - order.discount_cents) * tipPct / 100);
-  const total = base + tip;
+  const cashPct = Number(useCC().settings.cash_discount_pct) || 0;
+  const cashOff = method === 'cash' && cashPct > 0 && !order.offlineKey ? Math.round((order.subtotal_cents - order.discount_cents) * cashPct / 100 * (1 + (Number(useCC().settings.tax_rate) || 0) / 100)) : 0;
+  const total = base + tip - cashOff;
   const tenderedCents = tendered === '' ? undefined : dollars(tendered);
   const pay = async () => {
     if (order.offlineKey) { attachPayment(order.offlineKey, { method, tipCents: tip, tenderedCents: method === 'cash' ? tenderedCents : undefined }); toast(`Offline: ${money(total, currency)} ${method} saved. It syncs when the connection is back.`, 'ok'); onPaid({}); return; }
@@ -125,11 +129,13 @@ export function PayModal({ order, currency, onClose, onPaid }) {
       <div className="totals">
         {order.fee_cents > 0 && <div><span>Delivery fee</span><span>{money(order.fee_cents, currency)}</span></div>}
         {applied > 0 && <div><span>Gift card</span><span>−{money(applied, currency)}</span></div>}
+        {cashOff > 0 && <div><span>Cash discount ({cashPct}%)</span><span>−{money(cashOff, currency)}</span></div>}
         <div><span>Before tip</span><span>{money(base, currency)}</span></div>
         <div><span>Tip</span><span>{money(tip, currency)}</span></div>
         <div className="grand"><span>Total</span><span>{money(total, currency)}</span></div>
       </div>
-      {method === 'card' && <p className="dim" style={{ margin: 0, fontSize: 13 }}>Run the card on your terminal, then record it here.</p>}
+      {method === 'card' && order.id && !order.offlineKey && <ReaderCharge currency={currency} label={`Charge ${money(total, currency)} on reader`} body={{ orderId: order.id, split: 'full', tipCents: tip }} onPaid={(s) => onPaid({ totalCents: s.amountCents })} />}
+      {method === 'card' && <p className="dim" style={{ margin: 0, fontSize: 13 }}>No card reader? Run the card on your own terminal, then record it here.</p>}
       <button className="btn primary lg block" onClick={pay} disabled={busy}>{busy ? 'Recording…' : `Record ${money(total, currency)} paid`}</button>
       {order.id && !order.offlineKey && (
         <div className="row wrap">
