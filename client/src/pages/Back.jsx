@@ -8,6 +8,7 @@ import { PriceWatch } from './Plus.jsx';
 import { Nutrition } from './Owner.jsx';
 import { PriceCompare } from './Smart.jsx';
 import { Transfers } from './Desk.jsx';
+import { PayrollFiles } from './Crew.jsx';
 
 const dayLabel = (d) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 const num = (v) => Number(String(v).replace(/[^\d.-]/g, '')) || 0;
@@ -264,6 +265,7 @@ export function Payroll() {
         <input className="input" type="date" style={{ width: 150 }} value={range.from || d.from} onChange={(e) => setRange({ ...range, from: e.target.value })} aria-label="From" />
         <input className="input" type="date" style={{ width: 150 }} value={range.to || d.to} onChange={(e) => setRange({ ...range, to: e.target.value })} aria-label="To" />
         <a className="btn primary" href={csv} download>Download CSV</a>
+        <PayrollFiles from={d.from} to={d.to} />
       </PageHead>
       <div className="kpis">
         <div className="kpi"><div className="v">{d.totals.hours}</div><div className="l">Hours worked</div></div>

@@ -229,6 +229,7 @@ export function registerBack({ app, staff, h }) {
           db.prepare('UPDATE ingredients SET stock = COALESCE(stock, 0) + ?, cost_cents = ? WHERE id = ?').run(l.qty, l.costCents, row.ingredient_id);
           db.prepare("INSERT INTO ingredient_moves (ingredient_id, delta, reason, user_id) VALUES (?, ?, ?, ?)").run(row.ingredient_id, l.qty, `received PO ${po.id}`, req.user.id);
           lowCheck(row.ingredient_id);
+          h.onReceive?.(row.ingredient_id, l.qty, `PO ${po.id}`);
         }
       }
       db.prepare("UPDATE purchase_orders SET status = 'received', received_at = datetime('now') WHERE id = ?").run(po.id);
@@ -245,6 +246,11 @@ export function registerBack({ app, staff, h }) {
     const to = ok(req.query.to) ? req.query.to : localToday(); const from = ok(req.query.from) ? req.query.from : addDays(to, -13);
     if (to < from) throw err('The end date is before the start date');
     const p = payroll(from, to);
+    if (req.query.format === 'gusto' || req.query.format === 'adp') {
+      audit(req.user, 'payroll.export', `${req.query.format} ${from}..${to}`, clientIp(req));
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="${req.query.format}-hours-${from}-to-${to}.csv"`);
+      return res.send(h.payrollFile(p, req.query.format));
+    }
     if (req.query.format === 'csv') {
       const head = ['Name', 'Role', 'Shifts', 'Regular hours', 'Overtime hours', 'Hourly rate', 'Regular pay', 'Overtime pay', 'Tips paid', 'Gross'];
       const body = p.people.map((x) => [x.name, x.role, x.shifts, x.regular, x.overtime, (x.rateCents / 100).toFixed(2), (x.regularPayCents / 100).toFixed(2), (x.overtimePayCents / 100).toFixed(2), (x.tipsCents / 100).toFixed(2), (x.grossCents / 100).toFixed(2)]);

@@ -188,10 +188,11 @@ export function registerOps({ app, staff, io, h }) {
       notifyStaff('shifts');
       return res.json({ name: user.name, action: 'out', hours: Math.round(hrs * 100) / 100 });
     }
+    try { await h.punchGuard?.({ user, action: 'in', ip, where: 'lock screen' }); } catch (e) { if (e.needsManager) return res.status(409).json({ error: `${e.message} Use the time clock screen with a manager, or ask a manager to clock you in.`, needsManager: true }); throw e; }
     db.prepare('INSERT INTO shifts (user_id, clock_in) VALUES (?, ?)').run(user.id, now());
     audit(user, 'shift.in', null, ip);
     notifyStaff('shifts');
-    res.json({ name: user.name, action: 'in' });
+    res.json({ name: user.name, action: 'in', notes: h.handoffFor?.(user.id) || [] });
   }));
 
   staff.get('/shifts', (req, res) => {

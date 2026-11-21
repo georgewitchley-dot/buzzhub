@@ -7,6 +7,7 @@ import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { FireButton, RecipeCard } from './Plus.jsx';
 import { StationPicker, stationOf } from './More.jsx';
 import { cookPlan, useCookTimes } from './Smart.jsx';
+import { AllDay, AreaScreens } from './Areas.jsx';
 
 export default function Kitchen() {
   const { settings } = useCC();
@@ -51,9 +52,11 @@ export default function Kitchen() {
     <>
       <PageHead title="Kitchen" sub={`${cooking.length} ticket${cooking.length === 1 ? '' : 's'} to make${data.held ? `, ${data.held} pre-order${data.held === 1 ? '' : 's'} waiting for a table` : ''}. Tickets turn red after ${late} minutes.`}>
         <label className="btn" title="Prints each new ticket on this device's printer. In Chrome, start with --kiosk-printing to skip the print dialog."><input type="checkbox" checked={station} onChange={(e) => { setStation(e.target.checked); localStorage.setItem('bh_print_station', e.target.checked ? '1' : '0'); }} />Print new tickets here</label>
+        <AreaScreens />
         <StationPicker value={myStation} onChange={(v) => { setMyStation(v); localStorage.setItem('bh_station', v); }} />
         <button className="btn" onClick={full}><Icon name="expand" size={17} />Full screen</button>
       </PageHead>
+      {localStorage.getItem('bh_kitchen_allday') !== '0' && <AllDay orders={cooking} />}
       {cooking.length === 0 && <div className="panel empty"><b>All caught up</b><span>New orders from the register and pre-orders from called parties show up here.</span></div>}
       <div className="kds" ref={boardRef}>
         {cooking.map((o) => {

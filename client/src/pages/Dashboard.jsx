@@ -5,6 +5,7 @@ import { api, money, timeOf } from '../lib.js';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { LaborCard } from './More.jsx';
 import { WhosOn } from './Clock.jsx';
+import { HandoffNotes } from './Crew.jsx';
 
 const ACTION_LABEL = {
   'auth.login': 'unlocked the terminal', 'auth.lock': 'locked the terminal', 'auth.fail': 'Wrong PIN attempt',
@@ -44,6 +45,7 @@ export default function Dashboard() {
 
       <LaborCard />
       <WhosOn compact />
+      <HandoffNotes />
       <div className="kpis" ref={kpiRef}>
         <div className="kpi"><div className="v">{d.waiting}</div><div className="l">Waiting now</div></div>
         <div className="kpi"><div className="v">{d.avgWait}<small style={{ fontSize: '1rem' }}> min</small></div><div className="l">Average wait today</div></div>

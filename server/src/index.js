@@ -35,6 +35,8 @@ import { registerOwner } from './owner.js';
 import { registerSmart } from './smart.js';
 import { registerTimeClock } from './timeclock.js';
 import { registerDesk } from './desk.js';
+import { registerKds } from './kds.js';
+import { registerCrew } from './crew.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -83,7 +85,7 @@ const isTrustedDevice = (req) => {
   if (req._trusted !== undefined) return req._trusted;
   let ok = false;
   try { ok = Boolean(req.cookies?.[SESSION_COOKIE] && userFromToken(req.cookies[SESSION_COOKIE])); } catch { ok = false; }
-  if (!ok) for (const [hdr, kind] of [['X-Kiosk', 'kiosk'], ['X-Screen', 'screen'], ['X-Display', 'display'], ['X-Clock', 'clock']]) {
+  if (!ok) for (const [hdr, kind] of [['X-Kiosk', 'kiosk'], ['X-Screen', 'screen'], ['X-Display', 'display'], ['X-Clock', 'clock'], ['X-Kds', 'kds'], ['X-Board', 'board']]) {
     const t = req.get(hdr); if (!t) continue;
     try { jwt.verify(t, `${getJwtSecret()}:${kind}`); ok = true; break; } catch { /* not a real device token */ }
   }
@@ -585,7 +587,10 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     sales_goals: z.string().max(200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 7 && a.every((x) => Number.isInteger(Number(x)) && Number(x) >= 0); } catch { return false; } }, 'Goals must be a list of 7 amounts'),
     table_long_minutes: z.coerce.number().int().min(0).max(600),
     labor_target_pct: z.coerce.number().int().min(5).max(80),
-    catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
+    catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), ot_guard: z.enum(['0', '1']), punch_geofence: z.enum(['0', '1']), punch_radius_m: z.string().regex(/^\d{2,4}$/), biz_lat: z.string().regex(/^-?\d{1,2}(\.\d+)?$|^$/), biz_lng: z.string().regex(/^-?\d{1,3}(\.\d+)?$|^$/),
+    punch_photo: z.enum(['0', '1']), handoff_notes: z.enum(['0', '1']), adp_company_code: z.string().trim().max(10), kds_expo: z.enum(['0', '1']), kds_pack: z.enum(['0', '1']),
+    board_categories: z.string().max(2000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), board_title: z.string().trim().max(60), board_rotate_seconds: z.string().regex(/^\d{1,3}$/), board_cols: z.enum(['1', '2', '3', '4']), board_photos: z.enum(['0', '1']),
+    rooms_online: z.enum(['0', '1']), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
     cash_balance_cents: z.coerce.number().int().min(-100_000_000).max(1_000_000_000), cash_balance_on: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), payroll_dow: z.coerce.number().int().min(0).max(6), payroll_every: z.enum(['weekly', 'biweekly']),
     show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
     pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
@@ -876,20 +881,25 @@ staff.get('/orders', (req, res) => {
   res.json(orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id) })));
 });
 
-staff.post('/orders/:id/ready', wrap(async (req, res) => {
-  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
-  if (!o || !['held', 'open', 'sent'].includes(o.status)) return res.status(409).json({ error: 'Order not in progress' });
+/** Mark an order ready (or paid, if it was prepaid) and buzz the waiting customer. Used by the orders board and kitchen screens. */
+async function markReady(o, user, ip, by) {
   const pickupGuest = o.guest_id ? db.prepare('SELECT kind FROM guests WHERE id=?').get(o.guest_id)?.kind === 'order' : false;
   db.prepare("UPDATE orders SET status=?, ready_at=? WHERE id=?").run(o.prepaid && !pickupGuest ? 'paid' : 'ready', now(), o.id);
-  audit(req.user, 'order.ready', `#${o.number}`, clientIp(req));
+  audit(user, 'order.ready', `#${o.number}${by && !user ? ` (${by})` : ''}`, ip);
   let buzz = null;
   if (o.guest_id && o.source !== 'guest') {
     const g = db.prepare('SELECT * FROM guests WHERE id=?').get(o.guest_id);
     const msg = o.fulfillment === 'delivery' ? `Order #${o.number} is on its way to you!` : null;
-    if (g && g.kind === 'order' && ACTIVE.includes(g.status)) buzz = await buzzGuest(g, msg, req.user, clientIp(req));
+    if (g && g.kind === 'order' && ACTIVE.includes(g.status)) buzz = await buzzGuest(g, msg, user, ip);
   }
   notifyStaff('orders');
-  res.json({ ok: true, buzz });
+  return { ok: true, buzz };
+}
+G.markReady = markReady;
+staff.post('/orders/:id/ready', wrap(async (req, res) => {
+  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
+  if (!o || !['held', 'open', 'sent'].includes(o.status)) return res.status(409).json({ error: 'Order not in progress' });
+  res.json(await markReady(o, req.user, clientIp(req)));
 }));
 
 staff.post('/orders/:id/fire', (req, res) => {
@@ -1244,6 +1254,8 @@ registerOwner({ app, staff, io, h: G });
 registerSmart({ app, staff, io, h: G });
 registerTimeClock({ app, staff, io, h: G });
 registerDesk({ app, staff, io, h: G });
+registerKds({ app, staff, io, h: G });
+registerCrew({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
@@ -1265,7 +1277,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status === 500 ? 'Server error' : err.message });
+  res.status(status).json({ error: status === 500 ? 'Server error' : err.message, ...(err.needsManager ? { needsManager: true } : {}), ...(err.overtime ? { overtime: err.overtime } : {}) });
 });
 
 /* ---------- realtime ---------- */

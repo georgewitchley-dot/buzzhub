@@ -31,6 +31,7 @@ import { Labels, Waste } from './More.jsx';
 import { Equipment, LogBanner, LogBook, SupplierBills, TableCalls, TipOuts, WeeklyReport } from './Owner.jsx';
 import { Safe, StockCount } from './Smart.jsx';
 import { OnClockChip } from './Clock.jsx';
+import { Rooms, TableTurns, UseFirst } from './Crew.jsx';
 import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
 
 const Ctx = createContext(null);
@@ -75,6 +76,7 @@ const NAV = [
   { to: '/logbook', icon: 'list', label: 'Log book' },
   { to: '/equipment', icon: 'gear', label: 'Equipment' },
   { to: '/waste', icon: 'box', label: 'Waste' },
+  { to: '/use-first', icon: 'box', label: 'Use first' },
   { to: '/labels', icon: 'print', label: 'Labels' },
   { to: '/prep', icon: 'flame', label: 'Prep list', when: (s) => s?.business_type !== 'service' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
@@ -99,6 +101,8 @@ const NAV = [
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/supplier-bills', icon: 'bag', label: 'Supplier bills', min: 'owner' },
   { to: '/report', icon: 'chart', label: 'Weekly report', min: 'owner' },
+  { to: '/table-turns', icon: 'floor', label: 'Table turns', min: 'manager', when: (s) => s?.business_type !== 'service' },
+  { to: '/rooms', icon: 'calendar', label: 'Private rooms', min: 'manager' },
   { to: '/cash-flow', icon: 'chart', label: 'Cash flow', min: 'owner' },
   { to: '/sales-tax', icon: 'cash', label: 'Sales tax', min: 'owner' },
   { to: '/delivery-zones', icon: 'pin', label: 'Delivery zones', min: 'manager', when: (s) => s?.online_delivery === '1' },
@@ -264,6 +268,9 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="waste" element={<Waste />} />
                   <Route path="logbook" element={<LogBook />} />
                   <Route path="certificates" element={<Certificates />} />
+                  <Route path="use-first" element={<UseFirst />} />
+                  {can('manager') && <Route path="table-turns" element={<TableTurns />} />}
+                  {can('manager') && <Route path="rooms" element={<Rooms />} />}
                   <Route path="allergens-chart" element={<AllergenChart />} />
                   {can('owner') && <Route path="cash-flow" element={<CashFlow />} />}
                   {can('owner') && <Route path="sales-tax" element={<SalesTax />} />}

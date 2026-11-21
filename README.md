@@ -163,6 +163,19 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 13: every area gets a screen
+- **Kitchen area screens**: one tablet per area (grill, fryer, bar…), an expo screen that completes orders, and a packing screen for to-go.
+- **All-day counts** on every kitchen screen.
+- **Menu board TV** with live specials and happy-hour prices.
+- **Overtime guard** with manager approval at the time clock.
+- **Phone clock-in only at work** (optional).
+- **Photo at clock-in** (optional).
+- **Shift handoff notes.**
+- **Gusto and ADP payroll files.**
+- **Use-first stock** with use-by dates.
+- **Table turn report.**
+- **Private room bookings** with minimum spend and deposits.
+
 ## Round 12: the clock and the back office
 - **Time clock screen**: a big clock and PIN pad on any tablet for clocking in, out and breaks, with who's on.
 - **Who's on** everywhere: dashboard, shifts, top bar, plus each person's own time card.

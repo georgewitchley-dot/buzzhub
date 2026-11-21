@@ -66,8 +66,8 @@ export default function Lock({ business, onUnlocked }) {
       if (mode === 'clock') {
         const r = await api('/auth/clock', { method: 'POST', body: { pin } });
         setPin(''); setMode('unlock');
-        setOk(r.action === 'in' ? `${r.name}, you're clocked in. Have a good shift.` : `${r.name}, you're clocked out after ${Math.floor(r.hours)}h ${Math.round((r.hours % 1) * 60)}m.`);
-        setTimeout(() => setOk(''), 6000);
+        setOk(r.action === 'in' ? `${r.name}, you're clocked in. Have a good shift.${r.notes?.length ? ` Note from ${r.notes[0].name.split(' ')[0]}: ${r.notes[0].body}` : ''}` : `${r.name}, you're clocked out after ${Math.floor(r.hours)}h ${Math.round((r.hours % 1) * 60)}m.`);
+        setTimeout(() => setOk(''), r.notes?.length ? 12000 : 6000);
         return;
       }
       if (ticket) {

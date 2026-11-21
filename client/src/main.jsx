@@ -5,6 +5,8 @@ import { CustomerDisplay } from './pages/Plus.jsx';
 import { CateringOrder } from './pages/Smart.jsx';
 import { TimeClockScreen } from './pages/Clock.jsx';
 import { PublicAllergens, RateCatering } from './pages/Desk.jsx';
+import { KdsScreen, MenuBoard } from './pages/Areas.jsx';
+import { PublicRooms, RoomBooking } from './pages/Crew.jsx';
 import PayPage from './pages/PayPage.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Kiosk from './pages/Kiosk.jsx';
@@ -47,6 +49,10 @@ createRoot(document.getElementById('root')).render(
           <Route path="/timeclock" element={<TimeClockScreen />} />
           <Route path="/allergens" element={<PublicAllergens />} />
           <Route path="/rate/:token" element={<RateCatering />} />
+          <Route path="/kds" element={<KdsScreen />} />
+          <Route path="/menuboard" element={<MenuBoard />} />
+          <Route path="/event-rooms" element={<PublicRooms />} />
+          <Route path="/event-room/:token" element={<RoomBooking />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/ticket/:code" element={<TicketPage />} />
           <Route path="/*" element={<CommandCenter />} />

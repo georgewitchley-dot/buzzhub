@@ -172,6 +172,19 @@ Server: `server/src/timeclock.js`, `server/src/desk.js`. Client: `client/src/pag
 - **Delivery zones** `/delivery-zones`: Leaflet polygons with fee/minimum; `h.deliveryZone` used at checkout and `/api/o/delivery-quote`; outside all zones = error; no zones = flat fee.
 - **Catering follow-up**: day-after email (`catering_followup='1'`) to `/rate/:token`; ratings list on Catering.
 
+## 3m. Round 13 (2026-11-21)
+Server: `server/src/kds.js`, `server/src/crew.js`. Client: `client/src/pages/Areas.jsx`, `client/src/pages/Crew.jsx`.
+- **Kitchen area screens** `/kds`: device token `X-Kds` (secret `jwt+':kds'`, `kds_version`, area in the token) from `POST /staff/kds/start {area}`, or a signed-in staff member with `?area=`. Areas = `kitchen_stations` + Expo + Packing + All areas. Routing: `menu_items.station` (per-item) → `station_map[category]` → first area (`stationFor`). `POST /api/kds/bump` sets `order_items.done_at` + `done_station`; when every live item is done the order goes ready via `h.markReady` (extracted from `/staff/orders/:id/ready`), unless `kds_expo='1'`, then Expo's `POST /api/kds/complete` finishes and buzzes. Packing (`kds_pack`) lists to-go/delivery orders until `POST /api/kds/packed` (`orders.packed_at`). `/api/kds/recall` undoes. All-day counts per area; `/staff/kds/setup` adds per-area average minutes today. Polls every 4 s.
+- **Menu board TV** `/menuboard`: `X-Board` token (`board_version`), `GET /api/menuboard` uses `menuWithMods()` so specials, happy hour, sold-out and photos are live. Settings `board_title`, `board_categories`, `board_cols`, `board_rotate_seconds`, `board_photos`.
+- **Overtime guard** (`ot_guard`): `h.punchGuard` blocks a clock-in projected past `ot_weekly_hours` (week so far + today's schedule) unless a different manager's PIN (`managerPin`) approves; lock screen refuses with a message; manager punches self-approve. Errors carry `needsManager` / `overtime`.
+- **Phone clock-in by location** (`punch_geofence`, `punch_radius_m`, `biz_lat`, `biz_lng`): `/staff/me/punch` takes `lat/lng/acc` and checks distance (`h.phonePunchCheck`).
+- **Punch photos** (`punch_photo`): the time clock sends a 240px JPEG; `punch_photos`, `/staff/punch-photos`, purged after 60 days.
+- **Handoff notes** (`handoff_notes`): `handoff_notes` table; written at clock-out on the time clock (`action: note`) or the Overview/Shifts panel; returned on the next clock-in (time clock, lock screen, phone).
+- **Payroll files**: `/staff/payroll?format=gusto|adp` via `h.payrollFile`; `users.payroll_id`, `adp_company_code`. Column layouts are generic; check them against the owner's import template.
+- **Use first**: `ingredient_lots` (use_by from `ingredients.shelf_days`), created on PO receive (`h.onReceive`) or by hand; used up / thrown out (logs waste, takes stock off); alerts for today/tomorrow.
+- **Table turns** `/staff/table-turns`: guests seated→closed with spend, by size, section, day, hour, server; tables over 125% of typical.
+- **Private rooms**: `rooms`, `room_bookings`; public `/event-rooms` (`rooms_online`, `rooms_lead_days`), status page `/event-room/:token` (API `/api/v/:token`, added to `resolveSlug`), deposit via pay kind `room`; staff confirm/decline/check in (deposit becomes a one-time gift card)/done; spend toward the minimum counts orders on the room's tables in the time window; Floor banner.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server
