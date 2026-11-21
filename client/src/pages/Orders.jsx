@@ -1,10 +1,27 @@
 import { useState } from 'react';
 import { api, minutesSince, money, timeOf, useTick } from '../lib.js';
-import { Icon, Puck, useToast } from '../ui.jsx';
+import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PayModal } from './Register.jsx';
 
 const LABEL = { held: 'Ordered ahead, waiting for table', open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
+
+function RefundModal({ order, currency, onClose }) {
+  const toast = useToast();
+  const [amount, setAmount] = useState((order.total_cents / 100).toFixed(2));
+  const [reason, setReason] = useState('');
+  const go = async () => {
+    try { await api(`/staff/orders/${order.id}/refund`, { method: 'POST', body: { amountCents: Math.round(Number(amount) * 100), reason } }); toast(`Refunded ${money(Math.round(Number(amount) * 100), currency)}. Give it back by ${order.payment_method}.`, 'ok'); onClose(); }
+    catch (e) { if (e.message !== 'Not approved') toast(e.message, 'err'); }
+  };
+  return (
+    <Modal title={`Refund order #${order.number}`} onClose={onClose}>
+      <label className="field"><span>Amount (paid {money(order.total_cents, currency)} by {order.payment_method})</span><input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} /></label>
+      <label className="field"><span>Reason</span><input className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={120} placeholder="Wrong order, cold food…" /></label>
+      <button className="btn primary block" disabled={!reason || !Number(amount)} onClick={go}>Refund</button>
+    </Modal>
+  );
+}
 
 export default function Orders() {
   const { settings, can } = useCC();
@@ -13,6 +30,7 @@ export default function Orders() {
   const [scope, setScope] = useState('open');
   const [orders] = useLive(['orders'], () => api(`/staff/orders?scope=${scope}`), [scope]);
   const [paying, setPaying] = useState(null);
+  const [refunding, setRefunding] = useState(null);
   useTick(30000);
 
   const act = async (path, msg) => { try { const r = await api(path, { method: 'POST' }); toast(r.buzz ? `${msg}. Customer buzzed.` : msg, 'ok'); } catch (e) { toast(e.message, 'err'); } };
@@ -44,17 +62,19 @@ export default function Orders() {
               <span className="grow muted">{o.payment_method ? `Paid by ${o.payment_method}` : 'Unpaid'}</span>
               <b className="num">{money(o.total_cents, cur)}</b>
             </div>
+            {scope !== 'open' && o.status === 'paid' && <button className="btn sm ghost" onClick={() => setRefunding(o)}>Refund</button>}
             {scope === 'open' && (
               <div className="row wrap">
                 {o.status === 'held' && <button className="btn sm primary grow" onClick={() => act(`/staff/orders/${o.id}/fire`, `Pre-order #${o.number} started`)}>Start now</button>}
                 {o.status !== 'ready' && o.status !== 'held' && <button className="btn sm primary grow" onClick={() => act(`/staff/orders/${o.id}/ready`, `Order #${o.number} ready`)}><Icon name="bell" size={16} />Ready</button>}
                 <button className="btn sm grow" onClick={() => setPaying(o)}>Take payment</button>
-                {can('manager') && <button className="btn sm ghost danger" onClick={() => confirm(`Void order #${o.number}?`) && act(`/staff/orders/${o.id}/void`, `Order #${o.number} voided`)}>Void</button>}
+                <button className="btn sm ghost danger" onClick={() => confirm(`Void order #${o.number}?`) && act(`/staff/orders/${o.id}/void`, `Order #${o.number} voided`)}>Void</button>
               </div>
             )}
           </article>
         ))}
       </div>
+      {refunding && <RefundModal order={refunding} currency={cur} onClose={() => setRefunding(null)} />}
       {paying && <PayModal order={paying} currency={cur} onClose={() => setPaying(null)} onPaid={() => setPaying(null)} />}
     </>
   );

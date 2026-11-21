@@ -224,6 +224,7 @@ const DEFAULTS = {
   booking_days_ahead: '14',
   booking_reminder_minutes: '60',
   kds_late_minutes: '12',
+  require_approved_devices: '0',
 };
 
 /* ---------- business-local dates inside SQL: localdate(ts) / localtoday() ---------- */

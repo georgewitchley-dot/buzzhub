@@ -39,6 +39,12 @@ export function devicesForGuest(guestId) {
 export const pushToGuest = (guestId, payload) => sendTo(devicesForGuest(guestId), payload);
 export const pushToCustomer = (customerId, payload) => sendTo(db.prepare('SELECT * FROM push_subs WHERE customer_id = ?').all(customerId), payload);
 
+/** Security alerts to staff phones. roles: which roles get it; onlyUser: limit to one person. */
+export const pushToUsers = (roles, payload, onlyUser = null) => sendTo(
+  db.prepare(`SELECT p.* FROM push_subs p JOIN users u ON u.id = p.user_id WHERE u.active = 1 AND u.role IN (${roles.map(() => '?').join(',')}) ${onlyUser ? 'AND u.id = ?' : ''}`).all(...roles, ...(onlyUser ? [onlyUser] : [])),
+  payload,
+);
+
 export function forgetGuestDevices(guestId) {
   db.prepare('DELETE FROM push_subs WHERE guest_id = ? AND customer_id IS NULL').run(guestId);
 }

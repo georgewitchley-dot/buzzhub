@@ -7,14 +7,20 @@ export class ApiError extends Error {
   constructor(msg, status, data) { super(msg); this.status = status; this.data = data; }
 }
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, approval } = {}) {
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
-    headers: { 'X-BuzzHub': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { 'X-BuzzHub': '1', ...(approval ? { 'X-Approval': approval } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  // A manager has to OK this: ask for their PIN, then retry once with the approval
+  if (res.status === 403 && data.needsApproval && !approval && window.__bhApprove) {
+    const token = await window.__bhApprove(data.needsApproval);
+    if (token) return api(path, { method, body, approval: token });
+    throw new ApiError('Not approved', 403, data);
+  }
   if (res.status === 401 && path.startsWith('/staff')) window.dispatchEvent(new Event('bh:locked'));
   if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status, data);
   return data;

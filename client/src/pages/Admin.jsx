@@ -107,11 +107,12 @@ export function StaffAdmin() {
         <tbody>{(people || []).map((p) => (
           <tr key={p.id} style={{ opacity: p.active ? 1 : 0.5 }}>
             <td>{p.name}{p.id === user.id && <span className="chip" style={{ marginLeft: 8 }}>You</span>}</td>
-            <td style={{ textTransform: 'capitalize' }}>{p.role}</td>
+            <td style={{ textTransform: 'capitalize' }}>{p.role}{p.totp_enabled ? <span className="chip teal" style={{ marginLeft: 8, textTransform: 'none' }}>Two-step</span> : null}</td>
             <td className="muted">{p.last_login_at ? `${new Date(p.last_login_at.replace(' ', 'T') + 'Z').toLocaleDateString()} ${timeOf(p.last_login_at)}` : 'Never'}</td>
             <td style={{ textAlign: 'right' }}>
               <button className="btn sm ghost" onClick={() => setEdit(p)}>Edit</button>
               <button className="btn sm ghost" onClick={() => call(`/staff/users/${p.id}/revoke`, 'POST', undefined, `${p.name} signed out everywhere`)}>Sign out everywhere</button>
+              {user.role === 'owner' && p.totp_enabled ? <button className="btn sm ghost" onClick={() => confirm(`Reset ${p.name}'s two-step sign-in? They'll set it up again.`) && call(`/staff/users/${p.id}/reset-2fa`, 'POST', undefined, `${p.name}'s two-step sign-in was reset`)}>Reset two-step</button> : null}
               {p.id !== user.id && <button className="btn sm ghost danger" onClick={() => call(`/staff/users/${p.id}`, 'PUT', { active: !p.active }, p.active ? `${p.name} disabled` : `${p.name} enabled`)}>{p.active ? 'Disable' : 'Enable'}</button>}
             </td>
           </tr>
@@ -250,7 +251,7 @@ export function SettingsAdmin() {
 }
 
 /* ================= Audit / security log ================= */
-export function AuditLog() {
+export function AuditLog({ embedded }) {
   const [rows] = useLive(['guests', 'orders', 'tables', 'menu'], () => api('/staff/audit'));
   const [q, setQ] = useState('');
   const [onlySec, setOnlySec] = useState(false);
@@ -258,7 +259,7 @@ export function AuditLog() {
   const fails = (rows || []).filter((r) => r.action === 'auth.fail').length;
   return (
     <>
-      <PageHead title="Security log" sub={`Every unlock, sale, buzz and change, with who did it and from where. ${fails} wrong PIN attempts recorded.`}>
+      <PageHead title={embedded ? 'Activity log' : 'Security log'} sub={`Every unlock, sale, buzz and change, with who did it and from where. ${fails} wrong PIN attempts recorded.`}>
         <div className="seg"><button aria-pressed={!onlySec} onClick={() => setOnlySec(false)}>Everything</button><button aria-pressed={onlySec} onClick={() => setOnlySec(true)}>Sign-ins and access</button></div>
         <input className="input" style={{ width: 220 }} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search log" />
       </PageHead>

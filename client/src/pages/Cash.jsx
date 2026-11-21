@@ -47,7 +47,7 @@ export default function Cash() {
   return (
     <>
       <PageHead title="Cash drawer" sub={c ? `Opened at ${timeOf(c.opened_at)} by ${c.openedByName}` : 'The drawer is closed.'}>
-        {c && can('manager') && <button className="btn primary" onClick={() => setCounting(true)}>Count and close</button>}
+        {c && <button className="btn primary" onClick={() => setCounting(true)}>Count and close</button>}
       </PageHead>
       {!c ? (
         <section className="panel" style={{ maxWidth: 460 }}><div className="panel-b stack">

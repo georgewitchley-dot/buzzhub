@@ -44,6 +44,9 @@ export default function Lock({ business, onUnlocked }) {
   const [busy, setBusy] = useState(false);
   const [lockedFor, setLockedFor] = useState(0);
   const [mode, setMode] = useState('unlock');
+  const [ticket, setTicket] = useState(null); // two-step: { ticket, name }
+  const [recovery, setRecovery] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
   const [ok, setOk] = useState('');
   const dotsRef = useRef(null);
 
@@ -54,7 +57,8 @@ export default function Lock({ business, onUnlocked }) {
   }, [lockedFor]);
 
   const submit = async () => {
-    if (pin.length < 4 || busy || lockedFor) return;
+    if (busy || lockedFor) return;
+    if (ticket ? (useRecovery ? recovery.length < 10 : pin.length !== 6) : pin.length < 4) return;
     setBusy(true); setMsg(''); setOk('');
     try {
       if (mode === 'clock') {
@@ -64,10 +68,17 @@ export default function Lock({ business, onUnlocked }) {
         setTimeout(() => setOk(''), 6000);
         return;
       }
-      const { user } = await api('/auth/login', { method: 'POST', body: { pin } });
-      onUnlocked(user);
+      if (ticket) {
+        const { user } = await api('/auth/2fa', { method: 'POST', body: { ticket: ticket.ticket, code: useRecovery ? recovery : pin } });
+        onUnlocked(user); return;
+      }
+      const r = await api('/auth/login', { method: 'POST', body: { pin } });
+      if (r.needs2fa) { setTicket({ ticket: r.ticket, name: r.name }); setPin(''); return; }
+      onUnlocked(r.user);
     } catch (e) {
-      setPin('');
+      setPin(''); setRecovery('');
+      if (e.data?.deviceApproval) { setMsg(`This device needs the owner's approval. Ask them to approve code ${e.data.code} in Security.`); return; }
+      if (ticket && !e.data?.needs2fa) setTicket(null);
       setMsg(e.data?.remaining > 0 ? `Wrong PIN. ${e.data.remaining} tries left before this terminal locks.` : e.message);
       if (e.data?.lockedFor) setLockedFor(e.data.lockedFor);
       gsap.fromTo(dotsRef.current, { x: 0 }, { keyframes: { x: [-14, 12, -9, 6, -3, 0] }, duration: 0.45, ease: 'power2.out' });
@@ -80,16 +91,28 @@ export default function Lock({ business, onUnlocked }) {
       <div className="lock-card">
         <Puck state="buzzed" size={46} />
         <SplitText text={business?.name || 'BuzzHub'} tag="h1" splitType="chars" delay={28} duration={0.9} trigger="load" />
-        <ShinyText text={lockedFor ? `Terminal locked for ${lockedFor}s` : mode === 'clock' ? 'Enter your PIN to clock in or out' : 'Enter your PIN to open the command center'} color="#8c8fa0" shineColor="#ece8df" speed={3} />
+        <ShinyText text={lockedFor ? `Terminal locked for ${lockedFor}s` : ticket ? `${ticket.name}, enter the 6-digit code from your authenticator app` : mode === 'clock' ? 'Enter your PIN to clock in or out' : 'Enter your PIN to open the command center'} color="#8c8fa0" shineColor="#ece8df" speed={3} />
         <div className="dots" ref={dotsRef} aria-live="polite" aria-label={`${pin.length} digits entered`}>
-          {Array.from({ length: Math.max(4, pin.length) }).map((_, i) => <i key={i} className={i < pin.length ? 'on' : ''} />)}
+          {Array.from({ length: Math.max(ticket ? 6 : 4, pin.length) }).map((_, i) => <i key={i} className={i < pin.length ? 'on' : ''} />)}
         </div>
-        <PinPad value={pin} onChange={(v) => { setPin(v); setMsg(''); }} onSubmit={submit} disabled={busy || lockedFor > 0} />
+        {ticket && useRecovery ? (
+          <form className="stack" style={{ width: '100%' }} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            <input className="input" value={recovery} onChange={(e) => setRecovery(e.target.value.trim().toLowerCase())} placeholder="Recovery code" maxLength={12} autoFocus aria-label="Recovery code" style={{ textAlign: 'center', fontSize: 18, letterSpacing: 2 }} />
+            <button className="btn primary block" disabled={recovery.length < 10}>Unlock</button>
+          </form>
+        ) : <PinPad value={pin} onChange={(v) => { setPin(v); setMsg(''); }} onSubmit={submit} disabled={busy || lockedFor > 0} max={ticket ? 6 : 8} />}
         <div className="lock-msg" role="alert" style={ok ? { color: 'var(--seated)' } : undefined}>{ok || msg}</div>
+        {ticket ? (
+          <div className="row">
+            <button type="button" className="btn ghost sm" onClick={() => setUseRecovery(!useRecovery)}>{useRecovery ? 'Use the app code' : 'Lost your phone? Use a recovery code'}</button>
+            <button type="button" className="btn ghost sm" onClick={() => { setTicket(null); setPin(''); setUseRecovery(false); }}>Start over</button>
+          </div>
+        ) : (
         <div className="seg" role="group" aria-label="What the PIN does">
           <button type="button" aria-pressed={mode === 'unlock'} onClick={() => setMode('unlock')}>Open command center</button>
           <button type="button" aria-pressed={mode === 'clock'} onClick={() => setMode('clock')}>Clock in or out</button>
         </div>
+        )}
       </div>
     </div>
   );

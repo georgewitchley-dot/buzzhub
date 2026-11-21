@@ -80,3 +80,34 @@ export function ToastProvider({ children }) {
     </ToastCtx.Provider>
   );
 }
+
+/* ---------- manager approval (PIN) for risky actions ---------- */
+const ACTION_TEXT = { void: 'void this order', discount: 'give this discount', refund: 'refund this order', cash_close: 'close the cash drawer' };
+export function ApprovalHost() {
+  const [req, setReq] = useState(null); // { action, resolve }
+  const [pin, setPin] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    window.__bhApprove = (action) => new Promise((resolve) => { setPin(''); setErr(''); setReq({ action, resolve }); });
+    return () => { delete window.__bhApprove; };
+  }, []);
+  if (!req) return null;
+  const done = (v) => { req.resolve(v); setReq(null); };
+  const submit = async (e) => {
+    e.preventDefault(); setErr('');
+    const r = await fetch('/api/staff/approve', { method: 'POST', credentials: 'same-origin', headers: { 'X-BuzzHub': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ pin, action: req.action }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setErr(d.error || 'Not approved'); setPin(''); return; }
+    done(d.token);
+  };
+  return (
+    <Modal title="Manager approval" onClose={() => done(null)}>
+      <p className="muted" style={{ margin: 0 }}>A manager or owner needs to enter their PIN to {ACTION_TEXT[req.action] || 'do this'}. It's recorded in the security log.</p>
+      <form className="stack" onSubmit={submit}>
+        <input className="input" type="password" inputMode="numeric" autoComplete="off" pattern="\d{4,8}" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Manager PIN" aria-label="Manager PIN" style={{ fontSize: 22, letterSpacing: 6, textAlign: 'center', height: 54 }} />
+        {err && <div className="lock-msg">{err}</div>}
+        <button className="btn primary lg block" disabled={pin.length < 4}>Approve</button>
+      </form>
+    </Modal>
+  );
+}

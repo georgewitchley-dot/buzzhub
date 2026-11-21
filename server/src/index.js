@@ -17,7 +17,9 @@ import {
   passwordProblem, hashPassword, checkPassword, burnCompare, issueCustomerSession, clearCustomerSession, customerFromReq, requireCustomer,
 } from './security.js';
 import { registerOps } from './ops.js';
-import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
+import { registerGuard } from './guard.js';
+const G = {}; // filled by registerGuard: authGate, managerOr, hasApproval, onBadPin, alertOwners
+import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, pushToUsers, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
@@ -272,9 +274,11 @@ app.post('/api/auth/login', authLimiter, wrap(async (req, res) => {
     const r = recordLoginFail(ip);
     audit(null, 'auth.fail', `bad PIN (${r.remaining} left)`, ip);
     io.to('owners').emit('security', { type: 'bad_pin', ip, at: Date.now() });
+    G.onBadPin?.(ip);
     return res.status(401).json({ error: r.lockedFor ? `Too many wrong PINs. Locked for ${r.lockedFor}s.` : 'Wrong PIN', remaining: r.remaining, lockedFor: r.lockedFor });
   }
   clearLoginFails(ip);
+  if (!G.authGate(req, res, user)) return;
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now(), user.id);
   issueSession(res, user);
   audit(user, 'auth.login', null, ip);
@@ -716,7 +720,8 @@ const orderSchema = z.object({
 
 staff.post('/orders', wrap(async (req, res) => {
   const b = parse(orderSchema, req.body);
-  if ((b.discountPct || 0) > 0 && ROLE_RANK[req.user.role] < ROLE_RANK.manager && b.discountPct > 10) return res.status(403).json({ error: 'Discounts over 10% need a manager PIN' });
+  const discountApprover = (b.discountPct || 0) > 10 && ROLE_RANK[req.user.role] < ROLE_RANK.manager ? G.hasApproval(req, 'discount') : null;
+  if ((b.discountPct || 0) > 10 && ROLE_RANK[req.user.role] < ROLE_RANK.manager && !discountApprover) return res.status(403).json({ error: 'Discounts over 10% need a manager to approve', needsApproval: 'discount' });
   const lines = priceItems(b.items);
   const s = getSettings();
   const subtotal = lines.reduce((a, l) => a + l.qty * l.price_cents, 0);
@@ -738,7 +743,7 @@ staff.post('/orders', wrap(async (req, res) => {
     const link = `${publicBase(req)}/b/${g.token}`;
     buzzer = { guestId: g.id, link, svg: await QRCode.toString(link, { type: 'svg', margin: 1 }) };
   }
-  audit(req.user, 'order.create', `#${number} ${(subtotal / 100).toFixed(2)}`, clientIp(req));
+  audit(req.user, 'order.create', `#${number} ${(subtotal / 100).toFixed(2)}${discount ? `, ${b.discountPct}% off${discountApprover ? ` approved by ${discountApprover.name}` : ''}` : ''}`, clientIp(req));
   notifyStaff('orders'); notifyStaff('guests');
   res.json({ id: orderId, number, buzzer });
 }));
@@ -789,20 +794,21 @@ staff.post('/orders/:id/pay', (req, res) => {
   res.json({ ok: true, totalCents: total, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - total : 0 });
 });
 
-staff.post('/orders/:id/void', requireAuth('manager'), (req, res) => {
+staff.post('/orders/:id/void', (req, res, next) => G.managerOr('void')(req, res, next), (req, res) => {
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
   if (!o || o.status === 'void') return res.status(409).json({ error: 'Cannot void' });
   db.prepare("UPDATE orders SET status='void' WHERE id=?").run(o.id);
   if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='cancelled', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); }
   if (o.guest_id) pushGuest(o.guest_id);
-  audit(req.user, 'order.void', `#${o.number}`, clientIp(req));
+  audit(req.user, 'order.void', `#${o.number} ${(o.total_cents / 100).toFixed(2)}${req.approvedBy ? ` (approved by ${req.approvedBy.name})` : ''}`, clientIp(req));
+  if (o.total_cents >= 5000) G.alertOwners?.(`${getSettings().business_name}: order voided`, `${req.user.name} voided order #${o.number} ($${(o.total_cents / 100).toFixed(2)})${req.approvedBy ? `, approved by ${req.approvedBy.name}` : ''}.`, 'void');
   notifyStaff('orders'); notifyStaff('guests');
   res.json({ ok: true });
 });
 
 /* ---- staff / users (manager+) ---- */
 staff.get('/users', requireAuth('manager'), (req, res) => {
-  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at, hourly_cents FROM users ORDER BY active DESC, role DESC, name').all().map((u) => (req.user.role === 'owner' ? u : { ...u, hourly_cents: undefined })));
+  res.json(db.prepare('SELECT id, name, role, active, last_login_at, created_at, hourly_cents, totp_enabled FROM users ORDER BY active DESC, role DESC, name').all().map((u) => (req.user.role === 'owner' ? u : { ...u, hourly_cents: undefined })));
 });
 staff.post('/users', requireAuth('manager'), wrap(async (req, res) => {
   const b = parse(z.object({ name: z.string().trim().min(1).max(40), role: z.enum(['owner', 'manager', 'staff']), pin: z.string() }), req.body);
@@ -1067,7 +1073,8 @@ staff.get('/customers', requireAuth('manager'), (req, res) => {
     FROM customers c ORDER BY c.id DESC LIMIT 500`).all());
 });
 
-registerOps({ app, staff, io, h: { wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
+registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
+registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
 
 app.use('/api/staff', staff);
 

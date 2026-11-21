@@ -15,6 +15,7 @@ import Kitchen from './Kitchen.jsx';
 import Reports from './Reports.jsx';
 import Cash from './Cash.jsx';
 import Shifts from './Shifts.jsx';
+import Security from './Security.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -50,7 +51,7 @@ const NAV = [
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
-  { to: '/security', icon: 'shield', label: 'Security log', min: 'manager' },
+  { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
 ];
 const RANK = { staff: 1, manager: 2, owner: 3 };
@@ -112,7 +113,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('preorder:new', ({ name, count, updated }) => { playChime(); toast(`${name} ${updated ? 'changed their order' : `ordered ${count} item${count === 1 ? '' : 's'} ahead`}`, 'ok'); });
     s.on('preorder:fired', ({ number, table }) => toast(`Pre-order #${number} sent to make${table ? ` for ${table}` : ''}`, 'ok'));
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
-    s.on('security', ({ type, ip }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); });
+    s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
     s.on('sync', ({ scope }) => { if (scope === 'guests') loadCount(); });
     setSocket(s);
@@ -171,7 +172,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}
                   {can('manager') && <Route path="staff" element={<StaffAdmin />} />}
-                  {can('manager') && <Route path="security" element={<AuditLog />} />}
+                  {can('manager') && <Route path="security" element={<Security />} />}
                   {can('manager') && <Route path="settings" element={<SettingsAdmin />} />}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

@@ -386,3 +386,6 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
   .scroller { overflow: visible !important; }
   .report .bars span { background: #333 !important; }
 }
+
+.codes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.codes code { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px; text-align: center; font-size: 15px; letter-spacing: 1px; }

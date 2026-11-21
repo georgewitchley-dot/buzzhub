@@ -80,14 +80,16 @@ export function registerOps({ app, staff, io, h }) {
     const shifts = db.prepare('SELECT s.*, u.name, u.hourly_cents FROM shifts s JOIN users u ON u.id = s.user_id WHERE s.clock_in < ? AND (s.clock_out IS NULL OR s.clock_out >= ?)').all(end, start);
     const labor = shifts.map((s) => { const hrs = Math.max(0, hoursBetween(s.clock_in < start ? start : s.clock_in, s.clock_out && s.clock_out < end ? s.clock_out : (s.clock_out ? end : null)) - s.break_minutes / 60); return { name: s.name, hours: hrs, cents: Math.round(hrs * s.hourly_cents) }; });
     const cash = db.prepare('SELECT * FROM cash_sessions WHERE opened_at >= ? AND opened_at < ? ORDER BY id').all(start, end);
+    const refunds = db.prepare('SELECT r.*, o.number FROM refunds r JOIN orders o ON o.id = r.order_id WHERE r.at >= ? AND r.at < ?').all(start, end);
+    const refundCents = refunds.reduce((a, r) => a + r.amount_cents, 0);
     const gross = sum(paid, 'subtotal_cents');
     const laborCents = labor.reduce((a, l) => a + l.cents, 0);
     return {
       date, generatedAt: now(),
       totals: { orders: paid.length, grossCents: gross, discountCents: sum(paid, 'discount_cents'), taxCents: sum(paid, 'tax_cents'), tipsCents: sum(paid, 'tip_cents'),
         netCents: gross - sum(paid, 'discount_cents'), collectedCents: sum(paid, 'total_cents'), avgTicketCents: paid.length ? Math.round(sum(paid, 'total_cents') / paid.length) : 0,
-        voids: voids.length, voidCents: sum(voids, 'total_cents'), laborCents, laborPct: gross ? Math.round((laborCents / gross) * 1000) / 10 : 0 },
-      byMethod, hourly, items, byStaff, labor,
+        voids: voids.length, voidCents: sum(voids, 'total_cents'), refunds: refunds.length, refundCents, laborCents, laborPct: gross ? Math.round((laborCents / gross) * 1000) / 10 : 0 },
+      byMethod, hourly, items, byStaff, labor, refundList: refunds.map((r) => ({ number: r.number, cents: r.amount_cents, reason: r.reason })),
       guests: Object.fromEntries(guests.map((g) => [g.status, { count: g.c, covers: g.covers }])), avgWait: avgWait ? Math.round(avgWait) : 0,
       bookings: Object.fromEntries(bookings.map((b) => [b.status, b.c])), cash: cash.map(cashSummary),
     };
@@ -120,7 +122,8 @@ export function registerOps({ app, staff, io, h }) {
     const moves = db.prepare('SELECT m.*, u.name user_name FROM cash_moves m LEFT JOIN users u ON u.id = m.user_id WHERE session_id = ? ORDER BY id').all(cs.id);
     const ins = moves.filter((m) => m.kind === 'in').reduce((a, m) => a + m.amount_cents, 0);
     const outs = moves.filter((m) => m.kind === 'out').reduce((a, m) => a + m.amount_cents, 0);
-    const expected = cs.opening_cents + cashSales + ins - outs;
+    const cashRefunds = db.prepare("SELECT COALESCE(SUM(amount_cents),0) c FROM refunds WHERE method='cash' AND at >= ? AND at < COALESCE(?, datetime('now','+1 second'))").get(cs.opened_at, cs.closed_at).c;
+    const expected = cs.opening_cents + cashSales + ins - outs - cashRefunds;
     const names = db.prepare('SELECT id, name FROM users WHERE id IN (?, ?)').all(cs.opened_by || 0, cs.closed_by || 0);
     const nm = (id) => names.find((n) => n.id === id)?.name || null;
     return { ...cs, openedByName: nm(cs.opened_by), closedByName: nm(cs.closed_by), cashSalesCents: cashSales, paidInCents: ins, paidOutCents: outs, moves,
@@ -147,7 +150,7 @@ export function registerOps({ app, staff, io, h }) {
     audit(req.user, `cash.paid_${b.kind}`, `${(b.amountCents / 100).toFixed(2)} ${b.reason}`, clientIp(req));
     notifyStaff('cash'); res.json({ ok: true });
   });
-  staff.post('/cash/close', requireAuth('manager'), (req, res) => {
+  staff.post('/cash/close', (req, res, next) => h.managerOr('cash_close')(req, res, next), (req, res) => {
     const cs = openSession(); if (!cs) return res.status(409).json({ error: 'The drawer is not open' });
     const b = parse(z.object({ countedCents: z.number().int().min(0).max(10_000_000), notes: z.string().trim().max(200).optional() }), req.body);
     const expected = cashSummary(cs).expectedCents;
