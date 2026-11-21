@@ -5,7 +5,7 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
-## 2. Current status (2026-11-21, round 7 deployed)
+## 2. Current status (2026-11-21, round 8 deployed)
 | Item | Status |
 |---|---|
 | App code (server + client) | ✅ Done, builds cleanly, end-to-end browser test passed |
@@ -105,6 +105,17 @@ Server: `server/src/extras.js` (lobby screen, add-on pairs, referrals, recovery,
 - **Bank deposits**: `bank_deposits`; expected = `dailyBooks` by method group (cash/card/app) minus cash tip payouts; fees estimated from `fee_rates`. Import pulls Stripe payouts and Square payouts (`h.squareGet`).
 - **Menu engineering**: `menuEngineering(days)`; popularity line 70% of equal share, margin vs weighted average; recipe cost or `food_cost_target` estimate. Tab in Purchasing.
 - **Prep list**: same weekday over 8 weeks × (1 + `prep_buffer_pct`), ingredient needs via recipes vs stock.
+
+## 3h. Round 8 (2026-11-21)
+Server: `server/src/plus.js`. Client: `client/src/pages/Plus.jsx`; `ComboPicker`, `PriceTag`, `useCombos` in `order-ui.jsx`. House accounts were skipped by the owner.
+- **Pricing hook**: `commerce.js` exports `menuHooks = { adjust: [], combo }`. `menuWithMods` runs every `adjust` function, so happy hour (`price_rules`, local time window, may cross midnight) and daily specials (`specials` by date or weekday, optional price, `menu_items.special_only`) change prices everywhere orders are priced. Items carry `regularCents`, `deal`, `special`. Admin `/staff/menu` stays raw.
+- **Combos**: `combos` (slots JSON of itemIds/categories). `lineSchema` now accepts `{comboId, picks:[{itemId, mods}]}` and `course`. `menuHooks.combo` expands a combo into one order_item per pick, splitting the combo price by regular price; paid options add on top. Kiosk now uses the shared `lineSchema`.
+- **Course firing**: `order_items.course` (1 now, 2+ held) and `fired_at`. Register "hold" checkbox; kitchen shows held items and a Fire button → `POST /staff/orders/:id/fire-course` (the old `/fire` is the pre-order start).
+- **Customer display**: `/display`, JWT in `localStorage.bh_display_token` sent as `X-Display` (secret `jwt+':display'`, `display_version`). The register pairs by 4-digit code (`localStorage.bh_display`) and pushes state to `/staff/display/push`; the display long-polls `/api/display?v=`. Tip taps go to `/api/display/tip` → socket `display:tip` → PayModal.
+- **Recipe cards**: `menu_items.build_steps`, photo in `assets` key `item:<id>`; `/staff/menu/:id/card`. **Training**: `training_modules`, `training_progress` (read, signed_by); managers can't sign themselves off (owners can).
+- **Price watch**: `ingredient_costs` history, scanned every minute and on page load; alerts at `price_watch_pct`.
+- **Table timers**: `table_long_minutes`, `kitchen_slow_minutes`; once-only alerts in `plus_alerts`; floor outlines long tables.
+- **Goals and contests**: `sales_goals` (JSON of 7 cents values, Sun..Sat), `contests` ranked by `orders.created_by`.
 
 ## 4. Architecture
 ```

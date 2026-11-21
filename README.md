@@ -116,6 +116,17 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Menu engineering**: stars, plowhorses, puzzles and dogs, with what to do about each.
 - **Prep list**: tomorrow's prep from past sales, and ingredients you're short on.
 
+## Round 8: sell smarter, run tighter
+- **Happy hour pricing**: prices change on their own by day and time.
+- **Combos**: meal deals with a set price and a choice for each part.
+- **Customer display**: a second screen shows the order and lets the customer tap a tip.
+- **Recipe cards and training**: step-by-step cards with photos on the kitchen screen; lessons with manager sign-off.
+- **Supplier price watch**: alerts when an ingredient costs more, with the dishes that lost profit.
+- **Daily specials**: on top of every menu, the lobby screen and the link page, for that day only.
+- **Table timers**: long tables are outlined and managers are alerted; slow orders too.
+- **Course firing**: hold mains until the server fires them.
+- **Sales goals and contests**: a daily target on the register and staff leaderboards.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
