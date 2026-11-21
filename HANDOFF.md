@@ -45,6 +45,19 @@ New server modules: `ops.js` (kitchen, reports, cash, shifts), `guard.js` (TOTP,
 - **Multi-location design:** `db.js` exports `db` as a Proxy to the current location's SQLite file (`DATA_DIR/buzzhub.db` = 'main', `DATA_DIR/locations/<slug>.db` for others), chosen per request by AsyncLocalStorage in `locationMiddleware`. The order is guest/feedback/pay token lookup, then the `X-Location` header, `?l=`, the session `loc` claim, the `bh_loc` cookie, then 'main'. Migrations must use `registerSchema((db) => …)` so they run for every location. Background jobs use `forEachLocation`. Socket.IO rooms are prefixed `<slug>:` via the patched `io.to` / `io.emit`. All JWTs carry `loc`. The same person across locations is linked by `users.hub_key`.
 - 'Today' is the business's local day everywhere (SQL `localdate()` / `localtoday()`).
 
+## 3d. Round 4 (2026-11-21): commerce + team
+New server modules:
+- `commerce.js`: one order builder for every channel (`priceLines`, `insertOrder` with `clientKey` idempotency). It also covers menu options (mod_groups / mod_options / item_mod_groups), inventory (menu_items.stock, stock_moves, auto sold-out), gift cards (gift_cards / gift_txns) and bills with split checks (bills / bill_orders / payments, settled by `settleBill`, Stripe webhook).
+  - Channels: online ordering (`/api/o/*`, settings `online_*` and `delivery_*`) and table QR ordering (`tables.qr_token`, `/api/t/:token/*`).
+  - Order rule: `prepaid=1` means paid while still cooking. Revenue is `paid_at IS NOT NULL AND status <> 'void'`.
+- `team.js`:
+  - Promo codes (`promos`, `G.promoDiscount` throws 400 with a readable reason; uses are counted from orders.promo_code).
+  - Campaigns (`campaigns`, customers.marketing_opt_in, HMAC unsubscribe link `/api/unsub/:slug/:id/:sig?l=slug`, 12-hour guard overridable with header `X-Confirm-Repeat: 1`).
+  - Tip pool (users.tip_points, `tip_payouts`; payouts never overlap).
+  - Staffing forecast (`/staff/forecast`: 8 weeks of the same weekday by local hour; Open-Meteo geocoding, forecast and archive with no key; the rain effect is learned when there are at least 3 rainy days, otherwise `forecast_rain_pct`).
+- Client: `order-ui.jsx` (ModPicker, useCart, GuestMenu), `offline.js` (register sale queue, synced with idempotent clientKey), service worker app-shell cache `buzzhub-shell-v4`. Pages: `Commerce.jsx` (options, inventory, gift cards, online settings, table QR), `Team.jsx` (marketing, tips, forecast, settings panel), `OrderOnline.jsx` (/order, /t/:token, /gift).
+- Fixed: `dayBounds` in ops.js mis-parsed days 1–9 of a month. It now uses formatToParts.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server
@@ -98,7 +111,7 @@ client/src/
 
 ## 6. Known limits / good next features
 - iOS Safari can't vibrate from the web. Sound, flash and notifications are used instead (Web Push needs a home-screen PWA on iOS). Possible upgrade: a service worker + Web Push so alerts work with the page closed.
-- Card payments are recorded only. Next step: Stripe Terminal or Square.
+- Card-present payments are recorded only; phone/online payments use Stripe Checkout once `STRIPE_SECRET_KEY` (+ `STRIPE_WEBHOOK_SECRET`) is set on Railway. Next step: Stripe Terminal.
 - SQLite = a single instance. Fine for one location. Move to Postgres for multi-location.
 - Ideas: printable receipts/kitchen tickets, reservations, multiple locations, end-of-day report export (CSV), menu modifiers, per-terminal device registration, optional 2FA for owners.
 

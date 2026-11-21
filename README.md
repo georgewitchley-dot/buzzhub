@@ -62,6 +62,22 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Loyalty**: every N visits a customer earns a reward with a 6-digit code that staff redeem.
 - **Feedback**: after the visit, guests get a rating request on their phone. Happy guests are sent to your review link. Unhappy ones only reach you, and 1–2 stars alert managers.
 
+## Selling more
+
+- **Menu options and add-ons**: required choices (cook temperature) and paid extras, on the register, kitchen tickets and customers' phones.
+- **Online ordering** at `/order` for pickup or your own delivery (fee, minimum, area). Pay online with Stripe or pay at pickup. The customer's phone becomes the buzzer.
+- **Table QR ordering**: guests order rounds, call their server, and see and split the check from the table.
+- **Split checks**: evenly, by item, or "the rest", at the register or with each guest paying by phone.
+- **Gift cards**: sell at the register or online at `/gift`, redeem with partial balances.
+- **Inventory**: stock goes down with each sale, items turn off at zero, and you get a low-stock alert.
+- **Promo codes and offers**: codes with rules, and offers sent by phone alert and email to customers who opted in. Each offer is tracked.
+
+## Running the team
+
+- **Tip pool**: split by hours times points, paid by payroll or cash, with history.
+- **Staffing forecast**: people needed per hour for the next 7 days, from your own sales plus free weather data, compared to the schedule.
+- **Offline register**: sales made without internet are queued and sent automatically when it returns.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
@@ -100,5 +116,5 @@ Optional email alerts: set `SMTP_HOST` (e.g. smtp.gmail.com), `SMTP_PORT` (587),
 
 - iPhones only deliver web notifications to pages added to the Home Screen (iOS 16.4+), and websites can't vibrate on iOS. Guests who skip that step still get the alarm, flash and on-screen alert while the page is open.
 - There's no password reset by email unless SMTP is configured. Staff can see customers under Bookings → Customers.
-- Card payments are recorded, not processed. Run cards on your existing terminal. A Stripe Terminal integration would be the next step.
+- Card payments at the counter are recorded, not processed. Run cards on your existing terminal. Online, table and phone payments go through Stripe once you add your Stripe key.
 - SQLite on one volume means one server instance. That's plenty for a single location.
