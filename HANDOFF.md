@@ -5,7 +5,7 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
-## 2. Current status (2026-11-21, round 9 deployed)
+## 2. Current status (2026-11-21, round 10 deployed)
 | Item | Status |
 |---|---|
 | App code (server + client) | ✅ Done, builds cleanly, end-to-end browser test passed |
@@ -128,6 +128,20 @@ Server: `server/src/more.js`. Client: `client/src/pages/More.jsx`. House account
 - **Reservation timeline**: `bookings.table_id`, `duration_minutes` (default `booking_duration_minutes`); `PUT /staff/bookings/:id/place` with clash and seat checks (`force` to override).
 - **Waste**: `waste_log`; logging deducts item stock and recipe ingredients (or the ingredient) and costs it.
 - **Labels**: `menu_items.shelf_days` (default `label_shelf_days`); printed client-side with print CSS for 2×1, 4×2 and a 30-up letter sheet.
+
+## 3j. Round 10 (2026-11-21)
+Server: `server/src/owner.js`. Client: `client/src/pages/Owner.jsx`; dictionaries in `client/src/i18n.jsx` (ES, FR, ZH, VI). Pay by bank (ACH) is discussed but NOT built: offered to the owner as an option for large amounts.
+- **Order again**: online checkout links `orders.customer_id` (`h.linkOrderCustomer`); order_items `mods` JSON now include option `id`; `/api/c/orders`; the account stores `bh_reorder` and `/order` re-adds still-valid lines (`useReorder`).
+- **Tip-outs**: `users.tip_role`, setting `tipout_rules` [{from,to,pct,base:'sales'|'tips'}]; `/staff/tipouts` report (shares by hours). Separate from the hours×points tip pool.
+- **Calories**: `ingredients.kcal` (per unit), `menu_items.calories` (override); a `menuHooks.adjust` adds `calories` when `show_calories='1'`.
+- **Log book**: `log_entries`, `log_reads`; must-read notes show a banner (`/staff/logbook/unread`) until opened.
+- **Equipment**: `equipment`, `equipment_events` (issue → open until a repair/service); daily due/overdue alert.
+- **Auto reorder**: `autoReorder()` drafts POs (auto=1) for low ingredients with a supplier and no open PO; job every 2h when `auto_reorder='1'`, or the "Make orders for low stock" button.
+- **Loyalty tiers**: setting `loyalty_tiers` [{name,minCents,pct,perk}], 365-day spend by `orders.customer_id`; wraps `h.memberDiscount` (better of membership or tier).
+- **Call server**: `POST /api/t/:token/call` (server|check|water|help) → `table_calls`, push to the table's `server_id` (or everyone); banner with "on it" ack; auto-clears after 30 min. Setting `table_calls`.
+- **Weekly report**: `weeklyReport(monday)`; Monday job at `weekly_report_hour` emails `report_email` (comma list) and pushes owners. `/report` page.
+- **Languages**: setting `languages` (JSON, must include en); `/api/public/langs`; LangSwitch becomes a select with 3+; menu item `i18n` supports es/fr/zh/vi.
+- **Supplier bills**: `supplier_bills`, `bill_payments` (partial payments, cash ones leave the drawer), `suppliers.terms_days`, photo/PDF in `assets` key `bill:<id>`; aging buckets, unbilled received POs, CSV, due-in-3-days owner alert. Route prefix is `/staff/supplier-bills` (`/staff/bills` is split checks).
 
 ## 4. Architecture
 ```

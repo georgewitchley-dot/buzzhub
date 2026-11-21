@@ -138,6 +138,19 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Waste tracker**: what's thrown out, why and what it cost.
 - **Grab-and-go labels**: price, allergens, made-on and use-by dates.
 
+## Round 10: owner tools
+- **Order again**: past orders in the customer's account, reordered with one tap.
+- **Tip-outs by role**: servers share a percent of sales or tips with bussers, bar and kitchen.
+- **Calories**: from recipes or typed in, shown on customer menus.
+- **Log book**: shift notes with must-read flags.
+- **Equipment**: service schedules, warranties, vendor numbers, problems and repair costs.
+- **Auto reorder**: supplier orders drafted when ingredients run low.
+- **Member levels**: Silver and Gold by yearly spend, with automatic discounts.
+- **Call server**: guests ask for their server, water or the check from the table QR page.
+- **Weekly owner report**: every Monday by email and phone.
+- **More languages**: French, Chinese and Vietnamese on customer pages.
+- **Supplier bills**: what you owe, when it's due, partial payments, aging and CSV.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
