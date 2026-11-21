@@ -236,7 +236,7 @@ export function RecipeCard({ itemId, onClose }) {
   const load = () => api(`/staff/menu/${itemId}/card`).then(setD).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, [itemId]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!d) return null;
-  const save = async () => { try { await api(`/staff/menu/${itemId}/card`, { method: 'PUT', body: { steps: edit.steps.split('\n').map((x) => x.trim()).filter(Boolean), photo: edit.photo } }); setEdit(null); load(); } catch (e) { toast(e.message, 'err'); } };
+  const save = async () => { try { await api(`/staff/menu/${itemId}/card`, { method: 'PUT', body: { steps: edit.steps.split('\n').map((x) => x.trim()).filter(Boolean), photo: edit.photo } }); await api(`/staff/menu/${itemId}/cook`, { method: 'PUT', body: { minutes: edit.cook === '' ? null : Number(edit.cook) } }); await api(`/staff/menu/${itemId}/show-photo`, { method: 'PUT', body: { show: Boolean(edit.show) } }); setEdit(null); load(); } catch (e) { toast(e.message, 'err'); } };
   const pickPhoto = async (file) => { if (!file) return; try { setEdit({ ...edit, photo: await imageToPng(file, 900) }); } catch { toast('Could not read that image', 'err'); } };
   return (
     <Modal title={`How to make: ${d.name}`} onClose={onClose} width={560}>
@@ -245,6 +245,8 @@ export function RecipeCard({ itemId, onClose }) {
           <label className="field"><span>Steps, one per line</span><textarea className="input" rows={8} value={edit.steps} onChange={(e) => setEdit({ ...edit, steps: e.target.value })} /></label>
           <label className="field"><span>Photo of the finished plate</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => pickPhoto(e.target.files?.[0])} /></label>
           {d.photo && <button className="btn ghost sm" onClick={() => setEdit({ ...edit, photo: null })}>Remove photo</button>}
+          <div className="row"><label className="field grow"><span>Cook time (minutes, for kitchen timers)</span><input className="input" type="number" min={0} max={240} value={edit.cook} onChange={(e) => setEdit({ ...edit, cook: e.target.value })} /></label>
+            <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={edit.show} onChange={(e) => setEdit({ ...edit, show: e.target.checked })} />Show the photo on customer menus</label></div>
           <button className="btn primary lg block" onClick={save}>Save card</button>
         </>
       ) : (
@@ -253,7 +255,8 @@ export function RecipeCard({ itemId, onClose }) {
           {d.allergens.length > 0 && <div className="ticket-allergy">Contains: {d.allergens.join(', ')}</div>}
           {d.steps.length ? <ol className="steps-list">{d.steps.map((x, i) => <li key={i}>{x}</li>)}</ol> : <span className="muted">No steps yet.{can('manager') ? ' Add them so anyone can make it the same way.' : ''}</span>}
           {d.recipe.length > 0 && <div className="field"><span>Portions</span><div className="row wrap" style={{ gap: 6 }}>{d.recipe.map((r) => <span key={r.name} className="chip">{r.qty} {r.unit} {r.name}</span>)}</div></div>}
-          {can('manager') && <button className="btn block" onClick={() => setEdit({ steps: d.steps.join('\n'), photo: undefined })}>Edit card</button>}
+          {d.cookMinutes ? <span className="muted">Cook time: {d.cookMinutes} minutes</span> : null}
+          {can('manager') && <button className="btn block" onClick={() => setEdit({ steps: d.steps.join('\n'), photo: undefined, cook: d.cookMinutes ?? '', show: d.showPhoto })}>Edit card</button>}
         </>
       )}
     </Modal>

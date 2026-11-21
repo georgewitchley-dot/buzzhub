@@ -56,7 +56,8 @@ export function AccountingExport() {
   const [range, setRange] = useState({ from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10), to: y });
   const [acct, setAcct] = useState(null);
   useEffect(() => { api(`/staff/accounting?from=${y}&to=${y}`).then((r) => setAcct(r.accounts)).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const url = (format) => `/api/staff/accounting?from=${range.from}&to=${range.to}&format=${format}`;
+  const [bills, setBills] = useState(true);
+  const url = (format) => `/api/staff/accounting?from=${range.from}&to=${range.to}&format=${format}${bills ? '&bills=1' : ''}`;
   const saveAcct = async () => { try { await api('/staff/settings', { method: 'PUT', body: { acct_map: JSON.stringify(acct) } }); toast('Account names saved', 'ok'); } catch (e) { toast(e.message, 'err'); } };
   void settings;
   return (
@@ -64,6 +65,7 @@ export function AccountingExport() {
       <div className="panel-h"><h3 className="grow">Accounting export</h3>
         <input className="input" type="date" style={{ width: 150, height: 34 }} value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} aria-label="From" />
         <input className="input" type="date" style={{ width: 150, height: 34 }} value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} aria-label="To" />
+        <label className="row" style={{ fontSize: 13 }}><input type="checkbox" checked={bills} onChange={(e) => setBills(e.target.checked)} />Include supplier bills</label>
       </div>
       <div className="panel-b stack">
         <div className="row wrap">

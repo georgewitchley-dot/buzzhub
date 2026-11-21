@@ -507,6 +507,14 @@ export function registerCommerce({ app, staff, io, h }) {
       const pi = event.data.object; const loc = pi.metadata?.loc || 'main';
       if (locationExists(loc)) runIn(loc, () => h.onIntentSucceeded?.(pi));
     }
+    if (event.type === 'checkout.session.async_payment_succeeded' || event.type === 'checkout.session.async_payment_failed') {
+      const sess = event.data.object; const loc = sess.metadata?.loc || 'main';
+      if (locationExists(loc)) runIn(loc, () => {
+        const p = db.prepare('SELECT * FROM payments WHERE id = ?').get(Number(sess.metadata?.payment_id)); if (!p) return;
+        if (event.type.endsWith('succeeded')) { db.prepare("UPDATE payments SET bank_status = 'cleared', refund_ref = COALESCE(refund_ref, ?) WHERE id = ?").run(sess.payment_intent ? `stripe:${sess.payment_intent}` : null, p.id); completePayment(p, sess.id); }
+        else h.bankFailed?.(p);
+      });
+    }
     if (event.type === 'checkout.session.completed' && event.data?.object?.payment_status === 'paid') {
       const sess = event.data.object; const loc = sess.metadata?.loc || 'main';
       if (locationExists(loc)) runIn(loc, () => {

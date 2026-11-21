@@ -4,6 +4,7 @@ import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { Forecast } from './Team.jsx';
 import { TeamRequests } from './People.jsx';
+import { AutoSchedule } from './Smart.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -63,6 +64,7 @@ export default function Shifts() {
     <>
       {mgr && <TeamRequests />}
       <PageHead title="Shifts" sub="Clock in and out from the lock screen with your PIN.">
+        <AutoSchedule />
         <div className="row">
           <button className="btn sm" onClick={() => setFrom(addDays(data.from, -7))}>Earlier</button>
           <button className="btn sm" onClick={() => setFrom('')}>This week</button>

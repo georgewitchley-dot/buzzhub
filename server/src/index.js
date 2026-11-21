@@ -31,6 +31,7 @@ import { registerHouse } from './house.js';
 import { registerPlus } from './plus.js';
 import { registerMore } from './more.js';
 import { registerOwner } from './owner.js';
+import { registerSmart } from './smart.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -569,7 +570,9 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     sales_goals: z.string().max(200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 7 && a.every((x) => Number.isInteger(Number(x)) && Number(x) >= 0); } catch { return false; } }, 'Goals must be a list of 7 amounts'),
     table_long_minutes: z.coerce.number().int().min(0).max(600),
     labor_target_pct: z.coerce.number().int().min(5).max(80),
-    show_calories: z.union([z.literal('0'), z.literal('1')]), table_calls: z.union([z.literal('0'), z.literal('1')]), weekly_report: z.union([z.literal('0'), z.literal('1')]), auto_reorder: z.union([z.literal('0'), z.literal('1')]),
+    show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
+    pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
+    catering_delivery_cents: z.coerce.number().int().min(0).max(100000), catering_min_cents: z.coerce.number().int().min(0).max(10_000_000), table_calls: z.union([z.literal('0'), z.literal('1')]), weekly_report: z.union([z.literal('0'), z.literal('1')]), auto_reorder: z.union([z.literal('0'), z.literal('1')]),
     weekly_report_hour: z.coerce.number().int().min(0).max(23),
     report_email: z.string().trim().max(300).refine((v) => !v || v.split(',').every((e) => /^\S+@\S+\.\S+$/.test(e.trim())), 'Enter email addresses separated by commas'),
     loyalty_tiers: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), tipout_rules: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
@@ -1221,6 +1224,7 @@ registerHouse({ app, staff, io, h: G });
 registerPlus({ app, staff, io, h: G });
 registerMore({ app, staff, io, h: G });
 registerOwner({ app, staff, io, h: G });
+registerSmart({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

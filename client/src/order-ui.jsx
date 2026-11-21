@@ -99,6 +99,7 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
             <h3 className="sheet-cat">{catName(c)}</h3>
             {list.map((i) => (
               <button key={i.id} className="menu-line menu-tap" disabled={i.soldOut || viewOnly} onClick={() => tap(i)}>
+                {i.photo && <img className="menu-photo" src={i.photo} alt="" loading="lazy" />}
                 <span className="grow"><b>{nm(i)}</b>
                   {((L && i.i18n?.[L]?.description) || i.description) && <small className="menu-desc">{(L && i.i18n?.[L]?.description) || i.description}</small>}
                   <span className="muted num">{i.soldOut ? T('Sold out') : <PriceTag i={i} currency={currency} inline />}{i.groups?.length ? `, ${T('options')}` : ''}{i.calories !== undefined ? ` · ${i.calories} ${T('cal')}` : ''}</span>

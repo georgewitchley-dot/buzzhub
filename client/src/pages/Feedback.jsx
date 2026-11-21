@@ -4,6 +4,7 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, timeOf } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { PageHead, useLive } from './CommandCenter.jsx';
+import { ReviewThemes } from './Smart.jsx';
 
 /* ---------- guest: rate the visit ---------- */
 export function RateVisit() {
@@ -80,6 +81,7 @@ export function FeedbackAdmin() {
           <p className="muted" style={{ margin: '10px 0 0', fontSize: 14 }}>Quoted waits {d.wait.learned ? `are learned from ${d.wait.samples} recent parties, about ${d.wait.perPlace} minutes per place in line.` : 'use your setting until about 8 parties have been seated. Then they learn from real data.'}</p>
         </div></section>
       </div>
+      <ReviewThemes />
     </>
   );
 }

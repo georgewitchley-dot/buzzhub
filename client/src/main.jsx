@@ -2,6 +2,7 @@ import { InvoicePage, WalletPage } from './pages/Club.jsx';
 import { LinkHub } from './pages/Reach.jsx';
 import { EventsPage, LobbyScreen, TicketPage } from './pages/House.jsx';
 import { CustomerDisplay } from './pages/Plus.jsx';
+import { CateringOrder } from './pages/Smart.jsx';
 import PayPage from './pages/PayPage.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Kiosk from './pages/Kiosk.jsx';
@@ -40,6 +41,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/go" element={<LinkHub />} />
           <Route path="/screen" element={<LobbyScreen />} />
           <Route path="/display" element={<CustomerDisplay />} />
+          <Route path="/catering-order" element={<CateringOrder />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/ticket/:code" element={<TicketPage />} />
           <Route path="/*" element={<CommandCenter />} />

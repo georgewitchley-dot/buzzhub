@@ -232,9 +232,9 @@ export function registerPlus({ app, staff, io, h }) {
 
   /* ===== recipe cards ===== */
   staff.get('/menu/:id/card', (req, res) => {
-    const m = db.prepare('SELECT id, name, category, description, allergens, build_steps, photo_version FROM menu_items WHERE id = ?').get(idParam(req)); if (!m) throw err('Not found', 404);
+    const m = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(idParam(req)); if (!m) throw err('Not found', 404);
     const recipe = db.prepare('SELECT g.name, r.qty, g.unit FROM item_recipes r JOIN ingredients g ON g.id = r.ingredient_id WHERE r.item_id = ? ORDER BY g.name').all(m.id);
-    res.json({ id: m.id, name: m.name, category: m.category, description: m.description, allergens: parseJ(m.allergens, []), steps: parseJ(m.build_steps, []), photo: m.photo_version !== '0' ? `/api/staff/menu/${m.id}/photo?v=${m.photo_version}` : null, recipe });
+    res.json({ cookMinutes: m.cook_minutes ?? null, showPhoto: m.show_photo === undefined ? true : Boolean(m.show_photo), id: m.id, name: m.name, category: m.category, description: m.description, allergens: parseJ(m.allergens, []), steps: parseJ(m.build_steps, []), photo: m.photo_version !== '0' ? `/api/staff/menu/${m.id}/photo?v=${m.photo_version}` : null, recipe });
   });
   staff.put('/menu/:id/card', mgr, (req, res) => {
     const b = parse(z.object({ steps: z.array(z.string().trim().min(1).max(240)).max(30), photo: z.string().max(900_000).nullable().optional() }), req.body);

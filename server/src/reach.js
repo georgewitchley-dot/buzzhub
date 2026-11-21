@@ -88,6 +88,7 @@ export function registerReach({ app, staff, h }) {
       days.forEach((d, i) => { const e = entry(d); const no = `BH${d.date.replace(/-/g, '')}`; void i;
         e.debits.forEach(([a, c, t]) => rows.push([no, d.date, a, money(c), '', t, '', 'BuzzHub daily sales']));
         e.credits.forEach(([a, c, t]) => rows.push([no, d.date, a, '', money(c), t, '', 'BuzzHub daily sales'])); });
+      if (req.query.bills === '1') for (const j of h.apJournal?.(from, to) || []) j.lines.forEach(([ac, dr, cr, t]) => rows.push([j.no, j.date, ac, dr ? money(dr) : '', cr ? money(cr) : '', t, j.name, j.memo]));
       return send('quickbooks-journal', csv(rows));
     }
     if (fmt === 'xero') {
@@ -95,6 +96,7 @@ export function registerReach({ app, staff, h }) {
       days.forEach((d) => { const e = entry(d);
         e.debits.forEach(([a, c, t]) => rows.push([`BuzzHub sales ${d.date}`, d.date, t, a, 'Tax Exempt', money(c)]));
         e.credits.forEach(([a, c, t]) => rows.push([`BuzzHub sales ${d.date}`, d.date, t, a, 'Tax Exempt', money(-c)])); });
+      if (req.query.bills === '1') for (const j of h.apJournal?.(from, to) || []) j.lines.forEach(([ac, dr, cr, t]) => rows.push([`${j.name} ${j.memo}`, j.date, t, ac, 'Tax Exempt', money(dr || -cr)]));
       return send('xero-manual-journal', csv(rows));
     }
     if (fmt === 'csv') {

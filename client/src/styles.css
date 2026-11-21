@@ -633,3 +633,11 @@ li.held { opacity: .5; }
   .gl-al { font-weight: 700; }
   .gl-biz { opacity: .7; }
 }
+
+/* ---- round 11 ---- */
+.menu-photo { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; flex: none; margin-right: 10px; }
+.theme-row summary { list-style: none; cursor: pointer; gap: 10px; padding: 6px 0; }
+.theme-row summary::-webkit-details-marker { display: none; }
+.theme-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.06); }
+.theme-bar i.good { background: var(--seated, #3cb4a0); }
+.theme-bar i.bad { background: var(--dirty, #e5534b); }

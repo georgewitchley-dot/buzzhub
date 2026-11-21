@@ -7,7 +7,7 @@ import { LangSwitch, useLang } from '../i18n.jsx';
 
 // cheapest for the business first
 const ORDER = { zelle: 0, venmo: 1, card: 2, cashapp: 3, paypal: 4, paypalme: 5 };
-const FEE_NOTE = { zelle: 'No fees for us', venmo: 'Lowest fee' };
+const FEE_NOTE = { zelle: 'No fees for us', venmo: 'Lowest fee', bank: 'Lowest fee' };
 
 function loadPayPal(clientId, currency) {
   if (window.paypal) return Promise.resolve(window.paypal);
@@ -52,7 +52,7 @@ export default function PayPage() {
   const go = (next) => { if (next) location.href = next; };
   const load = () => api(`/pay/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); document.title = `${x.business.name}: ${t('Pay')}`; if (x.status === 'paid' && x.successUrl) setTimeout(() => go(x.successUrl), 900); return x; });
   useEffect(() => {
-    (params.get('back') ? (setChecking(true), api(`/pay/${token}/verify`, { method: 'POST', body: { ref: params.get('ref') || '' } }).then((r) => { if (r.paid) go(r.next); else setChecking(false); })) : Promise.resolve())
+    (params.get('back') ? (setChecking(true), api(`/pay/${token}/verify`, { method: 'POST', body: { ref: params.get('ref') || '' } }).then((r) => { if (r.paid) go(r.next); else { setChecking(false); if (r.processing) setD((x) => (x ? { ...x, bankStatus: 'processing' } : x)); } })) : Promise.resolve())
       .catch(() => setChecking(false)).finally(() => load().catch((e) => setErr(e.message)));
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   // waiting for staff to confirm an app payment
@@ -62,6 +62,7 @@ export default function PayPage() {
   if (!d) return <div className="guest"><main className="guest-in">{checking && <p>{t('Confirming your payment…')}</p>}</main></div>;
   const amount = money(d.amountCents, d.currency);
   const methods = [...d.methods].sort((a, b) => (ORDER[a.app || a.kind] ?? 9) - (ORDER[b.app || b.kind] ?? 9));
+  const bank = async () => { try { const r = await api(`/pay/${token}/bank`, { method: 'POST' }); if (r.url) location.href = r.url; else go(r.next); } catch (e) { setMsg(e.message); } };
   const card = async () => { try { const r = await api(`/pay/${token}/card`, { method: 'POST' }); if (r.url) location.href = r.url; else go(r.next); } catch (e) { setMsg(e.message); } };
   const claim = async () => { try { await api(`/pay/${token}/claim`, { method: 'POST', body: { app: picked.app, name } }); await load(); } catch (e) { setMsg(e.message); } };
 
@@ -76,6 +77,7 @@ export default function PayPage() {
         {msg && <div className="card banner" role="alert">{msg}</div>}
 
         {d.status === 'paid' ? <div className="card"><b>{t('Paid. Thank you!')}</b></div>
+          : d.bankStatus === 'processing' ? <div className="card"><b>{t('Your bank payment has started')}</b><span className="muted" style={{ fontSize: 14 }}>{t('Bank payments take 3–5 business days to clear. You can close this page. We will email you if anything goes wrong.')}</span></div>
           : d.claimed ? (
             <div className="card"><b>{t("Thanks! We're checking your payment")}</b><span className="muted" style={{ fontSize: 14 }}>{t('This page updates on its own as soon as the team confirms it.')}</span></div>
           ) : picked ? (
@@ -103,8 +105,8 @@ export default function PayPage() {
                 const key = m.app || m.kind;
                 if (m.kind === 'paypal') return <PayPalButtons key={i} token={token} method={m} onPaid={(r) => go(r.next)} onError={setMsg} />;
                 return (
-                  <button key={i} className={`pay-opt ${key === 'zelle' || key === 'venmo' ? 'cheap' : ''}`} onClick={() => (m.kind === 'card' ? card() : setPicked(m))}>
-                    <span className="grow"><b>{m.kind === 'card' ? t('Pay by card') : m.label}</b><small>{m.kind === 'card' ? t(m.label) : m.handle}</small></span>
+                  <button key={i} className={`pay-opt ${key === 'zelle' || key === 'venmo' ? 'cheap' : ''}`} onClick={() => (m.kind === 'card' ? card() : m.kind === 'bank' ? bank() : setPicked(m))}>
+                    <span className="grow"><b>{m.kind === 'card' ? t('Pay by card') : t(m.label)}</b><small>{m.kind === 'card' ? t(m.label) : m.kind === 'bank' ? t(m.note) : m.handle}</small></span>
                     {FEE_NOTE[key] && <span className="chip teal">{t(FEE_NOTE[key])}</span>}
                   </button>
                 );

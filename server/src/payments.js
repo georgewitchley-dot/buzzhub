@@ -93,6 +93,7 @@ export function registerPayments({ app, staff, io, h }) {
     const p = byToken(req.params.token); if (!p) throw err('This payment link is not valid.', 404);
     const s = getSettings(); const hd = handles(s); const cp = cardProvider(s); const amt = (total(p) / 100).toFixed(2);
     const methods = [];
+    const bank = h.bankOption?.(p); if (bank) methods.push(bank);
     if (cp) methods.push({ kind: 'card', provider: cp, label: cp === 'square' ? 'Card, Apple Pay, Google Pay, Cash App Pay or Afterpay' : 'Card, Apple Pay or Google Pay' });
     if (paypalEnabled()) methods.push({ kind: 'paypal', clientId: PP.id, sandbox: PP.env === 'sandbox', currency: s.currency });
     if (s.pay_handles_enabled === '1') {
@@ -102,7 +103,7 @@ export function registerPayments({ app, staff, io, h }) {
       if (hd.paypalme) methods.push({ kind: 'handle', app: 'paypalme', label: 'PayPal.me', handle: `paypal.me/${hd.paypalme}`, url: `https://paypal.me/${hd.paypalme}/${amt}${s.currency}` });
       if (hd.zelle) methods.push({ kind: 'handle', app: 'zelle', label: 'Zelle', handle: hd.zelle, url: null });
     }
-    res.json({ status: p.status, claimed: Boolean(p.claimed_at), amountCents: total(p), currency: s.currency, descr: p.descr, lines: lineItems(p), successUrl: p.success_url, cancelUrl: p.cancel_url,
+    res.json({ status: p.status, bankStatus: p.bank_status || null, claimed: Boolean(p.claimed_at), amountCents: total(p), currency: s.currency, descr: p.descr, lines: lineItems(p), successUrl: p.success_url, cancelUrl: p.cancel_url,
       business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null }, methods });
   });
 
@@ -150,7 +151,8 @@ export function registerPayments({ app, staff, io, h }) {
   app.post('/api/pay/:token/verify', publicLimiter, wrap(async (req, res) => {
     const p = byToken(req.params.token); if (!p) throw err('This payment link is not valid.', 404);
     const ok = await verify(p, String(req.body?.ref || ''));
-    res.json({ paid: ok, next: p.success_url });
+    const processing = !ok && h.bankCheck ? (await h.bankCheck(db.prepare('SELECT * FROM payments WHERE id = ?').get(p.id)).catch(() => null)) === 'processing' : false;
+    res.json({ paid: ok, processing, next: p.success_url });
   }));
 
   // PayPal and Venmo: buttons on the pay page create and capture orders here
