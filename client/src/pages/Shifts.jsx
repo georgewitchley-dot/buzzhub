@@ -5,6 +5,7 @@ import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { Forecast } from './Team.jsx';
 import { TeamRequests } from './People.jsx';
 import { AutoSchedule } from './Smart.jsx';
+import { WhosOn } from './Clock.jsx';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -71,6 +72,7 @@ export default function Shifts() {
           <button className="btn sm" onClick={() => setFrom(addDays(data.from, 7))}>Later</button>
         </div>
       </PageHead>
+      <WhosOn />
 
       <div className="kpis">
         <div className="kpi"><div className="v">{data.onNow.length}</div><div className="l">On the clock now</div></div>

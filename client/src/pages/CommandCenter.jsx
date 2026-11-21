@@ -30,6 +30,8 @@ import { Deals, Goals, Training } from './Plus.jsx';
 import { Labels, Waste } from './More.jsx';
 import { Equipment, LogBanner, LogBook, SupplierBills, TableCalls, TipOuts, WeeklyReport } from './Owner.jsx';
 import { Safe, StockCount } from './Smart.jsx';
+import { OnClockChip } from './Clock.jsx';
+import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -68,6 +70,8 @@ const NAV = [
   { to: '/safe', icon: 'lock', label: 'Safe', min: 'manager', when: (s) => s?.safe_log_enabled === '1' },
   { to: '/checklists', icon: 'list', label: 'Checklists' },
   { to: '/training', icon: 'star', label: 'Training' },
+  { to: '/certificates', icon: 'check', label: 'Certificates' },
+  { to: '/allergens-chart', icon: 'list', label: 'Allergen chart' },
   { to: '/logbook', icon: 'list', label: 'Log book' },
   { to: '/equipment', icon: 'gear', label: 'Equipment' },
   { to: '/waste', icon: 'box', label: 'Waste' },
@@ -95,6 +99,9 @@ const NAV = [
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/supplier-bills', icon: 'bag', label: 'Supplier bills', min: 'owner' },
   { to: '/report', icon: 'chart', label: 'Weekly report', min: 'owner' },
+  { to: '/cash-flow', icon: 'chart', label: 'Cash flow', min: 'owner' },
+  { to: '/sales-tax', icon: 'cash', label: 'Sales tax', min: 'owner' },
+  { to: '/delivery-zones', icon: 'pin', label: 'Delivery zones', min: 'manager', when: (s) => s?.online_delivery === '1' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
@@ -221,6 +228,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
           <header className="topbar">
             <div className="grow" />
             {(!netOk || queued > 0) && <span className="chip amber" role="status">{!netOk ? 'Offline. Sales are saved on this device' : `${queued} offline sale${queued === 1 ? '' : 's'} waiting to send`}</span>}
+            {socket && <OnClockChip />}
             <span className={`live ${online ? '' : 'off'}`}><i />{online ? 'Live' : 'Reconnecting'}</span>
             <span className="clock">{clock.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
             <button className="btn sm tab-lock" onClick={onLock} aria-label="Lock terminal"><Icon name="lock" size={16} /></button>
@@ -255,6 +263,11 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="training" element={<Training />} />
                   <Route path="waste" element={<Waste />} />
                   <Route path="logbook" element={<LogBook />} />
+                  <Route path="certificates" element={<Certificates />} />
+                  <Route path="allergens-chart" element={<AllergenChart />} />
+                  {can('owner') && <Route path="cash-flow" element={<CashFlow />} />}
+                  {can('owner') && <Route path="sales-tax" element={<SalesTax />} />}
+                  {can('manager') && <Route path="delivery-zones" element={<DeliveryZones />} />}
                   {can('manager') && <Route path="count" element={<StockCount />} />}
                   {can('manager') && settings?.safe_log_enabled === '1' && <Route path="safe" element={<Safe />} />}
                   <Route path="equipment" element={<Equipment />} />

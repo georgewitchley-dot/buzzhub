@@ -5,6 +5,7 @@ import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { useCustomerModal } from './Field.jsx';
 import { ChatModal } from './People.jsx';
+import { NextUp } from './Desk.jsx';
 
 const STATE_TEXT = { waiting: 'Waiting', buzzed: 'Buzzed', acknowledged: 'On the way' };
 const PRE = { held: 'Pre-order waiting', sent: 'Pre-order making', ready: 'Pre-order ready', open: 'Pre-order making', paid: 'Pre-order paid' };
@@ -145,6 +146,7 @@ export default function Waitlist() {
         {settings.self_checkin === '1' && <button className="btn" onClick={() => setQr({ src: '/staff/join-qr', title: 'Self check-in code', note: 'Print this and put it at the door. Guests scan it to join the waitlist themselves.' })}><Icon name="qr" size={17} />Door code</button>}
         <button className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" size={17} />Add guest</button>
       </PageHead>
+      {view === 'table' && <NextUp />}
 
       <section className="panel" ref={listRef}>
         {active.length === 0 ? (

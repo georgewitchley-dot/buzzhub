@@ -181,8 +181,9 @@ export function registerOps({ app, staff, io, h }) {
     clearLoginFails(ip);
     const cur = openShift(user.id);
     if (cur) {
-      db.prepare('UPDATE shifts SET clock_out = ? WHERE id = ?').run(now(), cur.id);
-      const hrs = hoursBetween(cur.clock_in, now()) - cur.break_minutes / 60;
+      const brk = cur.break_started ? Math.round(hoursBetween(cur.break_started, now()) * 60) : 0;
+      db.prepare('UPDATE shifts SET clock_out = ?, break_minutes = break_minutes + ?, break_started = NULL WHERE id = ?').run(now(), brk, cur.id);
+      const hrs = hoursBetween(cur.clock_in, now()) - (cur.break_minutes + brk) / 60;
       audit(user, 'shift.out', `${hrs.toFixed(2)} h`, ip);
       notifyStaff('shifts');
       return res.json({ name: user.name, action: 'out', hours: Math.round(hrs * 100) / 100 });

@@ -126,12 +126,12 @@ export function apJournal(from, to) {
   let bills = []; let pays = [];
   try {
     bills = db.prepare("SELECT b.*, s.name supplier FROM supplier_bills b JOIN suppliers s ON s.id = b.supplier_id WHERE b.status <> 'void' AND b.bill_date BETWEEN ? AND ?").all(from, to);
-    pays = db.prepare("SELECT p.*, b.number, s.name supplier FROM bill_payments p JOIN supplier_bills b ON b.id = p.bill_id JOIN suppliers s ON s.id = b.supplier_id WHERE p.paid_on BETWEEN ? AND ?").all(from, to);
+    pays = db.prepare("SELECT p.*, b.number, b.category, s.name supplier FROM bill_payments p JOIN supplier_bills b ON b.id = p.bill_id JOIN suppliers s ON s.id = b.supplier_id WHERE p.paid_on BETWEEN ? AND ?").all(from, to);
   } catch { return []; }
   const a = { ...AP_DEFAULT, ...parseJ(getSettings().acct_map, {}) };
   const out = [];
   for (const b of bills) out.push({ no: `BHB${b.id}`, date: b.bill_date, name: b.supplier, memo: `Bill ${b.number || b.id}`, lines: [[a[b.category] || a.other, b.amount_cents, 0, `${b.supplier} bill ${b.number || b.id}`], [a.ap, 0, b.amount_cents, `${b.supplier} bill ${b.number || b.id}`]] });
-  for (const p of pays) out.push({ no: `BHP${p.id}`, date: p.paid_on, name: p.supplier, memo: `Payment ${p.reference || ''}`.trim(), lines: [[a.ap, p.amount_cents, 0, `Paid ${p.supplier}`], [p.method === 'cash' ? a.cash : a.bank, 0, p.amount_cents, `Paid ${p.supplier} (${p.method})`]] });
+  for (const p of pays) out.push({ no: `BHP${p.id}`, date: p.paid_on, name: p.supplier, memo: `${p.method === 'credit' ? 'Credit' : 'Payment'} ${p.reference || ''}`.trim(), lines: [[a.ap, p.amount_cents, 0, `${p.method === 'credit' ? 'Credit from' : 'Paid'} ${p.supplier}`], [p.method === 'credit' ? (a[p.category] || a.food) : p.method === 'cash' ? a.cash : a.bank, 0, p.amount_cents, `${p.method === 'credit' ? 'Credit from' : 'Paid'} ${p.supplier} (${p.method})`]] });
   return out.sort((x, y) => x.date.localeCompare(y.date));
 }
 

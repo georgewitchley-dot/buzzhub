@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { SupplierCredits } from './Desk.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 const today = () => new Date().toLocaleDateString('en-CA');
@@ -327,6 +328,7 @@ export function SupplierBills() {
             ))}</tbody></table>
         )}
       </section>
+      <SupplierCredits />
       {edit && (
         <Modal title={edit.id ? 'Edit bill' : 'Add a supplier bill'} onClose={() => setEdit(null)} width={520}>
           <div className="row"><label className="field grow"><span>Supplier</span><select className="input" value={edit.supplierId} onChange={(e) => { const s = d.suppliers.find((x) => x.id === Number(e.target.value)); setEdit({ ...edit, supplierId: e.target.value, dueDate: addDays(edit.billDate, s?.terms_days ?? 30) }); }}>{d.suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label className="field"><span>Bill number</span><input className="input" style={{ width: 140 }} value={edit.number} onChange={(e) => setEdit({ ...edit, number: e.target.value })} maxLength={40} /></label></div>

@@ -10,7 +10,8 @@ import rateLimit from 'express-rate-limit';
 import { Server as IOServer } from 'socket.io';
 import QRCode from 'qrcode';
 import { z } from 'zod';
-import { db, getSettings, setSettings, audit, seedDemoData, runIn, currentSlug, forEachLocation, locationExists, allSlugs, listLocations, createLocationDb, SLUG_RE } from './db.js';
+import jwt from 'jsonwebtoken';
+import { db, getSettings, setSettings, audit, seedDemoData, runIn, currentSlug, forEachLocation, locationExists, allSlugs, listLocations, createLocationDb, SLUG_RE, getJwtSecret } from './db.js';
 import {
   SESSION_COOKIE, ROLE_RANK, hashPin, findUserByPin, pinInUse, pinProblem, loginBlocked, recordLoginFail,
   clearLoginFails, issueSession, clearSession, userFromToken, requireAuth, csrfGuard, newGuestToken, clientIp,
@@ -32,6 +33,8 @@ import { registerPlus } from './plus.js';
 import { registerMore } from './more.js';
 import { registerOwner } from './owner.js';
 import { registerSmart } from './smart.js';
+import { registerTimeClock } from './timeclock.js';
+import { registerDesk } from './desk.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -74,9 +77,21 @@ app.use(locationMiddleware);
 app.use('/api', csrfGuard);
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
-const apiLimiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-7', legacyHeaders: false });
+// Every device in a business usually shares one internet address, so signed-in staff (and kiosk / lobby / display /
+// time-clock screens with their own token) are not counted against the per-address limits; PIN tries still are.
+const isTrustedDevice = (req) => {
+  if (req._trusted !== undefined) return req._trusted;
+  let ok = false;
+  try { ok = Boolean(req.cookies?.[SESSION_COOKIE] && userFromToken(req.cookies[SESSION_COOKIE])); } catch { ok = false; }
+  if (!ok) for (const [hdr, kind] of [['X-Kiosk', 'kiosk'], ['X-Screen', 'screen'], ['X-Display', 'display'], ['X-Clock', 'clock']]) {
+    const t = req.get(hdr); if (!t) continue;
+    try { jwt.verify(t, `${getJwtSecret()}:${kind}`); ok = true; break; } catch { /* not a real device token */ }
+  }
+  req._trusted = ok; return ok;
+};
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: 1200, standardHeaders: 'draft-7', legacyHeaders: false, skip: isTrustedDevice });
 const authLimiter = rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many attempts. Slow down.' } });
-const publicLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-7', legacyHeaders: false });
+const publicLimiter = rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: 'draft-7', legacyHeaders: false, skip: (req) => isTrustedDevice(req) });
 const orderLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many order changes. Please ask your server.' } });
 const joinLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 6, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many check-ins from this device. Please see the host.' } });
 app.use('/api', apiLimiter);
@@ -570,6 +585,8 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     sales_goals: z.string().max(200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 7 && a.every((x) => Number.isInteger(Number(x)) && Number(x) >= 0); } catch { return false; } }, 'Goals must be a list of 7 amounts'),
     table_long_minutes: z.coerce.number().int().min(0).max(600),
     labor_target_pct: z.coerce.number().int().min(5).max(80),
+    catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
+    cash_balance_cents: z.coerce.number().int().min(-100_000_000).max(1_000_000_000), cash_balance_on: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), payroll_dow: z.coerce.number().int().min(0).max(6), payroll_every: z.enum(['weekly', 'biweekly']),
     show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
     pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
     catering_delivery_cents: z.coerce.number().int().min(0).max(100000), catering_min_cents: z.coerce.number().int().min(0).max(10_000_000), table_calls: z.union([z.literal('0'), z.literal('1')]), weekly_report: z.union([z.literal('0'), z.literal('1')]), auto_reorder: z.union([z.literal('0'), z.literal('1')]),
@@ -1225,6 +1242,8 @@ registerPlus({ app, staff, io, h: G });
 registerMore({ app, staff, io, h: G });
 registerOwner({ app, staff, io, h: G });
 registerSmart({ app, staff, io, h: G });
+registerTimeClock({ app, staff, io, h: G });
+registerDesk({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

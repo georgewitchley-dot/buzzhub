@@ -558,11 +558,14 @@ export function registerCommerce({ app, staff, io, h }) {
     if (!b.payNow && !info.payAtPickup) return res.status(400).json({ error: 'Please pay online to place your order' });
     const lines = priceLines(b.items);
     const subtotal = lines.reduce((a, l) => a + l.qty * l.price_cents, 0);
-    if (b.fulfillment === 'delivery' && subtotal < info.deliveryMinCents) return res.status(400).json({ error: `Delivery orders need at least $${(info.deliveryMinCents / 100).toFixed(2)} of food` });
+    const zone = b.fulfillment === 'delivery' && h.deliveryZone ? await h.deliveryZone(b.address) : null;
+    if (zone?.error) return res.status(400).json({ error: zone.error });
+    const deliveryMin = zone?.minCents ?? info.deliveryMinCents; const deliveryFee = zone?.feeCents ?? info.deliveryFeeCents;
+    if (b.fulfillment === 'delivery' && subtotal < deliveryMin) return res.status(400).json({ error: `Delivery orders${zone?.zone ? ` to ${zone.zone}` : ''} need at least $${(deliveryMin / 100).toFixed(2)} of food` });
     const promo = b.promoCode && h.promoDiscount ? h.promoDiscount(b.promoCode, subtotal) : null;
     const g = createGuest({ kind: 'order', name: b.name, phone: b.phone, email: b.email, notifyEmail: Boolean(b.email), party_size: 1, source: 'online' });
     const o = insertOrder({ lines, status: b.payNow || b.scheduledFor ? 'held' : 'sent', source: 'online', guestId: g.id, customerName: b.name, fulfillment: b.fulfillment, address: b.fulfillment === 'delivery' ? b.address : null,
-      phone: b.phone, email: b.email || null, notes: b.notes || null, feeCents: b.fulfillment === 'delivery' ? info.deliveryFeeCents : 0, discountCents: promo?.cents || 0, promoCode: promo?.code || null });
+      phone: b.phone, email: b.email || null, notes: b.notes || null, feeCents: b.fulfillment === 'delivery' ? deliveryFee : 0, discountCents: promo?.cents || 0, promoCode: promo?.code || null });
     db.prepare('UPDATE guests SET order_id = ? WHERE id = ?').run(o.id, g.id);
     h.linkOrderCustomer?.(req, o.id);
     if (b.scheduledFor) db.prepare('UPDATE orders SET scheduled_for = ?, sched_pay = ? WHERE id = ?').run(b.scheduledFor, b.payNow ? 'now' : 'later', o.id);

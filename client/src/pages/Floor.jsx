@@ -4,6 +4,7 @@ import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { TableQrModal } from './Commerce.jsx';
 import { SplitModal } from './Register.jsx';
+import { NextUp } from './Desk.jsx';
 
 let LONG = 90;
 const isLong = (t) => t.status === 'seated' && t.seated_at && LONG > 0 && minutesSince(t.seated_at) >= LONG;
@@ -163,6 +164,7 @@ export default function Floor() {
         {can('manager') && !editing && <button className="btn" onClick={startEdit}>Edit floor plan</button>}
         {editing && <><button className="btn" onClick={addTable}><Icon name="plus" size={16} />Add {unit.toLowerCase()}</button><button className="btn ghost" onClick={() => { setEditing(false); setDraft(null); }}>Cancel</button><button className="btn primary" onClick={saveLayout}>Save floor plan</button></>}
       </PageHead>
+      <NextUp />
       <div className="row wrap" style={{ marginBottom: 14 }}>
         {zones.length > 1 && <div className="seg">{zones.map((x) => <button key={x} aria-pressed={x === z} onClick={() => setZone(x)}>{x}</button>)}</div>}
         <div className="grow" />

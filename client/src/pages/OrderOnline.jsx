@@ -7,6 +7,7 @@ import { CartLines, GuestMenu, PairsHint, useCart, useCombos } from '../order-ui
 import { WhenPicker } from './More.jsx';
 import { useReorder } from './Owner.jsx';
 import { LangSwitch, getLang, tr, useLang } from '../i18n.jsx';
+import { useDeliveryQuote } from './Desk.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
   return (
@@ -33,6 +34,7 @@ export function OrderOnline() {
   useReorder(d?.items, cart, () => setErr(t('Some items are no longer available.')));
   const [step, setStep] = useState('menu');
   const [f, setF] = useState(() => { try { return { fulfillment: 'pickup', name: '', phone: '', email: '', address: '', notes: '', ...JSON.parse(localStorage.getItem('bh_online_profile') || '{}') }; } catch { return { fulfillment: 'pickup' }; } });
+  const zq = useDeliveryQuote(f.address, f.fulfillment === 'delivery');
   const [pct, setPct] = useState(15);
   const [promo, setPromo] = useState(() => (new URLSearchParams(location.search).get('promo') || '').toUpperCase().slice(0, 30));
   const [promoRes, setPromoRes] = useState(null);
@@ -46,7 +48,7 @@ export function OrderOnline() {
   if (err && !d) return <div className="guest"><main className="guest-in"><h1>Ordering unavailable</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   if (viewOnly || !d.enabled) return <Shell biz={d.business} lang={lang} setLang={setLang}><h1 style={{ textAlign: 'center' }}>{viewOnly ? t('Our menu') : t('Online ordering is closed')}</h1>{!viewOnly && <p style={{ textAlign: 'center', margin: '0 auto' }}>{t('Please call or visit {name}.', { name: d.business.name })}</p>}<div className="card"><GuestMenu items={d.items} currency={d.currency} lang={lang} viewOnly onAdd={() => {}} /></div>{viewOnly && d.enabled && <a className="btn primary lg block" href={withLoc('/order')}>{t('Start an order')}</a>}</Shell>;
-  const fee = f.fulfillment === 'delivery' ? d.deliveryFeeCents : 0;
+  const fee = f.fulfillment === 'delivery' ? (zq?.ok && zq.feeCents !== undefined ? zq.feeCents : d.deliveryFeeCents) : 0;
   const off = promoRes?.ok ? promoRes.cents : 0;
   const tax = Math.round((cart.subtotal - off) * d.taxRate / 100);
   const tip = Math.round(cart.subtotal * pct / 100);
@@ -87,7 +89,8 @@ export function OrderOnline() {
             <div><span>Subtotal</span><span>{money(cart.subtotal, d.currency)}</span></div>
             {off > 0 && <div><span>Promo {promoRes.code}</span><span>−{money(off, d.currency)}</span></div>}
             <div><span>Tax</span><span>{money(tax, d.currency)}</span></div>
-            {fee > 0 && <div><span>Delivery fee</span><span>{money(fee, d.currency)}</span></div>}
+            {f.fulfillment === 'delivery' && zq && !zq.ok && <div className="lock-msg" style={{ gridColumn: '1 / -1' }}>{zq.error}</div>}
+            {fee > 0 && <div><span>Delivery fee{zq?.zone ? ` (${zq.zone})` : ''}</span><span>{money(fee, d.currency)}</span></div>}
             {d.payOnline && tip > 0 && <div><span>Tip</span><span>{money(tip, d.currency)}</span></div>}
             <div className="grand"><span>Total</span><span>{money(cart.subtotal - off + tax + fee + (d.payOnline ? tip : 0), d.currency)}</span></div>
           </div>

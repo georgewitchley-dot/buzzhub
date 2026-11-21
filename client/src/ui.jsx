@@ -48,16 +48,20 @@ export const Puck = ({ state = 'idle', size }) => <span className="puck" data-st
 /* ---------- modal ---------- */
 export function Modal({ title, onClose, children, width }) {
   const ref = useRef(null);
+  // Keep the latest onClose without re-running the open animation: parents re-render often (live clocks, data refreshes),
+  // and an inline onClose is a new function each time, which used to replay the animation and steal focus (flicker).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const el = ref.current;
     gsap.fromTo(el, { y: 18, opacity: 0, scale: 0.98 }, { y: 0, opacity: 1, scale: 1, duration: 0.28, ease: 'power3.out' });
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && closeRef.current?.();
     window.addEventListener('keydown', onKey);
     el.querySelector('input, select, button.primary')?.focus();
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && closeRef.current?.()}>
       <div className="modal" ref={ref} role="dialog" aria-modal="true" aria-label={title} style={width ? { width: `min(${width}px, 100%)` } : undefined}>
         <header><h2>{title}</h2>{onClose && <button className="btn ghost sm" onClick={onClose} aria-label="Close"><Icon name="x" size={18} /></button>}</header>
         {children}

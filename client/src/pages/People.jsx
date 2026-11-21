@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, money, timeOf } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { MyTimeCard } from './Clock.jsx';
 
 const nice = (sl) => { const [d, t] = sl.split(' '); return `${new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${new Date(`2000-01-01T${t}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
 const tm = (t) => new Date(`2000-01-01T${t}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -21,6 +22,7 @@ export function MyShifts() {
         <button className="btn" onClick={() => setAvail(d.availability.map((a) => ({ ...a })))}>When I can work</button>
         <button className="btn primary" onClick={() => setOff({ start: '', end: '', reason: '' })}>Ask for time off</button>
       </PageHead>
+      <MyTimeCard />
       <div className="grid-2">
         <section className="panel"><div className="panel-h"><h3>Coming up</h3></div>
           {d.shifts.length === 0 ? <div className="panel-b muted">Nothing scheduled yet.</div> : (

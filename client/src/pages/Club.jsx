@@ -5,6 +5,7 @@ import { api, applyAccent, money } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { CateringPackages } from './Smart.jsx';
+import { CateringFeedback } from './Desk.jsx';
 import { LangSwitch, useLang } from '../i18n.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
@@ -210,6 +211,7 @@ export function Catering() {
       {edit !== undefined && <InvoiceModal inv={edit} menu={menu} settings={settings} onClose={() => { setEdit(undefined); reload(); }} />}
       {paying && <InvPayModal inv={paying} currency={cur} onClose={() => { setPaying(null); reload(); }} />}
       <CateringPackages />
+      <CateringFeedback />
     </>
   );
 }
