@@ -557,3 +557,28 @@ textarea.input { height: auto; padding: 10px 14px; resize: vertical; }
 .receipt-page .lang-switch { border-color: #c9c6bd; }
 .receipt-page .lang-switch button { color: #6b6760; }
 .receipt-page .lang-switch button[aria-pressed="true"] { background: #1b1c20; color: #fff; }
+
+/* ---- round 7: lobby screen, add-ons, checklists ---- */
+.lobby { position: fixed; inset: 0; background: #07060d; color: #fff; display: grid; grid-template-rows: auto 1fr auto; padding: 3vh 3vw; gap: 3vh; font-size: 2vh; }
+.lobby-top { display: flex; align-items: center; gap: 1.4vw; font-size: 4vh; }
+.lobby-top img { height: 6vh; width: auto; border-radius: 1vh; }
+.lobby-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2vw; min-height: 0; }
+.lobby-grid.three { grid-template-columns: 1fr 1fr 0.9fr; }
+.lobby-grid section { background: rgba(255,255,255,.05); border-radius: 2vh; padding: 2.4vh 2vw; overflow: hidden; }
+.lobby-grid section.ready { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.lobby-grid h2 { margin: 0 0 2vh; font-size: 4vh; }
+.lobby-nums { display: flex; flex-wrap: wrap; gap: 1.6vh; align-content: flex-start; }
+.ln { display: grid; place-items: center; min-width: 12vh; padding: 1.4vh 1.6vh; border-radius: 1.6vh; background: rgba(255,255,255,.08); }
+.ln b { font-size: 7vh; line-height: 1; font-variant-numeric: tabular-nums; }
+.ln small { font-size: 1.8vh; opacity: .75; }
+.ln.on { background: var(--accent); color: #111; animation: lobbyPulse 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ln.on { animation: none; } }
+@keyframes lobbyPulse { 50% { transform: scale(1.05); } }
+.lw { display: flex; justify-content: space-between; gap: 1vw; padding: 1.2vh 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 3vh; }
+.lw.on { color: var(--accent); }
+.lobby-wait { font-size: 2.6vh; opacity: .8; margin: 1.6vh 0; }
+.lobby-foot { text-align: center; font-size: 3vh; opacity: .85; }
+.lobby-msg { grid-row: 1 / -1; display: grid; place-items: center; text-align: center; gap: 3vh; }
+.pairs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line, rgba(255,255,255,.12)); }
+.check-row { padding: 6px 0; font-size: 14.5px; }
+@media print { .side, .topbar, .page-head .btn, .page-head input { display: none !important; } }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, applyAccent, money } from '../lib.js';
 import { Puck } from '../ui.jsx';
-import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
+import { CartLines, GuestMenu, PairsHint, useCart } from '../order-ui.jsx';
 import { LangSwitch, useLang } from '../i18n.jsx';
 
 const kioskApi = (path, opts = {}) => api(path, { ...opts, headers: { 'X-Kiosk': localStorage.getItem('bh_kiosk') || '' } });
@@ -72,7 +72,7 @@ export default function Kiosk() {
           <div className="card kiosk-menu"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={lang} /></div>
           <aside className="card kiosk-cart">
             <b>{t('Your order')}</b>
-            {cart.lines.length ? <CartLines cart={cart} currency={d.currency} /> : <span className="muted">{t('Nothing here yet. Tap an item to add it.')}</span>}
+            {cart.lines.length ? <><CartLines cart={cart} currency={d.currency} /><PairsHint cart={cart} items={d.items} currency={d.currency} label={t('Goes great with')} /></> : <span className="muted">{t('Nothing here yet. Tap an item to add it.')}</span>}
             <div className="totals"><div><span>{t('Subtotal')}</span><span>{money(cart.subtotal, d.currency)}</span></div><div><span>{t('Tax')}</span><span>{money(tax, d.currency)}</span></div><div className="grand"><span>{t('Total')}</span><span>{money(cart.subtotal + tax, d.currency)}</span></div></div>
             {d.dineIn && <div className="seg" style={{ width: '100%' }}><button aria-pressed={where === 'here'} onClick={() => setWhere('here')} style={{ flex: 1 }}>{t('Eat here')}</button><button aria-pressed={where === 'togo'} onClick={() => setWhere('togo')} style={{ flex: 1 }}>{t('To go')}</button></div>}
             <label className="field"><span>{t('Your name')}</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="off" /></label>

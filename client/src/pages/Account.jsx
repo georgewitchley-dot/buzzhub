@@ -4,6 +4,7 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, enablePush, fmtSlot, isIOS, isStandalone, money, pushIsOn, registerSW, setManifest, useLenis, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { AccountClub } from './Club.jsx';
+import { ReferralCard } from './House.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
@@ -13,7 +14,8 @@ function AuthForm({ onIn }) {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setErr('');
     try {
-      const body = mode === 'register' ? f : { email: f.email, password: f.password };
+      const ref = new URLSearchParams(location.search).get('ref') || undefined;
+      const body = mode === 'register' ? { ...f, ref } : { email: f.email, password: f.password };
       const { customer } = await api(`/c/${mode === 'register' ? 'register' : 'login'}`, { method: 'POST', body });
       onIn(customer);
     } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
@@ -161,6 +163,7 @@ export default function Account() {
               <select className="input" style={{ width: 90 }} value={bday.slice(0, 2)} onChange={(e) => saveBirthday(e.target.value ? `${e.target.value}-${bday.slice(3) || '01'}` : '')} aria-label="Birth month"><option value="">Month</option>{Array.from({ length: 12 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{new Date(2000, i, 1).toLocaleDateString([], { month: 'short' })}</option>)}</select>
               <select className="input" style={{ width: 70 }} value={bday.slice(3)} disabled={!bday} onChange={(e) => saveBirthday(`${bday.slice(0, 2)}-${e.target.value}`)} aria-label="Birth day">{Array.from({ length: 31 }, (_, i) => <option key={i} value={String(i + 1).padStart(2, '0')}>{i + 1}</option>)}</select></label>
 
+            <ReferralCard />
             <AccountClub />
 
             {offers !== null && (

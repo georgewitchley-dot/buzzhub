@@ -1,5 +1,6 @@
 import { InvoicePage, WalletPage } from './pages/Club.jsx';
 import { LinkHub } from './pages/Reach.jsx';
+import { EventsPage, LobbyScreen, TicketPage } from './pages/House.jsx';
 import PayPage from './pages/PayPage.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Kiosk from './pages/Kiosk.jsx';
@@ -36,6 +37,9 @@ createRoot(document.getElementById('root')).render(
           <Route path="/i/:token" element={<InvoicePage />} />
           <Route path="/w/:token" element={<WalletPage />} />
           <Route path="/go" element={<LinkHub />} />
+          <Route path="/screen" element={<LobbyScreen />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/ticket/:code" element={<TicketPage />} />
           <Route path="/*" element={<CommandCenter />} />
         </Routes>
       </BrowserRouter>

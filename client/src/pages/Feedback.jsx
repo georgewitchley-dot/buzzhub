@@ -14,7 +14,8 @@ export function RateVisit() {
   const [comment, setComment] = useState('');
   const [sent, setSent] = useState(false);
   useEffect(() => { api(`/f/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); if (x.rating) setRating(x.rating); setSent(x.done); }).catch((e) => setErr(e.message)); }, [token]);
-  const send = async () => { try { await api(`/f/${token}`, { method: 'POST', body: { rating, comment: comment || undefined } }); setSent(true); } catch (e) { setErr(e.message); } };
+  const [offer, setOffer] = useState(null);
+  const send = async () => { try { const r = await api(`/f/${token}`, { method: 'POST', body: { rating, comment: comment || undefined } }); setOffer(r.recovery || null); setSent(true); } catch (e) { setErr(e.message); } };
   if (err) return <div className="guest"><main className="guest-in"><h1>Thanks!</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   const happy = rating >= d.threshold;
@@ -39,6 +40,7 @@ export function RateVisit() {
         ) : (
           <>
             <div style={{ display: 'grid', gap: 8 }}><h1>Thank you!</h1><p>{happy ? "We're so glad you had a good time." : "We're sorry it wasn't great. A manager will read this personally."}</p></div>
+            {offer && <div className="card stack" style={{ textAlign: 'center' }}><span>{offer.text}</span><b style={{ fontSize: 26, letterSpacing: 1 }}>{offer.code}</b><button className="btn block" onClick={() => navigator.clipboard?.writeText(offer.code)}>Copy code</button></div>}
             {happy && d.reviewUrl && (
               <a className="btn primary lg block" href={d.reviewUrl} target="_blank" rel="noopener noreferrer" onClick={() => api(`/f/${token}/review`, { method: 'POST' }).catch(() => {})}>Share it in a review</a>
             )}

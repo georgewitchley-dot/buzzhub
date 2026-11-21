@@ -265,5 +265,6 @@ export function registerPayments({ app, staff, io, h }) {
   h.squareCancel = (checkoutId) => square('POST', `/v2/terminals/checkouts/${checkoutId}/cancel`).catch(() => {});
 
   h.squareOn = squareEnabled;
+  h.squareGet = (p) => square('GET', p);
   staff.get('/payments/providers', requireAuth('manager'), (req, res) => res.json({ ...providersStatus(), handles: handles(), handlesOn: getSettings().pay_handles_enabled === '1' }));
 }

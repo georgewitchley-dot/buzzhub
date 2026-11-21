@@ -3,6 +3,7 @@ import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PaymentCosts } from './Field.jsx';
+import { MenuEngineering } from './House.jsx';
 
 const dayLabel = (d) => new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 const num = (v) => Number(String(v).replace(/[^\d.-]/g, '')) || 0;
@@ -177,7 +178,7 @@ export function Purchasing() {
   return (
     <>
       <PageHead title="Purchasing" sub={`Food cost over the last 30 days: ${d.foodCostPct === null ? 'add recipes to see it' : `${d.foodCostPct}% (your target is ${d.target}%)`}. ${low.length} ingredient${low.length === 1 ? '' : 's'} running low.`}>
-        <div className="seg">{[['stock', 'Ingredients'], ['recipes', 'Recipes and food cost'], ['orders', 'Supplier orders']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+        <div className="seg">{[['stock', 'Ingredients'], ['recipes', 'Recipes and food cost'], ['orders', 'Supplier orders'], ['eng', 'Menu engineering']].map(([k, l]) => <button key={k} aria-pressed={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
       </PageHead>
       {tab === 'stock' && (
         <section className="panel"><div className="panel-h"><h3 className="grow">Ingredients</h3><button className="btn sm" onClick={() => setModal({ kind: 'sup' })}>Add supplier</button><button className="btn sm primary" onClick={() => setModal({ kind: 'ing' })}>Add ingredient</button></div>
@@ -206,6 +207,7 @@ export function Purchasing() {
               <td style={{ textAlign: 'right' }}><button className="btn sm ghost" disabled={!d.ingredients.length} onClick={() => setModal({ kind: 'recipe', item: m })}>{m.lines.length ? 'Edit recipe' : 'Add recipe'}</button></td></tr>
           ))}</tbody></table></section>
       )}
+      {tab === 'eng' && <MenuEngineering />}
       {tab === 'orders' && (
         <>
           {pos.suggested.length > 0 && (

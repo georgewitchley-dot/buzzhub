@@ -6,7 +6,7 @@ import SpotlightCard from '../bits/SpotlightCard.jsx';
 import ClickSpark from '../bits/ClickSpark.jsx';
 import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
-import { CartLines, ModPicker, useCart } from '../order-ui.jsx';
+import { CartLines, ModPicker, PairsHint, useCart } from '../order-ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { QrModal, RedeemModal } from './Waitlist.jsx';
 import { queueSale, attachPayment, isNetworkError } from '../offline.js';
@@ -283,7 +283,7 @@ export default function Register() {
         <aside className="panel ticket">
           <div className="panel-h"><h3 className="grow">Ticket</h3>{cart.count > 0 && <button className="btn ghost sm" onClick={reset}>Clear</button>}</div>
           <div className="panel-b stack">
-            {cart.count === 0 ? <p className="muted" style={{ margin: 0 }}>The ticket is empty.</p> : <div><CartLines cart={cart} currency={cur} /></div>}
+            {cart.count === 0 ? <p className="muted" style={{ margin: 0 }}>The ticket is empty.</p> : <div><CartLines cart={cart} currency={cur} /><PairsHint cart={cart} items={menu?.items || menu} currency={cur} onPick={tap} label="Suggest" /></div>}
             <div className="row">
               <input className="input grow" placeholder="Customer name" value={customer} onChange={(e) => setCustomer(e.target.value)} maxLength={40} aria-label="Customer name" />
               {settings.business_type === 'restaurant' && (

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
-import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
+import { CartLines, GuestMenu, PairsHint, useCart } from '../order-ui.jsx';
 import { LangSwitch, getLang, useLang } from '../i18n.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
@@ -66,7 +66,7 @@ export function OrderOnline() {
         </>
       ) : (
         <>
-          <div className="card"><div className="row"><b className="grow">{t('Your order')}</b><button className="btn ghost sm" onClick={() => setStep('menu')}>{t('Add more')}</button></div><CartLines cart={cart} currency={d.currency} /></div>
+          <div className="card"><div className="row"><b className="grow">{t('Your order')}</b><button className="btn ghost sm" onClick={() => setStep('menu')}>{t('Add more')}</button></div><CartLines cart={cart} currency={d.currency} /><PairsHint cart={cart} items={d.items} currency={d.currency} label={t('Goes great with')} /></div>
           <div className="card">
             {d.pickup && d.delivery && <div className="seg" style={{ width: '100%' }}>{['pickup', 'delivery'].map((x) => <button key={x} aria-pressed={f.fulfillment === x} onClick={() => setF({ ...f, fulfillment: x })} style={{ flex: 1, textTransform: 'capitalize' }}>{x}</button>)}</div>}
             <label className="field"><span>Your name</span><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={40} autoComplete="name" /></label>

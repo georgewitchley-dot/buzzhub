@@ -26,6 +26,8 @@ import { registerPayments } from './payments.js';
 import { registerClub } from './club.js';
 import { registerReach } from './reach.js';
 import { registerPeople } from './people.js';
+import { registerExtras } from './extras.js';
+import { registerHouse } from './house.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -557,6 +559,18 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     kiosk_message: z.string().trim().max(120),
     business_address: z.string().trim().max(160),
     chat_enabled: z.union([z.literal('0'), z.literal('1')]),
+    upsell_enabled: z.union([z.literal('0'), z.literal('1')]),
+    referral_enabled: z.union([z.literal('0'), z.literal('1')]),
+    recovery_enabled: z.union([z.literal('0'), z.literal('1')]),
+    screen_message: z.string().trim().max(120),
+    prep_buffer_pct: z.coerce.number().int().min(0).max(100),
+    referral_reward_cents: z.coerce.number().int().min(100).max(10000),
+    referral_min_cents: z.coerce.number().int().min(0).max(100000),
+    recovery_max_rating: z.coerce.number().int().min(1).max(3),
+    recovery_kind: z.enum(['pct', 'amount']),
+    recovery_value: z.coerce.number().int().min(1).max(100),
+    recovery_days: z.coerce.number().int().min(7).max(180),
+    recovery_message: z.string().trim().max(200),
     chat_quick: z.string().max(1200).refine((v) => { try { const a = JSON.parse(v); return Array.isArray(a) && a.length <= 8 && a.every((x) => typeof x === 'string' && x.length <= 120); } catch { return false; } }, 'Quick replies look wrong'),
     business_phone: z.string().trim().max(30),
     acct_map: z.string().max(1500).refine((v) => { try { const o = JSON.parse(v); return typeof o === 'object' && Object.values(o).every((x) => typeof x === 'string' && x.length <= 60); } catch { return false; } }, 'Account names look wrong'),
@@ -988,11 +1002,13 @@ app.post('/api/c/register', custLimiter, wrap(async (req, res) => {
     phone: z.string().trim().max(20).regex(/^[+\d\s()-]*$/, 'Phone looks wrong').optional().or(z.literal('')),
     password: z.string(),
     marketingOptIn: z.boolean().optional(),
+    ref: z.string().trim().max(20).optional(),
   }), req.body);
   const problem = passwordProblem(b.password); if (problem) return res.status(400).json({ error: problem });
   if (db.prepare('SELECT 1 FROM customers WHERE email = ?').get(b.email)) return res.status(409).json({ error: 'That email already has an account. Sign in instead.' });
   const id = db.prepare('INSERT INTO customers (name, email, phone, pw_hash) VALUES (?, ?, ?, ?)').run(b.name, b.email, b.phone || null, await hashPassword(b.password)).lastInsertRowid;
   if (b.marketingOptIn) db.prepare('UPDATE customers SET marketing_opt_in = 1 WHERE id = ?').run(id);
+  if (b.ref) G.onCustomerJoined?.(id, b.ref);
   const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
   issueCustomerSession(res, c);
   audit(null, 'customer.register', `${c.name} <${c.email}>`, clientIp(req));
@@ -1180,6 +1196,8 @@ registerPayments({ app, staff, io, h: G });
 registerClub({ app, staff, h: G });
 registerReach({ app, staff, h: G });
 registerPeople({ app, staff, io, h: G });
+registerExtras({ app, staff, io, h: G });
+registerHouse({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

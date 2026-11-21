@@ -144,9 +144,10 @@ export function registerGrowth({ app, staff, io, h }) {
     const b = parse(z.object({ rating: z.number().int().min(1).max(5), comment: z.string().trim().max(600).optional() }), req.body);
     db.prepare('UPDATE feedback SET rating = ?, comment = ?, responded_at = ? WHERE id = ?').run(b.rating, b.comment || null, now(), f.id);
     audit(null, 'feedback.received', `${f.name}: ${b.rating}/5${b.comment ? ` — ${b.comment.slice(0, 80)}` : ''}`, clientIp(req));
-    if (b.rating <= 2 && !f.rating) alertOwners?.(`${getSettings().business_name}: unhappy guest`, `${f.name} rated their visit ${b.rating}/5${b.comment ? `: "${b.comment.slice(0, 120)}"` : ''}`, 'feedback');
+    const recovery = !f.rating && h.onLowRating ? h.onLowRating(f, b.rating, b.comment) : null;
+    if (b.rating <= 2 && !f.rating) alertOwners?.(`${getSettings().business_name}: unhappy guest`, `${f.name} rated their visit ${b.rating}/5${b.comment ? `: "${b.comment.slice(0, 120)}"` : ''}${recovery ? '. An apology offer was sent automatically.' : ''}`, 'feedback');
     notifyStaff('feedback');
-    res.json({ ok: true });
+    res.json({ ok: true, recovery: recovery ? { code: recovery.code, text: recovery.text } : null });
   });
   app.post('/api/f/:token/review', publicLimiter, (req, res) => {
     const f = fbByToken(req.params.token); if (f) db.prepare('UPDATE feedback SET review_clicked = 1 WHERE id = ?').run(f.id);

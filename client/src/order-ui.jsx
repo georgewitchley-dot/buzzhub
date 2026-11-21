@@ -1,6 +1,6 @@
 // Shared ordering pieces: option picker, cart helpers, a customer-facing menu.
-import { useMemo, useState } from 'react';
-import { money } from './lib.js';
+import { useEffect, useMemo, useState } from 'react';
+import { api, money } from './lib.js';
 import { Modal } from './ui.jsx';
 
 export const lineKey = (l) => `${l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}`;
@@ -103,5 +103,25 @@ export function GuestMenu({ items, currency, onAdd, lang = 'en', viewOnly = fals
       </div>
       {picking && <ModPicker item={picking} currency={currency} onClose={() => setPicking(null)} onAdd={(l) => { onAdd(l); setPicking(null); }} />}
     </>
+  );
+}
+
+/** "Goes great with" suggestions from what customers often order together. */
+let pairsCache = null;
+export function PairsHint({ cart, items, currency, onPick, label = 'Goes great with' }) {
+  const [pairs, setPairs] = useState(pairsCache);
+  useEffect(() => { if (!pairsCache) api('/public/pairs').then((p) => { pairsCache = p; setPairs(p); }).catch(() => {}); }, []);
+  if (!pairs || !items || !cart.lines.length) return null;
+  const inCart = new Set(cart.lines.map((l) => l.itemId));
+  const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+  const ids = [];
+  for (const l of cart.lines) for (const id of pairs[l.itemId] || []) if (!inCart.has(id) && !ids.includes(id) && byId[id] && !byId[id].soldOut) ids.push(id);
+  if (!ids.length) return null;
+  const pick = (m) => (onPick ? onPick(m) : m.groups?.length ? null : cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents }));
+  return (
+    <div className="pairs" aria-label={label}>
+      <span className="dim" style={{ fontSize: 12.5 }}>{label}</span>
+      {ids.slice(0, 3).filter((id) => onPick || !byId[id].groups?.length).map((id) => <button key={id} className="btn sm" onClick={() => pick(byId[id])}>+ {byId[id].name} <span className="dim">{money(byId[id].price_cents, currency)}</span></button>)}
+    </div>
   );
 }

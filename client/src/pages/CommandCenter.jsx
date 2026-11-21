@@ -25,6 +25,7 @@ import { Insights, Payroll, Purchasing } from './Back.jsx';
 import { Deliveries, PaymentClaims } from './Field.jsx';
 import { Catering, Memberships } from './Club.jsx';
 import { Chats, MyShifts, Performance, useUnreadChats } from './People.jsx';
+import { Checklists, Deposits, Events, Prep } from './House.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -60,6 +61,8 @@ const NAV = [
   { to: '/kitchen', icon: 'flame', label: 'Kitchen', when: (s) => s?.business_type !== 'service' },
   { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
+  { to: '/checklists', icon: 'list', label: 'Checklists' },
+  { to: '/prep', icon: 'flame', label: 'Prep list', when: (s) => s?.business_type !== 'service' },
   { to: '/shifts', icon: 'clock', label: 'Shifts' },
   { to: '/my-shifts', icon: 'calendar', label: 'My shifts' },
   { to: '/performance', icon: 'star', label: 'Team performance', min: 'manager' },
@@ -72,6 +75,8 @@ const NAV = [
   { to: '/marketing', icon: 'bell', label: 'Marketing', min: 'manager' },
   { to: '/memberships', icon: 'star', label: 'Memberships', min: 'manager' },
   { to: '/catering', icon: 'calendar', label: 'Catering', min: 'manager' },
+  { to: '/ticketing', icon: 'ticket', label: 'Events', min: 'manager' },
+  { to: '/deposits', icon: 'cash', label: 'Bank deposits', min: 'owner' },
   { to: '/tips', icon: 'cash', label: 'Tips', min: 'manager' },
   { to: '/payroll', icon: 'clock', label: 'Payroll', min: 'owner' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
@@ -228,6 +233,10 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('owner') && <Route path="payroll" element={<Payroll />} />}
                   <Route path="deliveries" element={<Deliveries />} />
                   <Route path="chats" element={<Chats />} />
+                  <Route path="checklists" element={<Checklists />} />
+                  <Route path="prep" element={<Prep />} />
+                  {can('manager') && <Route path="ticketing" element={<Events />} />}
+                  {can('owner') && <Route path="deposits" element={<Deposits />} />}
                   <Route path="my-shifts" element={<MyShifts />} />
                   {can('manager') && <Route path="performance" element={<Performance />} />}
                   {can('manager') && <Route path="memberships" element={<Memberships />} />}
