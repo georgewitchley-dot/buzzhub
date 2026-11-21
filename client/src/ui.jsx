@@ -21,6 +21,7 @@ const P = {
   back: 'M15 18l-6-6 6-6',
   calendar: 'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4',
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  pin: 'M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
   gift: 'M4 11h16v10H4zM2 7h20v4H2zM12 7v14M12 7c-2-3-6-3-6 0M12 7c2-3 6-3 6 0',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
@@ -97,7 +98,8 @@ export function ApprovalHost() {
   const done = (v) => { req.resolve(v); setReq(null); };
   const submit = async (e) => {
     e.preventDefault(); setErr('');
-    const r = await fetch('/api/staff/approve', { method: 'POST', credentials: 'same-origin', headers: { 'X-BuzzHub': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ pin, action: req.action }) });
+    const loc = (() => { try { return localStorage.getItem('bh_loc') || ''; } catch { return ''; } })();
+    const r = await fetch('/api/staff/approve', { method: 'POST', credentials: 'same-origin', headers: { 'X-BuzzHub': '1', 'Content-Type': 'application/json', ...(loc ? { 'X-Location': loc } : {}) }, body: JSON.stringify({ pin, action: req.action }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { setErr(d.error || 'Not approved'); setPin(''); return; }
     done(d.token);

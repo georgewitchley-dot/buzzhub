@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, imageToPng, money, timeOf } from '../lib.js';
+import { api, imageToPng, logoUrl, money, timeOf } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PrintSign } from './PrintSign.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
@@ -143,7 +143,7 @@ function LogoBox({ settings, onChange }) {
   const has = settings.logo_version && settings.logo_version !== '0';
   return (
     <div className="row" style={{ alignItems: 'center' }}>
-      <div className="logo-box">{has ? <img src={`/api/public/logo?v=${settings.logo_version}`} alt="Your logo" /> : <span className="dim">No logo</span>}</div>
+      <div className="logo-box">{has ? <img src={logoUrl(settings.logo_version)} alt="Your logo" /> : <span className="dim">No logo</span>}</div>
       <div className="stack grow" style={{ gap: 8 }}>
         <label className="btn" style={{ cursor: 'pointer' }}>{busy ? 'Uploading…' : has ? 'Replace logo' : 'Upload logo'}
           <input type="file" accept="image/png,image/jpeg,image/webp" className="sr" onChange={(e) => upload(e.target.files?.[0])} disabled={busy} />
@@ -152,6 +152,22 @@ function LogoBox({ settings, onChange }) {
         <span className="dim" style={{ fontSize: 12.5 }}>PNG, JPG or WebP. A square logo looks best in the QR code.</span>
       </div>
     </div>
+  );
+}
+
+function PaymentsPanel() {
+  const [p] = useLive([], () => api('/staff/payments/status'));
+  if (!p) return null;
+  return (
+    <section className="panel"><div className="panel-h"><h3 className="grow">Card payments by phone</h3><span className={`chip ${p.cardsEnabled ? 'teal' : ''}`}>{p.cardsEnabled ? (p.mode === 'live' ? 'Live' : 'Test mode') : 'Not connected'}</span></div><div className="panel-b stack">
+      <p className="muted" style={{ margin: 0, fontSize: 14 }}>Guests scan a code (or get their check on their phone), add a tip and pay with card, Apple Pay or Google Pay. Money goes straight to your Stripe account and the order closes itself.</p>
+      {p.cardsEnabled ? (
+        <span className="muted" style={{ fontSize: 14 }}>{p.webhook ? 'Payments are confirmed instantly, even if a guest closes the page.' : 'Payments are confirmed when the guest returns from checkout. For extra safety, add a webhook in Stripe pointing to the address below and set STRIPE_WEBHOOK_SECRET.'}</span>
+      ) : (
+        <ol className="steps"><li>Create a free Stripe account at stripe.com (they charge per payment, nothing monthly).</li><li>Copy your secret key from Stripe → Developers → API keys.</li><li>Add it to the server as STRIPE_SECRET_KEY. Ask me to do this and I'll set it on Railway.</li></ol>
+      )}
+      <label className="field"><span>Webhook address for Stripe</span><input className="input" readOnly value={p.webhookUrl} onFocus={(e) => e.target.select()} /></label>
+    </div></section>
   );
 }
 
@@ -260,6 +276,8 @@ export function SettingsAdmin() {
             </>
           )}
         </div></section>
+
+        <PaymentsPanel />
 
         <section className="panel"><div className="panel-h"><h3>Security and alerts</h3></div><div className="panel-b stack">
           <label className="field"><span>Lock the terminal after this many idle minutes</span><input className="input" type="number" min={1} max={60} value={f.idle_lock_minutes} onChange={set('idle_lock_minutes')} /></label>

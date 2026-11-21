@@ -9,6 +9,8 @@ import { QrModal, RedeemModal } from './Waitlist.jsx';
 
 export function PayModal({ order, currency, onClose, onPaid }) {
   const toast = useToast();
+  const [phone, setPhone] = useState(null);
+  const payByPhone = async (notify) => { try { const r = await api(`/staff/orders/${order.id}/paylink`, { method: 'POST', body: { notify } }); setPhone(r); if (notify) toast(r.pushed ? 'Sent the check to their phone' : 'They have no phone alerts on. Show them the code instead.', r.pushed ? 'ok' : 'err'); } catch (e) { toast(e.message, 'err'); } };
   const base = order.subtotal_cents - order.discount_cents + order.tax_cents;
   const [method, setMethod] = useState('card');
   const [tipPct, setTipPct] = useState(0);
@@ -50,6 +52,16 @@ export function PayModal({ order, currency, onClose, onPaid }) {
       </div>
       {method === 'card' && <p className="dim" style={{ margin: 0, fontSize: 13 }}>Run the card on your terminal, then record it here.</p>}
       <button className="btn primary lg block" onClick={pay} disabled={busy}>{busy ? 'Recording…' : `Record ${money(total, currency)} paid`}</button>
+      {!phone ? (
+        <div className="row"><button className="btn grow" onClick={() => payByPhone(false)}>Let them pay by phone</button>{order.guest_id && <button className="btn grow" onClick={() => payByPhone(true)}>Send check to their phone</button>}</div>
+      ) : (
+        <div className="stack" style={{ borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+          {phone.cardsEnabled ? <p className="muted" style={{ margin: 0, fontSize: 14 }}>They scan this, add a tip and pay with card, Apple Pay or Google Pay. The order closes on its own when it's paid.</p>
+            : <p className="muted" style={{ margin: 0, fontSize: 14 }}>Card payments aren't connected yet, so this page only shows the bill. An owner can connect Stripe in Settings → Payments.</p>}
+          <div className="qr" dangerouslySetInnerHTML={{ __html: phone.svg }} />
+          <input className="input" readOnly value={phone.link} onFocus={(e) => e.target.select()} aria-label="Pay link" />
+        </div>
+      )}
     </Modal>
   );
 }

@@ -3,7 +3,7 @@ import { gsap } from 'gsap';
 import Aurora from '../bits/Aurora.jsx';
 import SplitText from '../bits/SplitText.jsx';
 import ShinyText from '../bits/ShinyText.jsx';
-import { api } from '../lib.js';
+import { api, setLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 
 export function PinPad({ value, onChange, onSubmit, max = 8, disabled }) {
@@ -48,6 +48,8 @@ export default function Lock({ business, onUnlocked }) {
   const [recovery, setRecovery] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [ok, setOk] = useState('');
+  const [locs, setLocs] = useState(null);
+  useEffect(() => { api('/public/locations').then(setLocs).catch(() => {}); }, []);
   const dotsRef = useRef(null);
 
   useEffect(() => {
@@ -102,6 +104,11 @@ export default function Lock({ business, onUnlocked }) {
           </form>
         ) : <PinPad value={pin} onChange={(v) => { setPin(v); setMsg(''); }} onSubmit={submit} disabled={busy || lockedFor > 0} max={ticket ? 6 : 8} />}
         <div className="lock-msg" role="alert" style={ok ? { color: 'var(--seated)' } : undefined}>{ok || msg}</div>
+        {locs?.locations.length > 0 && !ticket && (
+          <select className="input" style={{ maxWidth: 300 }} value={locs.current} onChange={(e) => { setLoc(e.target.value); window.location.reload(); }} aria-label="Which location is this terminal at?">
+            {locs.locations.map((l) => <option key={l.slug} value={l.slug}>This terminal is at {l.name}</option>)}
+          </select>
+        )}
         {ticket ? (
           <div className="row">
             <button type="button" className="btn ghost sm" onClick={() => setUseRecovery(!useRecovery)}>{useRecovery ? 'Use the app code' : 'Lost your phone? Use a recovery code'}</button>

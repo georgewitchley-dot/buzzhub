@@ -10,7 +10,7 @@ import rateLimit from 'express-rate-limit';
 import { Server as IOServer } from 'socket.io';
 import QRCode from 'qrcode';
 import { z } from 'zod';
-import { db, getSettings, setSettings, audit, seedDemoData } from './db.js';
+import { db, getSettings, setSettings, audit, seedDemoData, runIn, currentSlug, forEachLocation, locationExists, allSlugs, listLocations, createLocationDb, SLUG_RE } from './db.js';
 import {
   SESSION_COOKIE, ROLE_RANK, hashPin, findUserByPin, pinInUse, pinProblem, loginBlocked, recordLoginFail,
   clearLoginFails, issueSession, clearSession, userFromToken, requireAuth, csrfGuard, newGuestToken, clientIp,
@@ -18,6 +18,8 @@ import {
 } from './security.js';
 import { registerOps } from './ops.js';
 import { registerGuard } from './guard.js';
+import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
+import { registerFloorPay } from './floorpay.js';
 import { registerGrowth, smartEstimate, waitModelInfo } from './growth.js';
 const G = {}; // filled by registerGuard: authGate, managerOr, hasApproval, onBadPin, alertOwners
 import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, pushToUsers, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
@@ -29,6 +31,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const app = express();
 const server = http.createServer(app);
 const io = new IOServer(server, { cors: { origin: false }, serveClient: false });
+const { slugForSocket } = scopeSockets(io);
 
 app.set('trust proxy', 1); // Railway / reverse proxy in front
 app.disable('x-powered-by');
@@ -47,8 +50,10 @@ app.use(helmet({
 }));
 const smallJson = express.json({ limit: '64kb' });
 const logoJson = express.json({ limit: '900kb' });
-app.use((req, res, next) => (req.path === '/api/staff/logo' ? logoJson : smallJson)(req, res, next));
+const stripeRaw = express.raw({ type: 'application/json', limit: '1mb' });
+app.use((req, res, next) => (req.path === '/api/stripe/webhook' ? stripeRaw : req.path === '/api/staff/logo' ? logoJson : smallJson)(req, res, next));
 app.use(cookieParser());
+app.use(locationMiddleware);
 app.use('/api', csrfGuard);
 app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
@@ -122,7 +127,7 @@ function guestPublicView(g) {
     customer: Boolean(g.customer_id),
     pushDevices: devices,
     preorder: { ...preorderWindow(g, s, pos), order: preorderFor(g.id) },
-    business: { name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : null },
+    business: { slug: currentSlug(), name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
   };
 }
 
@@ -157,9 +162,10 @@ async function sendHeadsUp(g, manual = false) {
   return r;
 }
 
-let headsUpRunning = false;
+const headsUpRunning = new Set();
 async function checkHeadsUps() {
-  if (headsUpRunning) return; headsUpRunning = true;
+  const slugNow = currentSlug();
+  if (headsUpRunning.has(slugNow)) return; headsUpRunning.add(slugNow);
   try {
     const s = getSettings();
     const limit = Number(s.heads_up_minutes);
@@ -170,7 +176,7 @@ async function checkHeadsUps() {
       if (!g || estFor(i + 1, s, g.party_size) > limit) continue;
       if (g.status === 'waiting' && !g.heads_up_at) await sendHeadsUp(g);
     }
-  } finally { headsUpRunning = false; }
+  } finally { headsUpRunning.delete(slugNow); }
 }
 
 function pushAllWaiting() {
@@ -232,6 +238,8 @@ if (!userCount()) {
   console.log(` Setup code: ${SETUP_CODE}`);
   console.log('================================================\n');
 }
+
+app.post('/api/stripe/webhook', (req, res) => (G.stripeWebhook ? G.stripeWebhook(req, res) : res.status(404).end()));
 
 app.get('/api/setup/status', (req, res) => res.json({ needsSetup: userCount() === 0 }));
 
@@ -308,7 +316,7 @@ app.get('/api/public/business', publicLimiter, (req, res) => {
   res.json({
     name: s.business_name, accent: s.accent, type: s.business_type, unitLabel: s.unit_label, selfCheckin: s.self_checkin === '1',
     waiting: queueFor('table').length, avgTurn: Number(s.avg_turn_minutes), emailAlerts: emailEnabled(),
-    preorder: s.preorder_enabled === '1', booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : null,
+    slug: currentSlug(), preorder: s.preorder_enabled === '1', booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null,
   });
 });
 
@@ -355,7 +363,7 @@ app.get('/api/g/:token/manifest.webmanifest', publicLimiter, (req, res) => {
   const g = guestByToken(req.params.token);
   if (!g) return res.status(404).end();
   const s = getSettings();
-  const icon = s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : '/icon-512.png';
+  const icon = s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : '/icon-512.png';
   res.type('application/manifest+json').json({
     name: `${s.business_name} buzzer`, short_name: s.business_name.slice(0, 12), start_url: `/b/${g.token}`, scope: '/b/',
     display: 'standalone', background_color: '#0f1015', theme_color: '#0f1015',
@@ -579,7 +587,7 @@ staff.get('/guests/:id/qr', wrap(async (req, res) => {
 }));
 
 staff.get('/join-qr', wrap(async (req, res) => {
-  const link = `${publicBase(req)}/join`;
+  const link = `${publicBase(req)}/join${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}`;
   res.json({ link, svg: await QRCode.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'H', color: { dark: '#0b0b12', light: '#ffffff' } }) });
 }));
 
@@ -671,7 +679,7 @@ staff.post('/guests/:id/remove', (req, res) => {
 
 /* ---- tables ---- */
 staff.get('/tables', (req, res) => {
-  res.json(db.prepare('SELECT t.*, g.name guest_name, g.party_size FROM tables t LEFT JOIN guests g ON g.id=t.guest_id ORDER BY t.id').all());
+  res.json(db.prepare('SELECT t.*, g.name guest_name, g.party_size, u.name server_name FROM tables t LEFT JOIN guests g ON g.id=t.guest_id LEFT JOIN users u ON u.id=t.server_id ORDER BY t.id').all());
 });
 staff.post('/tables', requireAuth('manager'), (req, res) => {
   const b = parse(z.object({ label: z.string().trim().min(1).max(10), seats: z.number().int().min(1).max(40), zone: z.string().trim().min(1).max(20) }), req.body);
@@ -1038,7 +1046,7 @@ app.post('/api/c/bookings/:id/checkin', requireCustomer, (req, res) => {
 });
 
 // Reminders before appointments (phone notification + optional email)
-setInterval(async () => {
+setInterval(() => forEachLocation(async () => {
   try {
     const s = getSettings();
     const lead = Number(s.booking_reminder_minutes);
@@ -1051,11 +1059,11 @@ setInterval(async () => {
       db.prepare('UPDATE bookings SET reminded_at = ? WHERE id = ?').run(now(), b.id);
       const when = new Date(`${b.start_local.replace(' ', 'T')}:00Z`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
       const body = `See you at ${when}${b.service_name ? ` for ${b.service_name}` : ''}. When you arrive, open the app and tap "I'm here" to check in.`;
-      await pushToCustomer(b.customer_id, { title: `${s.business_name}: appointment reminder`, body, tag: `booking-${b.id}`, url: '/account' }).catch(() => {});
+      await pushToCustomer(b.customer_id, { title: `${s.business_name}: appointment reminder`, body, tag: `booking-${b.id}`, url: currentSlug() === 'main' ? '/account' : `/account?l=${currentSlug()}` }).catch(() => {});
       if (emailEnabled()) await emailGuest(b.email, { businessName: s.business_name, subject: 'Appointment reminder', message: body, link: `${process.env.PUBLIC_URL || ''}/account`, accent: s.accent }).catch(() => {});
     }
   } catch (e) { console.error('reminders', e); }
-}, 60_000).unref();
+}), 60_000).unref();
 
 /* ---- staff side of bookings ---- */
 staff.get('/bookings', (req, res) => {
@@ -1089,6 +1097,8 @@ staff.get('/customers', requireAuth('manager'), (req, res) => {
     FROM customers c ORDER BY c.id DESC LIMIT 500`).all());
 });
 
+registerFloorPay({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, notifyStaff, publicLimiter, publicBase }) });
+registerLocations({ app, staff, h: { parse, clientIp, requireAuth, issueSession, wrap, seedDemoData } });
 registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
 registerGrowth({ app, staff, io, h: Object.assign(G, { parse, idParam, now, clientIp, requireAuth, notifyStaff, requireCustomer, publicLimiter }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });
@@ -1112,23 +1122,25 @@ app.use((err, req, res, next) => {
 });
 
 /* ---------- realtime ---------- */
-io.use((socket, next) => {
+io.use((socket, next) => runIn((socket.data.slug = slugForSocket(socket)), () => {
   const cookies = Object.fromEntries((socket.handshake.headers.cookie || '').split(';').map((c) => c.trim().split('=').map(decodeURIComponent)).filter((p) => p[0]));
   const user = userFromToken(cookies[SESSION_COOKIE]);
   const guestToken = socket.handshake.auth?.guestToken;
   if (user) { socket.data.user = user; return next(); }
   if (guestToken) { const g = guestByToken(guestToken); if (g) { socket.data.guestId = g.id; return next(); } }
   next(new Error('unauthorized'));
-});
-io.on('connection', (socket) => {
+}));
+io.on('connection', (socket) => runIn(socket.data.slug, () => {
+  const L = socket.data.slug;
+  socket.join(`${L}:all`);
   if (socket.data.user) {
-    socket.join('staff');
-    socket.join(`user:${socket.data.user.id}`);
-    if (ROLE_RANK[socket.data.user.role] >= ROLE_RANK.manager) socket.join('owners');
+    socket.join(`${L}:staff`);
+    socket.join(`${L}:user:${socket.data.user.id}`);
+    if (ROLE_RANK[socket.data.user.role] >= ROLE_RANK.manager) socket.join(`${L}:owners`);
   } else if (socket.data.guestId) {
-    socket.join(`guest:${socket.data.guestId}`);
+    socket.join(`${L}:guest:${socket.data.guestId}`);
     pushGuest(socket.data.guestId);
   }
-});
+}));
 
 server.listen(PORT, () => console.log(`BuzzHub listening on :${PORT}`));

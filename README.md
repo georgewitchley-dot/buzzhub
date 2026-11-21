@@ -46,6 +46,30 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Guest pre-orders**: prices come from the server, only items you mark as order-ahead can be ordered, quantities are capped per party size, and there's a rate limit.
 - **Audit log**: every unlock, failed PIN, sale, void, buzz and settings change, with the person and IP address.
 
+## Running the business
+
+- **Kitchen screen**: tickets with timers that turn red when late, a chime for new tickets, full-screen mode and recall.
+- **End-of-day report**: sales, discounts, tax, tips, payment methods, items, staff, refunds, labor, waits and the cash drawer, for any day in your own time zone. Export to CSV or print.
+- **Cash drawer**: open with a float, record paid in and out, count by bill and coin, and see if it's over or short (managers get an alert at $5 or more).
+- **Shifts**: clock in and out with your PIN on the lock screen, a weekly schedule, time-card fixes, hourly pay (owner only) and labor cost against sales.
+- **Floor plan editor**: drag tables to match your room, pick round, square or bar shapes, resize them, use areas as tabs, and assign a server to each table.
+- **Pay by phone**: guests scan the check, tip and pay by card, Apple Pay or Google Pay through Stripe Checkout. Set `STRIPE_SECRET_KEY`, and optionally `STRIPE_WEBHOOK_SECRET` with the webhook pointed at `/api/stripe/webhook`.
+- **Multiple locations**: each location has its own database (waitlist, menu, team, customers, reports, door sign). Owners add locations, switch with one tap, and see every location live on "All locations". Terminals pick their location on the lock screen.
+
+## Growth
+
+- **Smart wait times** learn from the last 60 days of real seating, by party size and time of day.
+- **Loyalty**: every N visits a customer earns a reward with a 6-digit code that staff redeem.
+- **Feedback**: after the visit, guests get a rating request on their phone. Happy guests are sent to your review link. Unhappy ones only reach you, and 1–2 stars alert managers.
+
+## More security
+
+- **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
+- **Approved devices only**: new tablets need the owner's approval, using a code, before anyone can sign in on them.
+- **Manager approval** by PIN for voids, discounts over 10%, refunds and closing the drawer. Every approval is logged with who approved it.
+- **Security alerts on the owner's phone**: repeated wrong PINs, new devices, big voids and refunds, drawer variance and recovery code use.
+- Sessions, approvals and two-step trust are all bound to one location.
+
 ## Stack
 
 Node + Express + Socket.IO + SQLite (better-sqlite3) on the server. React + Vite on the client, with [GSAP](https://github.com/greensock/GSAP) for motion, [Lenis](https://github.com/darkroomengineering/lenis) for smooth scrolling, and components from [React Bits](https://github.com/DavidHDev/react-bits) (Aurora, SplitText, ShinyText, SpotlightCard, ClickSpark, StarBorder; MIT + Commons Clause, see `client/src/bits/LICENSE-react-bits.md`).

@@ -1,7 +1,8 @@
 // Batch 1: kitchen display, end-of-day report + cash drawer, shifts & labor.
 import { z } from 'zod';
-import { db, getSettings, audit, currentTz, localToday } from './db.js';
+import { db, getSettings, audit, currentTz, localToday, registerSchema } from './db.js';
 
+registerSchema((db) => {
 db.exec(`
 CREATE TABLE IF NOT EXISTS cash_sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS schedule (
 `);
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'hourly_cents')) db.exec('ALTER TABLE users ADD COLUMN hourly_cents INTEGER NOT NULL DEFAULT 0');
 
+});
 /* ---------- time helpers (business timezone) ---------- */
 function tzOffsetMin(tz, at = new Date()) {
   const f = (zone) => Date.parse(at.toLocaleString('en-US', { timeZone: zone, hour12: false }).replace(/(\d+)\/(\d+)\/(\d+), (\d+):(\d+):(\d+)/, '$3-$1-$2T$4:$5:$6Z').replace('T24:', 'T00:'));

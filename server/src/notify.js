@@ -1,7 +1,7 @@
 // Free notification channels: Web Push (browser/phone notifications) and optional email via your own SMTP.
 import * as webpush from 'web-push';
 import nodemailer from 'nodemailer';
-import { db, getVapidKeys } from './db.js';
+import { db, getVapidKeys, forEachLocation } from './db.js';
 
 const vapid = getVapidKeys(() => webpush.generateVAPIDKeys());
 webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:alerts@buzzhub.app', vapid.publicKey, vapid.privateKey);
@@ -50,9 +50,9 @@ export function forgetGuestDevices(guestId) {
 }
 
 // Clean out subscriptions for guests who left more than a day ago.
-setInterval(() => {
+setInterval(() => forEachLocation(() => {
   db.prepare("DELETE FROM push_subs WHERE customer_id IS NULL AND guest_id IN (SELECT id FROM guests WHERE closed_at IS NOT NULL AND closed_at < datetime('now','-1 day'))").run();
-}, 3_600_000).unref();
+}), 3_600_000).unref();
 
 /* ---------- Email (optional, uses the business's own mailbox, e.g. a free Gmail app password) ---------- */
 const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;

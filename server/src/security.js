@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import { db, getJwtSecret } from './db.js';
+import { db, getJwtSecret, currentSlug } from './db.js';
 
 export const SESSION_COOKIE = 'bh_session';
 const SESSION_HOURS = 12;
@@ -75,7 +75,7 @@ setInterval(() => {
 
 /* ---------- Sessions ---------- */
 export function issueSession(res, user) {
-  const token = jwt.sign({ typ: 's', uid: user.id, sv: user.session_version }, JWT_SECRET, { expiresIn: `${SESSION_HOURS}h` });
+  const token = jwt.sign({ typ: 's', loc: currentSlug(), uid: user.id, sv: user.session_version }, JWT_SECRET, { expiresIn: `${SESSION_HOURS}h` });
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: IS_PROD,
@@ -94,6 +94,7 @@ export function userFromToken(token) {
   try {
     const p = jwt.verify(token, JWT_SECRET);
     if (p.typ && p.typ !== 's') return null;
+    if ((p.loc || 'main') !== currentSlug()) return null;
     const u = db.prepare('SELECT id, name, role, session_version, active FROM users WHERE id = ?').get(p.uid);
     if (!u || !u.active || u.session_version !== p.sv) return null;
     return { id: u.id, name: u.name, role: u.role };
@@ -119,7 +120,7 @@ export function requireAuth(minRole = 'staff') {
  * Combined with SameSite=Strict cookies.
  */
 export function csrfGuard(req, res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/stripe/webhook') return next();
   if (req.get('X-BuzzHub') !== '1') return res.status(403).json({ error: 'Bad request origin' });
   next();
 }
@@ -144,7 +145,7 @@ const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-timing', 12);
 export const burnCompare = (pw) => bcrypt.compare(pw, DUMMY_HASH);
 
 export function issueCustomerSession(res, c) {
-  const token = jwt.sign({ typ: 'c', cid: c.id, sv: c.session_version }, JWT_SECRET, { expiresIn: `${CUSTOMER_DAYS}d` });
+  const token = jwt.sign({ typ: 'c', loc: currentSlug(), cid: c.id, sv: c.session_version }, JWT_SECRET, { expiresIn: `${CUSTOMER_DAYS}d` });
   res.cookie(CUSTOMER_COOKIE, token, { httpOnly: true, secure: IS_PROD, sameSite: 'lax', maxAge: CUSTOMER_DAYS * 86400 * 1000, path: '/' });
 }
 export function clearCustomerSession(res) {
@@ -155,7 +156,7 @@ export function customerFromReq(req) {
   if (!token) return null;
   try {
     const p = jwt.verify(token, JWT_SECRET);
-    if (p.typ !== 'c') return null;
+    if (p.typ !== 'c' || (p.loc || 'main') !== currentSlug()) return null;
     const c = db.prepare('SELECT id, name, email, phone, session_version FROM customers WHERE id = ?').get(p.cid);
     if (!c || c.session_version !== p.sv) return null;
     return { id: c.id, name: c.name, email: c.email, phone: c.phone };
@@ -165,4 +166,9 @@ export function requireCustomer(req, res, next) {
   const c = customerFromReq(req);
   if (!c) return res.status(401).json({ error: 'Please sign in' });
   req.customer = c; next();
+}
+
+/** Location claim inside a cookie token, without trusting anything else in it. */
+export function locOfToken(token) {
+  try { const p = jwt.verify(token, JWT_SECRET); return p.loc || 'main'; } catch { return null; }
 }

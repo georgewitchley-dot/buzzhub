@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { api, applyAccent, connectStaff, playChime, useLenis } from '../lib.js';
+import { api, applyAccent, connectStaff, money, playChime, useLenis } from '../lib.js';
 import { Icon, Puck, useToast } from '../ui.jsx';
 import Lock from './Lock.jsx';
 import Setup from './Setup.jsx';
@@ -17,6 +17,7 @@ import Cash from './Cash.jsx';
 import Shifts from './Shifts.jsx';
 import Security from './Security.jsx';
 import { FeedbackAdmin } from './Feedback.jsx';
+import Locations, { switchLocation } from './Locations.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -41,6 +42,7 @@ export function useLive(scopes, fetcher, deps = []) {
 
 const NAV = [
   { to: '/', icon: 'home', label: 'Overview', end: true },
+  { to: '/locations', icon: 'pin', label: 'All locations', min: 'manager' },
   { to: '/waitlist', icon: 'list', label: 'Waitlist', count: true },
   { to: '/bookings', icon: 'calendar', label: 'Bookings', when: (s) => s?.booking_enabled === '1' },
   { to: '/floor', icon: 'floor', label: 'Floor', when: (s) => s?.business_type !== 'service' },
@@ -97,6 +99,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
   const [settings, setSettings] = useState(null);
   const [waitCount, setWaitCount] = useState(0);
   const [clock, setClock] = useState(() => new Date());
+  const [locs, setLocs] = useState(null);
+  useEffect(() => { if (RANK[user.role] >= RANK.manager) api('/staff/locations').then(setLocs).catch(() => {}); }, [user.role]);
   const scrollRef = useRef(null); const contentRef = useRef(null);
   useLenis(scrollRef, contentRef);
 
@@ -114,6 +118,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('guest:ack', ({ name }) => { playChime(); toast(`${name} is on the way`, 'ok'); });
     s.on('preorder:new', ({ name, count, updated }) => { playChime(); toast(`${name} ${updated ? 'changed their order' : `ordered ${count} item${count === 1 ? '' : 's'} ahead`}`, 'ok'); });
     s.on('preorder:fired', ({ number, table }) => toast(`Pre-order #${number} sent to make${table ? ` for ${table}` : ''}`, 'ok'));
+    s.on('paid:phone', ({ number, totalCents }) => { playChime(); toast(`Order #${number} paid by phone, ${money(totalCents, settings?.currency || 'USD')}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
     s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
@@ -141,6 +146,11 @@ function Shell({ user, business, onLock, reloadBusiness }) {
       <div className="shell">
         <aside className="rail">
           <div className="brand"><Puck state={waitCount ? 'buzzed' : 'waiting'} size={34} /><div><b>{settings?.business_name || business?.name}</b><small>Command center</small></div></div>
+          {locs?.locations.length > 1 && (
+            <select className="input loc-switch" value={locs.current} onChange={(e) => switchLocation(e.target.value).catch((x) => toast(x.message, 'err'))} aria-label="Switch location">
+              {locs.locations.map((l) => <option key={l.slug} value={l.slug}>{l.name}</option>)}
+            </select>
+          )}
           <nav className="nav">
             {nav.map((n) => (
               <NavLink key={n.to} to={n.to} end={n.end}><Icon name={n.icon} />{n.label}{n.count && waitCount > 0 && <span className="count">{waitCount}</span>}</NavLink>
@@ -171,6 +181,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="shifts" element={<Shifts />} />
                   {can('manager') && <Route path="reports" element={<Reports />} />}
                   {can('manager') && <Route path="feedback" element={<FeedbackAdmin />} />}
+                  {can('manager') && <Route path="locations" element={<Locations />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

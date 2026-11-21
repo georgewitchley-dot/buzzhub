@@ -5,7 +5,7 @@ import Aurora from '../bits/Aurora.jsx';
 import StarBorder from '../bits/StarBorder.jsx';
 import {
   api, applyAccent, connectGuest, enablePush, isIOS, isStandalone, money, playBuzz, playChime, pushSupported,
-  pushIsOn, registerSW, setManifest, unlockAudio, useLenis,
+  pushIsOn, registerSW, withLoc, setManifest, unlockAudio, useLenis,
 } from '../lib.js';
 
 const ACTIVE = ['waiting', 'buzzed', 'acknowledged'];
@@ -253,7 +253,7 @@ export default function Guest() {
           </div>
         )}
         {g.status === 'waiting' && !isOrder && <button className="btn ghost" onClick={leave}>Leave the list</button>}
-        {g.business.booking && !g.customer && <Link className="btn ghost sm" to="/account">Create an account to book ahead next time</Link>}
+        {g.business.booking && !g.customer && <Link className="btn ghost sm" to={withLoc('/account', g.business.slug)}>Create an account to book ahead next time</Link>}
       </main>
       {menuOpen && <MenuSheet token={token} g={g} onClose={() => setMenuOpen(false)} />}
     </div>

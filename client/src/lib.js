@@ -7,11 +7,23 @@ export class ApiError extends Error {
   constructor(msg, status, data) { super(msg); this.status = status; this.data = data; }
 }
 
+/* ---------- which location this screen is for ---------- */
+export function currentLoc() {
+  const fromUrl = new URLSearchParams(window.location.search).get('l');
+  if (fromUrl && /^[a-z0-9][a-z0-9-]{1,30}$/.test(fromUrl)) return fromUrl;
+  try { return localStorage.getItem('bh_loc') || ''; } catch { return ''; }
+}
+export function setLoc(slug) { try { if (slug && slug !== 'main') localStorage.setItem('bh_loc', slug); else localStorage.removeItem('bh_loc'); } catch { /* private mode */ } }
+/** Keep guest-facing links on the same location. */
+export const withLoc = (path, slug) => { const l = slug ?? currentLoc(); return l && l !== 'main' ? `${path}${path.includes('?') ? '&' : '?'}l=${l}` : path; };
+export const logoUrl = (version, slug) => withLoc(`/api/public/logo?v=${version}`, slug);
+
 export async function api(path, { method = 'GET', body, approval } = {}) {
+  const loc = currentLoc();
   const res = await fetch(`/api${path}`, {
     method,
     credentials: 'same-origin',
-    headers: { 'X-BuzzHub': '1', ...(approval ? { 'X-Approval': approval } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { 'X-BuzzHub': '1', ...(loc ? { 'X-Location': loc } : {}), ...(approval ? { 'X-Approval': approval } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -27,7 +39,7 @@ export async function api(path, { method = 'GET', body, approval } = {}) {
 }
 
 /* ---------- sockets ---------- */
-export const connectStaff = () => io({ withCredentials: true, transports: ['websocket', 'polling'] });
+export const connectStaff = () => io({ withCredentials: true, transports: ['websocket', 'polling'], auth: { loc: currentLoc() || undefined } });
 export const connectGuest = (guestToken) => io({ auth: { guestToken }, transports: ['websocket', 'polling'] });
 
 /* ---------- formatting ---------- */

@@ -2,14 +2,76 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
-fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(path.join(DATA_DIR, 'locations'), { recursive: true });
 
-export const db = new Database(path.join(DATA_DIR, 'buzzhub.db'));
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/* ======================================================================
+   One database per location. `db` always points at the current request's
+   location (AsyncLocalStorage), so feature code just uses `db` as before.
+   ====================================================================== */
+const als = new AsyncLocalStorage();
+const dbs = new Map();          // slug -> Database
+const tzOf = new WeakMap();     // Database -> { tz, fmt }
+const schemaFns = [];
+export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+export const currentSlug = () => als.getStore()?.slug || 'main';
+export const runIn = (slug, fn) => als.run({ slug }, fn);
 
+function fileFor(slug) { return slug === 'main' ? path.join(DATA_DIR, 'buzzhub.db') : path.join(DATA_DIR, 'locations', `${slug}.db`); }
+function setTzFor(d, tz) {
+  try { const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); tzOf.set(d, { tz, fmt }); } catch { /* keep old */ }
+}
+function openDatabase(slug) {
+  const d = new Database(fileFor(slug));
+  d.pragma('journal_mode = WAL');
+  d.pragma('foreign_keys = ON');
+  setTzFor(d, 'America/New_York');
+  d.function('localdate', { deterministic: false }, (ts) => (ts ? tzOf.get(d).fmt.format(new Date(`${String(ts).replace(' ', 'T')}Z`)) : null));
+  d.function('localtoday', { deterministic: false }, () => tzOf.get(d).fmt.format(new Date()));
+  dbs.set(slug, d);
+  for (const fn of schemaFns) fn(d);
+  const tzRow = d.prepare("SELECT value FROM settings WHERE key = 'timezone'").get();
+  setTzFor(d, tzRow?.value || process.env.TZ_DEFAULT || 'America/New_York');
+  return d;
+}
+function current() {
+  const slug = currentSlug();
+  return dbs.get(slug) || (slug === 'main' || locationExists(slug) ? openDatabase(slug) : dbs.get('main'));
+}
+/** Run every migration/table creation on every location, now and when new ones open. */
+export function registerSchema(fn) { schemaFns.push(fn); for (const d of dbs.values()) fn(d); }
+
+export const db = new Proxy({}, {
+  get(_, key) { const d = current(); const v = d[key]; return typeof v === 'function' ? v.bind(d) : v; },
+});
+
+export function locationExists(slug) {
+  if (slug === 'main') return true;
+  if (!SLUG_RE.test(slug)) return false;
+  const main = dbs.get('main');
+  return Boolean(main?.prepare('SELECT 1 FROM locations WHERE slug = ?').get(slug));
+}
+export function allSlugs() {
+  const main = dbs.get('main');
+  return ['main', ...main.prepare('SELECT slug FROM locations ORDER BY created_at').all().map((r) => r.slug)];
+}
+export function listLocations() {
+  return allSlugs().map((slug) => runIn(slug, () => ({ slug, name: getSettings().business_name, type: getSettings().business_type })));
+}
+/** Run fn once for each location (used by background jobs). */
+export async function forEachLocation(fn) {
+  for (const slug of allSlugs()) {
+    try { await runIn(slug, fn); } catch (e) { console.error(`[${slug}]`, e); }
+  }
+}
+export function createLocationDb(slug, name) {
+  dbs.get('main').prepare('INSERT INTO locations (slug, name) VALUES (?, ?)').run(slug, name);
+  openDatabase(slug);
+}
+
+registerSchema((db) => {
 db.exec(`
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
@@ -122,6 +184,7 @@ if (!hasCol('menu_items', 'guest_orderable')) {
 addCol('orders', 'source', "TEXT NOT NULL DEFAULT 'staff'");
 addCol('guests', 'customer_id', 'INTEGER');
 addCol('guests', 'booking_id', 'INTEGER');
+addCol('users', 'hub_key', 'TEXT');
 
 // orders.status needs a new 'held' state (guest pre-orders waiting for their table)
 const ordersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get()?.sql || '';
@@ -188,6 +251,9 @@ CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customer_id);
 CREATE TABLE IF NOT EXISTS assets (key TEXT PRIMARY KEY, mime TEXT NOT NULL, data BLOB NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 `);
 
+db.exec(`CREATE TABLE IF NOT EXISTS locations (slug TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+});
+
 /** Web Push VAPID keys: env vars, else generated once and kept in the data dir. */
 export function getVapidKeys(generate) {
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) return { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY };
@@ -235,16 +301,10 @@ const DEFAULTS = {
   review_url: '',
 };
 
-/* ---------- business-local dates inside SQL: localdate(ts) / localtoday() ---------- */
-let TZ = 'America/New_York';
-const dayFmt = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
-let fmt = dayFmt();
-export const currentTz = () => TZ;
-export const localDateOf = (ts) => (ts ? fmt.format(new Date(`${String(ts).replace(' ', 'T')}Z`)) : null);
-export const localToday = () => fmt.format(new Date());
-db.function('localdate', { deterministic: false }, (ts) => localDateOf(ts));
-db.function('localtoday', { deterministic: false }, () => localToday());
-function setTz(tz) { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); TZ = tz; fmt = dayFmt(); } catch { /* keep old */ } }
+/* ---------- business-local dates (per location) ---------- */
+export const currentTz = () => tzOf.get(current())?.tz || 'America/New_York';
+export const localDateOf = (ts) => (ts ? tzOf.get(current()).fmt.format(new Date(`${String(ts).replace(' ', 'T')}Z`)) : null);
+export const localToday = () => tzOf.get(current()).fmt.format(new Date());
 
 export function getSettings() {
   const rows = db.prepare('SELECT key, value FROM settings').all();
@@ -257,7 +317,7 @@ export function setSettings(obj) {
   const stmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
   const tx = db.transaction((o) => { for (const [k, v] of Object.entries(o)) stmt.run(k, String(v)); });
   tx(obj);
-  if (obj.timezone) setTz(obj.timezone);
+  if (obj.timezone) setTzFor(current(), obj.timezone);
 }
 
 /** JWT signing secret: env var, else generated once and persisted in the data dir. */
@@ -312,4 +372,5 @@ export function seedDemoData(businessType) {
   }
 }
 
-setTz(getSettings().timezone);
+// open the main location now
+openDatabase('main');

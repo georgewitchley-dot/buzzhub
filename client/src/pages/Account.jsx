@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Aurora from '../bits/Aurora.jsx';
-import { api, applyAccent, enablePush, fmtSlot, isIOS, isStandalone, money, pushIsOn, registerSW, setManifest, useLenis } from '../lib.js';
+import { api, applyAccent, enablePush, fmtSlot, isIOS, isStandalone, money, pushIsOn, registerSW, setManifest, useLenis, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 
 function AuthForm({ onIn }) {
@@ -128,7 +128,7 @@ export default function Account() {
           <>
             <div style={{ display: 'grid', gap: 8 }}><h1>{biz.name}</h1><p>Create a free account to book ahead, get a reminder before your time, and check in from your phone when you arrive.</p></div>
             <AuthForm onIn={setMe} />
-            {biz.selfCheckin && <Link className="btn ghost" to="/join">Just walking in? Join the line without an account</Link>}
+            {biz.selfCheckin && <Link className="btn ghost" to={withLoc('/join')}>Just walking in? Join the line without an account</Link>}
           </>
         ) : (
           <>
@@ -178,7 +178,7 @@ export default function Account() {
 
             {info?.enabled ? (
               <div className="card"><b>Book a time</b><Booker info={info} onBooked={() => { loadBookings(); setMsg('Booked! You can find it under Your bookings.'); }} /></div>
-            ) : <div className="card"><b>Online booking is off</b><span className="muted" style={{ fontSize: 14 }}>You can still check in when you arrive.</span>{biz.selfCheckin && <Link className="btn block" to="/join">Check in now</Link>}</div>}
+            ) : <div className="card"><b>Online booking is off</b><span className="muted" style={{ fontSize: 14 }}>You can still check in when you arrive.</span>{biz.selfCheckin && <Link className="btn block" to={withLoc('/join')}>Check in now</Link>}</div>}
 
             {past.length > 0 && (
               <div className="card"><b>Past visits</b>{past.slice(0, 5).map((b) => { const f = fmtSlot(b.start); return <div key={b.id} className="row muted" style={{ fontSize: 14 }}><span className="grow">{f.day}, {f.time}{b.service ? `, ${b.service}` : ''}</span><span>{{ done: 'Done', cancelled: 'Cancelled', noshow: 'Missed' }[b.status]}</span></div>; })}</div>

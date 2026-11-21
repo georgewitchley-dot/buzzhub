@@ -40,6 +40,11 @@ Read this first, then `README.md`. Everything you need to continue is in this re
 - Optional SMTP email alerts (`notify.js`).
 - Migrations in `db.js` are idempotent and rebuild `orders` to allow 'held'. Tested against an older database.
 
+## 3c. Round 3 (2026-11-21): all 10 upgrades
+New server modules: `ops.js` (kitchen, reports, cash, shifts), `guard.js` (TOTP, devices, approvals, refunds, staff push), `growth.js` (smart waits, loyalty, feedback), `floorpay.js` (floor layout, Stripe Checkout + webhook), `locations.js` (multi-location).
+- **Multi-location design:** `db.js` exports `db` as a Proxy to the current location's SQLite file (`DATA_DIR/buzzhub.db` = 'main', `DATA_DIR/locations/<slug>.db` for others), chosen per request by AsyncLocalStorage in `locationMiddleware`. The order is guest/feedback/pay token lookup, then the `X-Location` header, `?l=`, the session `loc` claim, the `bh_loc` cookie, then 'main'. Migrations must use `registerSchema((db) => …)` so they run for every location. Background jobs use `forEachLocation`. Socket.IO rooms are prefixed `<slug>:` via the patched `io.to` / `io.emit`. All JWTs carry `loc`. The same person across locations is linked by `users.hub_key`.
+- 'Today' is the business's local day everywhere (SQL `localdate()` / `localtoday()`).
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

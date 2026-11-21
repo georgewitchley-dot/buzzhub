@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib.js';
+import { api, logoUrl } from '../lib.js';
 import { Icon, Modal } from '../ui.jsx';
 
 /** Printable door sign: QR with the business logo in the middle (QR uses high error correction so it still scans). */
 export function PrintSign({ settings, onClose }) {
   const [qr, setQr] = useState(null);
   useEffect(() => { api('/staff/join-qr').then(setQr); }, []);
-  const logo = settings.logo_version && settings.logo_version !== '0' ? `/api/public/logo?v=${settings.logo_version}` : null;
+  const logo = settings.logo_version && settings.logo_version !== '0' ? logoUrl(settings.logo_version) : null;
   const service = settings.business_type === 'service';
   const lines = [
     service ? 'Check in and we\'ll buzz your phone when we\'re ready for you.' : 'Get a buzz on your phone when your table is ready.',

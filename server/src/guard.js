@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import QRCode from 'qrcode';
 import { z } from 'zod';
-import { db, getSettings, setSettings, audit, getJwtSecret } from './db.js';
+import { db, getSettings, setSettings, audit, getJwtSecret, registerSchema, forEachLocation, currentSlug } from './db.js';
 import { ROLE_RANK, SESSION_COOKIE, userFromToken } from './security.js';
 
 const SECRET = getJwtSecret();
@@ -13,6 +13,7 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 const KEY = crypto.createHash('sha256').update(`buzzhub-totp:${SECRET}`).digest();
 
 /* ---------- schema ---------- */
+registerSchema((db) => {
 const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
 if (!cols('users').includes('totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
 if (!cols('users').includes('totp_enabled')) db.exec('ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0');
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS refunds (
 );
 `);
 
+});
 /* ---------- AES-GCM for TOTP secrets at rest ---------- */
 const seal = (plain) => { const iv = crypto.randomBytes(12); const c = crypto.createCipheriv('aes-256-gcm', KEY, iv); const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]); return [iv, c.getAuthTag(), enc].map((b) => b.toString('base64url')).join('.'); };
 const open = (box) => { const [iv, tag, enc] = box.split('.').map((s) => Buffer.from(s, 'base64url')); const d = crypto.createDecipheriv('aes-256-gcm', KEY, iv); d.setAuthTag(tag); return Buffer.concat([d.update(enc), d.final()]).toString('utf8'); };
@@ -88,7 +90,7 @@ const deviceLabel = (ua = '') => {
 };
 
 // forget device requests nobody approved within 14 days
-setInterval(() => db.prepare("DELETE FROM devices WHERE status = 'pending' AND COALESCE(last_seen, created_at) < datetime('now','-14 days')").run(), 6 * 3600_000).unref();
+setInterval(() => forEachLocation(() => db.prepare("DELETE FROM devices WHERE status = 'pending' AND COALESCE(last_seen, created_at) < datetime('now','-14 days')").run()), 6 * 3600_000).unref();
 
 export function registerGuard({ app, staff, io, h }) {
   const { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers } = h;
@@ -108,8 +110,8 @@ export function registerGuard({ app, staff, io, h }) {
   h.alertOwners = alertOwners;
 
   /* ---------- the login gate: device approval + two-step ---------- */
-  const trustOk = (req, uid) => { try { const p = jwt.verify(req.cookies?.[TRUST_COOKIE] || '', SECRET); return p.typ === '2fa' && p.uid === uid; } catch { return false; } };
-  const grantTrust = (res, uid) => res.cookie(TRUST_COOKIE, jwt.sign({ typ: '2fa', uid }, SECRET, { expiresIn: '12h' }), { httpOnly: true, secure: IS_PROD, sameSite: 'strict', maxAge: 12 * 3600 * 1000, path: '/' });
+  const trustOk = (req, uid) => { try { const p = jwt.verify(req.cookies?.[TRUST_COOKIE] || '', SECRET); return p.typ === '2fa' && p.uid === uid && (p.loc || 'main') === currentSlug(); } catch { return false; } };
+  const grantTrust = (res, uid) => res.cookie(TRUST_COOKIE, jwt.sign({ typ: '2fa', loc: currentSlug(), uid }, SECRET, { expiresIn: '12h' }), { httpOnly: true, secure: IS_PROD, sameSite: 'strict', maxAge: 12 * 3600 * 1000, path: '/' });
 
   function deviceRow(req, res) {
     const did = deviceIdOf(req, res);
@@ -130,7 +132,7 @@ export function registerGuard({ app, staff, io, h }) {
     const needs2fa = user.totp_enabled && ROLE_RANK[user.role] >= ROLE_RANK.manager && !trustOk(req, user.id);
     if (needs2fa) {
       if (!secondFactor) {
-        const ticket = jwt.sign({ typ: '2fa-ticket', uid: user.id }, SECRET, { expiresIn: '5m' });
+        const ticket = jwt.sign({ typ: '2fa-ticket', loc: currentSlug(), uid: user.id }, SECRET, { expiresIn: '5m' });
         res.json({ needs2fa: true, ticket, name: user.name });
         return false;
       }
@@ -159,7 +161,7 @@ export function registerGuard({ app, staff, io, h }) {
   app.post('/api/auth/2fa', authLimiter, wrap(async (req, res) => {
     const { ticket, code } = parse(z.object({ ticket: z.string().max(600), code: z.string().max(20) }), req.body);
     let p; try { p = jwt.verify(ticket, SECRET); } catch { return res.status(401).json({ error: 'That took too long. Enter your PIN again.' }); }
-    if (p.typ !== '2fa-ticket') return res.status(401).json({ error: 'Enter your PIN again.' });
+    if (p.typ !== '2fa-ticket' || (p.loc || 'main') !== currentSlug()) return res.status(401).json({ error: 'Enter your PIN again.' });
     const user = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(p.uid);
     if (!user) return res.status(401).json({ error: 'Enter your PIN again.' });
     if (!h.authGate(req, res, user, { secondFactor: code })) return;
@@ -259,7 +261,7 @@ export function registerGuard({ app, staff, io, h }) {
     if (!approver) { recordLoginFail(ip); h.onBadPin(ip); audit(req.user, 'approve.fail', ACTIONS[action], ip); return res.status(401).json({ error: 'Wrong PIN' }); }
     if (ROLE_RANK[approver.role] < ROLE_RANK.manager) return res.status(403).json({ error: `${approver.name} can't approve this. A manager or owner has to.` });
     clearLoginFails(ip);
-    const token = jwt.sign({ typ: 'approval', act: action, by: approver.id, for: req.user.id, ref: ref || null }, SECRET, { expiresIn: '2m' });
+    const token = jwt.sign({ typ: 'approval', loc: currentSlug(), act: action, by: approver.id, for: req.user.id, ref: ref || null }, SECRET, { expiresIn: '2m' });
     audit(req.user, 'approve.ok', `${ACTIONS[action]} approved by ${approver.name}`, ip);
     res.json({ token, by: approver.name });
   }));
@@ -268,7 +270,7 @@ export function registerGuard({ app, staff, io, h }) {
   h.hasApproval = (req, action) => {
     try {
       const p = jwt.verify(req.get('X-Approval') || '', SECRET);
-      if (p.typ === 'approval' && p.act === action && p.for === req.user?.id) return db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(p.by);
+      if (p.typ === 'approval' && (p.loc || 'main') === currentSlug() && p.act === action && p.for === req.user?.id) return db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(p.by);
     } catch { /* none */ }
     return null;
   };
@@ -279,7 +281,7 @@ export function registerGuard({ app, staff, io, h }) {
     if (ROLE_RANK[user.role] >= ROLE_RANK.manager) return next();
     try {
       const p = jwt.verify(req.get('X-Approval') || '', SECRET);
-      if (p.typ === 'approval' && p.act === action && p.for === user.id) { req.approvedBy = db.prepare('SELECT id, name FROM users WHERE id = ?').get(p.by); return next(); }
+      if (p.typ === 'approval' && (p.loc || 'main') === currentSlug() && p.act === action && p.for === user.id) { req.approvedBy = db.prepare('SELECT id, name FROM users WHERE id = ?').get(p.by); return next(); }
     } catch { /* fall through */ }
     res.status(403).json({ error: 'A manager needs to approve this', needsApproval: action });
   };

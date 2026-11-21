@@ -1,9 +1,10 @@
 // Batch 3: wait times learned from real data, loyalty rewards, post-visit feedback.
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import { db, getSettings, audit } from './db.js';
+import { db, getSettings, audit, registerSchema, forEachLocation, currentSlug } from './db.js';
 import { pushToGuest, pushToCustomer, emailEnabled, emailGuest } from './notify.js';
 
+registerSchema((db) => {
 const cols = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
 if (!cols('guests').includes('ahead_at_join')) db.exec('ALTER TABLE guests ADD COLUMN ahead_at_join INTEGER');
 if (!cols('customers').includes('visits')) db.exec('ALTER TABLE customers ADD COLUMN visits INTEGER NOT NULL DEFAULT 0');
@@ -19,11 +20,13 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 `);
 
+});
 /* ================= Smart wait times ================= */
 // Minutes per place in line, learned from the last 60 days. Buckets by party size and time of day.
 const sizeBucket = (n) => (n <= 2 ? 's' : n <= 4 ? 'm' : n <= 6 ? 'l' : 'xl');
 const partBucket = (h) => (h >= 11 && h < 15 ? 'lunch' : h >= 17 && h < 22 ? 'dinner' : 'other');
-let model = { at: 0, buckets: {}, overall: null, samples: 0 };
+const models = new Map(); // per location
+const getModel = () => models.get(currentSlug()) || { at: 0, buckets: {}, overall: null, samples: 0 };
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
 function rebuild() {
@@ -40,7 +43,7 @@ function rebuild() {
   }
   const out = {};
   for (const [k, v] of Object.entries(buckets)) if (v.length >= 8) out[k] = median(v);
-  model = { at: Date.now(), buckets: out, overall: all.length >= 8 ? median(all) : null, samples: all.length };
+  models.set(currentSlug(), { at: Date.now(), buckets: out, overall: all.length >= 8 ? median(all) : null, samples: all.length });
 }
 
 /** Estimated minutes for someone at `pos` (1 = next). Falls back to the business's setting until there's enough data. */
@@ -48,13 +51,14 @@ export function smartEstimate(pos, partySize, s = getSettings()) {
   if (!pos) return 0;
   const fallback = Number(s.avg_turn_minutes || 10);
   if (s.smart_waits !== '1') return Math.max(1, pos * fallback);
-  if (Date.now() - model.at > 10 * 60_000) rebuild();
+  if (Date.now() - getModel().at > 10 * 60_000) rebuild();
+  const model = getModel();
   const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: s.timezone, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
   const sb = sizeBucket(partySize || 2); const pb = partBucket(h);
   const per = model.buckets[`${sb}:${pb}`] ?? model.buckets[`${sb}:*`] ?? model.buckets[`*:${pb}`] ?? model.overall ?? fallback;
   return Math.max(1, Math.round(pos * per));
 }
-export const waitModelInfo = () => { if (Date.now() - model.at > 10 * 60_000) rebuild(); return { samples: model.samples, learned: model.overall !== null, perPlace: model.overall ? Math.round(model.overall * 10) / 10 : null }; };
+export const waitModelInfo = () => { if (Date.now() - getModel().at > 10 * 60_000) rebuild(); const model = getModel(); return { samples: model.samples, learned: model.overall !== null, perPlace: model.overall ? Math.round(model.overall * 10) / 10 : null }; };
 
 export function registerGrowth({ app, staff, io, h }) {
   const { parse, idParam, now, clientIp, requireAuth, notifyStaff, requireCustomer, publicLimiter, alertOwners } = h;
@@ -113,7 +117,7 @@ export function registerGrowth({ app, staff, io, h }) {
     db.prepare('INSERT OR IGNORE INTO feedback (guest_id, customer_id, token, send_after) VALUES (?, ?, ?, ?)').run(g.id, g.customer_id || null, crypto.randomBytes(16).toString('base64url'), at);
   };
 
-  setInterval(async () => {
+  setInterval(() => forEachLocation(async () => {
     try {
       const s = getSettings();
       if (s.feedback_enabled !== '1') return;
@@ -125,13 +129,13 @@ export function registerGrowth({ app, staff, io, h }) {
         if (f.email && emailEnabled()) await emailGuest(f.email, { businessName: s.business_name, subject: 'How was your visit?', message: payload.body, link: `${process.env.PUBLIC_URL || ''}/f/${f.token}`, accent: s.accent }).catch(() => {});
       }
     } catch (e) { console.error('feedback', e); }
-  }, 60_000).unref();
+  }), 60_000).unref();
 
   const fbByToken = (t) => (/^[A-Za-z0-9_-]{20,30}$/.test(t) ? db.prepare('SELECT f.*, g.name FROM feedback f JOIN guests g ON g.id = f.guest_id WHERE f.token = ?').get(t) : null);
   app.get('/api/f/:token', publicLimiter, (req, res) => {
     const f = fbByToken(req.params.token); if (!f) return res.status(404).json({ error: 'This link is not valid.' });
     const s = getSettings();
-    res.json({ name: f.name.split(' ')[0], rating: f.rating, done: Boolean(f.responded_at), business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?v=${s.logo_version}` : null },
+    res.json({ name: f.name.split(' ')[0], rating: f.rating, done: Boolean(f.responded_at), business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
       reviewUrl: s.review_url || null, threshold: Number(s.feedback_review_threshold || 4) });
   });
   app.post('/api/f/:token', publicLimiter, (req, res) => {

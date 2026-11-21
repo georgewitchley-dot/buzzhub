@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Aurora from '../bits/Aurora.jsx';
-import { api, applyAccent } from '../lib.js';
+import { api, applyAccent, withLoc } from '../lib.js';
 import { Puck } from '../ui.jsx';
 
 const REMEMBER = 'bh_guest_profile';
@@ -41,7 +41,7 @@ export default function Join() {
           <p>{biz.waiting ? `${biz.waiting} ${biz.waiting === 1 ? 'party' : 'parties'} ahead of you, about ${biz.waiting * biz.avgTurn} minutes.` : 'No wait right now.'} Your phone becomes your buzzer.</p>
         </div>
         {biz.booking && (
-          <Link className="btn lg block" to="/account">{me ? `Book a time, ${me.name.split(' ')[0]}` : 'Book an appointment instead'}</Link>
+          <Link className="btn lg block" to={withLoc('/account')}>{me ? `Book a time, ${me.name.split(' ')[0]}` : 'Book an appointment instead'}</Link>
         )}
         {!biz.selfCheckin ? <p>Walk-in check-in is off right now. Please see the front desk.</p> : (
           <form className="card" onSubmit={submit}>
@@ -57,7 +57,7 @@ export default function Join() {
             <span className="dim" style={{ fontSize: 13 }}>Next you'll turn on alerts so your phone buzzes when it's your turn. No app download.</span>
           </form>
         )}
-        {!me && biz.booking && <Link className="btn ghost sm" to="/account">Already have an account? Sign in</Link>}
+        {!me && biz.booking && <Link className="btn ghost sm" to={withLoc('/account')}>Already have an account? Sign in</Link>}
       </main>
     </div>
   );
