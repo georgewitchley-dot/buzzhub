@@ -20,6 +20,7 @@ import { registerOps } from './ops.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
+import { registerCommerce, priceLines, insertOrder, lineSchema, returnStock, dueOf, menuWithMods } from './commerce.js';
 import { registerGrowth, smartEstimate, waitModelInfo } from './growth.js';
 const G = {}; // filled by registerGuard: authGate, managerOr, hasApproval, onBadPin, alertOwners
 import { VAPID_PUBLIC_KEY, saveSubscription, pushToGuest, pushToCustomer, pushToUsers, devicesForGuest, forgetGuestDevices, emailEnabled, emailGuest } from './notify.js';
@@ -405,7 +406,7 @@ app.get('/api/g/:token/menu', publicLimiter, (req, res) => {
   const g = guestByToken(req.params.token);
   if (!g) return res.status(404).json({ error: 'Not found' });
   const s = getSettings();
-  const items = db.prepare('SELECT id, name, category, price_cents, color FROM menu_items WHERE active = 1 AND guest_orderable = 1 ORDER BY sort, id').all();
+  const items = menuWithMods({ where: 'active = 1 AND guest_orderable = 1' }).map(({ stock, low_stock, guest_orderable, active, ...m }) => m);
   res.json({ items, currency: s.currency, taxRate: Number(s.tax_rate) });
 });
 
@@ -415,29 +416,15 @@ app.post('/api/g/:token/preorder', orderLimiter, (req, res) => {
   const s = getSettings();
   const win = preorderWindow(g, s, queueFor(g.kind).indexOf(g.id) + 1);
   if (!win.open) return res.status(409).json({ error: win.enabled ? `Ordering opens in about ${win.opensInMinutes} minutes.` : 'Ordering ahead is not available.' });
-  const body = parse(z.object({ items: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(12), note: z.string().trim().max(80).optional() })).min(1).max(20) }), req.body);
-  const byId = new Map(db.prepare('SELECT * FROM menu_items WHERE active = 1 AND guest_orderable = 1').all().map((m) => [m.id, m]));
-  const lines = body.items.map((i) => { const m = byId.get(i.itemId); if (!m) { const e = new Error('An item is no longer available'); e.status = 400; throw e; } return { m, qty: i.qty, note: i.note || null }; });
+  const body = parse(z.object({ items: z.array(lineSchema).min(1).max(20) }), req.body);
+  const lines = priceLines(body.items, { guestOnly: true });
   if (lines.reduce((a, l) => a + l.qty, 0) > Math.max(12, g.party_size * 4)) return res.status(400).json({ error: 'That is a lot for one party. Please order the rest at your table.' });
   const existing = db.prepare("SELECT * FROM orders WHERE guest_id = ? AND source = 'guest' AND status <> 'void' ORDER BY id DESC LIMIT 1").get(g.id);
   if (existing && existing.status !== 'held') return res.status(409).json({ error: 'Your order is already being made. Please add more with your server.' });
-  const subtotal = lines.reduce((a, l) => a + l.qty * l.m.price_cents, 0);
-  const tax = Math.round(subtotal * Number(s.tax_rate) / 100);
-  const id = db.transaction(() => {
-    let orderId = existing?.id;
-    if (orderId) {
-      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
-      db.prepare('UPDATE orders SET subtotal_cents=?, tax_cents=?, total_cents=? WHERE id=?').run(subtotal, tax, subtotal + tax, orderId);
-    } else {
-      const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE localdate(created_at) = localtoday()").get().n || 100) + 1;
-      orderId = db.prepare("INSERT INTO orders (number, status, guest_id, customer_name, subtotal_cents, tax_cents, total_cents, source) VALUES (?, 'held', ?, ?, ?, ?, ?, 'guest')")
-        .run(number, g.id, g.name, subtotal, tax, subtotal + tax).lastInsertRowid;
-    }
-    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const l of lines) ins.run(orderId, l.m.id, l.m.name, l.qty, l.m.price_cents, l.note);
-    return orderId;
-  })();
-  audit(null, existing ? 'preorder.update' : 'preorder.create', `${g.name} (#${g.id}) — ${lines.map((l) => `${l.qty}× ${l.m.name}`).join(', ')}`, clientIp(req));
+  if (existing) { db.prepare("UPDATE orders SET status = 'void' WHERE id = ?").run(existing.id); returnStock(existing.id, null); }
+  const made = insertOrder({ lines, status: 'held', source: 'guest', guestId: g.id, customerName: g.name });
+  const id = made.id;
+  audit(null, existing ? 'preorder.update' : 'preorder.create', `${g.name} (#${g.id}) — ${lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}`, clientIp(req));
   io.to('staff').emit('preorder:new', { name: g.name, count: lines.reduce((a, l) => a + l.qty, 0), updated: Boolean(existing) });
   // if their table is already called, start it right away
   if (g.status !== 'waiting' && g.table_id) fireHeldPreorder(g.id, g.table_id);
@@ -521,6 +508,15 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     feedback_delay_minutes: z.coerce.number().int().min(5).max(1440),
     feedback_review_threshold: z.coerce.number().int().min(3).max(5),
     review_url: z.string().trim().max(300).refine((u) => u === '' || /^https:\/\//.test(u), 'Review link must start with https://'),
+    online_enabled: z.union([z.literal('0'), z.literal('1')]),
+    online_pickup: z.union([z.literal('0'), z.literal('1')]),
+    online_delivery: z.union([z.literal('0'), z.literal('1')]),
+    delivery_fee_cents: z.coerce.number().int().min(0).max(10000),
+    delivery_min_cents: z.coerce.number().int().min(0).max(100000),
+    delivery_area: z.string().trim().max(120),
+    online_prep_minutes: z.coerce.number().int().min(1).max(180),
+    online_pay_later: z.union([z.literal('0'), z.literal('1')]),
+    table_ordering: z.union([z.literal('0'), z.literal('1')]),
   }).partial(), req.body);
   setSettings(body);
   audit(req.user, 'settings.update', Object.keys(body).join(', '), clientIp(req));
@@ -535,12 +531,12 @@ staff.get('/dashboard', (req, res) => {
   const waiting = db.prepare("SELECT COUNT(*) c FROM guests WHERE kind='table' AND status IN ('waiting','buzzed','acknowledged')").get().c;
   const seatedToday = db.prepare(`SELECT COUNT(*) c, COALESCE(SUM(party_size),0) covers FROM guests WHERE status IN ('seated','done') AND ${today}`).get();
   const avgWait = db.prepare(`SELECT AVG((julianday(seated_at) - julianday(created_at)) * 1440) m FROM guests WHERE seated_at IS NOT NULL AND ${today}`).get().m;
-  const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) total, COUNT(*) n, COALESCE(SUM(tip_cents),0) tips FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday()").get();
+  const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) total, COUNT(*) n, COALESCE(SUM(tip_cents),0) tips FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND localdate(paid_at) = localtoday()").get();
   const openOrders = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('open','sent','ready')").get().c;
   const tables = db.prepare('SELECT status, COUNT(*) c FROM tables GROUP BY status').all();
   const buzzesToday = db.prepare(`SELECT COALESCE(SUM(buzz_count),0) c FROM guests WHERE ${today}`).get().c;
-  const hourly = db.prepare("SELECT CAST(strftime('%H', paid_at) AS INTEGER) h, SUM(total_cents) t FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday() GROUP BY h").all();
-  const top = db.prepare("SELECT oi.name, SUM(oi.qty) q FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status='paid' AND localdate(o.paid_at) = localtoday() GROUP BY oi.name ORDER BY q DESC LIMIT 5").all();
+  const hourly = db.prepare("SELECT CAST(strftime('%H', paid_at) AS INTEGER) h, SUM(total_cents) t FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND localdate(paid_at) = localtoday() GROUP BY h").all();
+  const top = db.prepare("SELECT oi.name, SUM(oi.qty) q FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.paid_at IS NOT NULL AND o.status <> 'void' AND localdate(o.paid_at) = localtoday() GROUP BY oi.name ORDER BY q DESC LIMIT 5").all();
   const activity = db.prepare('SELECT ts, user_name, action, detail FROM audit ORDER BY id DESC LIMIT 12').all();
   const rating7 = db.prepare("SELECT AVG(rating) a, COUNT(rating) n FROM feedback WHERE responded_at > datetime('now','-7 days')").get();
   res.json({ rating7: rating7.a ? Math.round(rating7.a * 10) / 10 : null, ratings7: rating7.n, waitModel: waitModelInfo(), waiting, seatedToday: seatedToday.c, coversToday: seatedToday.covers, avgWait: avgWait ? Math.round(avgWait) : 0, salesCents: sales.total, ordersPaid: sales.n, tipsCents: sales.tips, openOrders, tables, buzzesToday, hourly, top, activity });
@@ -652,6 +648,7 @@ staff.post('/guests/:id/seat', (req, res) => {
   });
   tx();
   const fired = g.kind === 'table' ? fireHeldPreorder(id, tid) : null;
+  if (g.kind === 'order' && g.order_id) db.prepare("UPDATE orders SET status='paid' WHERE id=? AND prepaid=1 AND status IN ('ready','sent','open')").run(g.order_id);
   Promise.resolve(G.countVisit?.(g.customer_id)).catch(() => {});
   G.scheduleFeedback?.(id);
   if (g.booking_id) db.prepare("UPDATE bookings SET status='done' WHERE id=?").run(g.booking_id);
@@ -725,16 +722,10 @@ staff.delete('/menu/:id', requireAuth('manager'), (req, res) => {
 });
 
 /* ---- orders / POS ---- */
-function priceItems(items) {
-  const byId = new Map(db.prepare('SELECT * FROM menu_items WHERE active=1').all().map((m) => [m.id, m]));
-  return items.map((i) => {
-    const m = byId.get(i.itemId);
-    if (!m) { const e = new Error('An item is no longer on the menu'); e.status = 400; throw e; }
-    return { item_id: m.id, name: m.name, qty: i.qty, price_cents: m.price_cents, note: i.note || null }; // prices always from server
-  });
-}
 const orderSchema = z.object({
-  items: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(1).max(99), note: z.string().max(80).optional() })).min(1).max(100),
+  items: z.array(lineSchema).min(1).max(100),
+  clientKey: z.string().regex(/^[A-Za-z0-9_-]{8,40}$/).optional(),
+  promoCode: z.string().trim().max(30).optional(),
   tableId: z.number().int().nullable().optional(),
   customerName: z.string().trim().max(40).optional(),
   discountPct: z.number().min(0).max(100).optional(),
@@ -746,20 +737,14 @@ staff.post('/orders', wrap(async (req, res) => {
   const b = parse(orderSchema, req.body);
   const discountApprover = (b.discountPct || 0) > 10 && ROLE_RANK[req.user.role] < ROLE_RANK.manager ? G.hasApproval(req, 'discount') : null;
   if ((b.discountPct || 0) > 10 && ROLE_RANK[req.user.role] < ROLE_RANK.manager && !discountApprover) return res.status(403).json({ error: 'Discounts over 10% need a manager to approve', needsApproval: 'discount' });
-  const lines = priceItems(b.items);
-  const s = getSettings();
+  const lines = priceLines(b.items);
   const subtotal = lines.reduce((a, l) => a + l.qty * l.price_cents, 0);
-  const discount = Math.round(subtotal * (b.discountPct || 0) / 100);
-  const tax = Math.round((subtotal - discount) * Number(s.tax_rate) / 100);
-  const number = (db.prepare("SELECT MAX(number) n FROM orders WHERE localdate(created_at) = localtoday()").get().n || 100) + 1;
-  const tx = db.transaction(() => {
-    const info = db.prepare("INSERT INTO orders (number, status, table_id, customer_name, subtotal_cents, tax_cents, discount_cents, total_cents, created_by, sent_at) VALUES (?, 'sent', ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(number, b.tableId || null, b.customerName || null, subtotal, tax, discount, subtotal - discount + tax, req.user.id, now());
-    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note) VALUES (?, ?, ?, ?, ?, ?)');
-    for (const l of lines) ins.run(info.lastInsertRowid, l.item_id, l.name, l.qty, l.price_cents, l.note);
-    return info.lastInsertRowid;
-  });
-  const orderId = tx();
+  let discount = Math.round(subtotal * (b.discountPct || 0) / 100);
+  const promo = b.promoCode && G.promoDiscount ? G.promoDiscount(b.promoCode, subtotal) : null;
+  if (promo) discount = Math.max(discount, promo.cents);
+  const made = insertOrder({ lines, status: 'sent', source: 'staff', tableId: b.tableId || null, customerName: b.customerName || null, createdBy: req.user.id, discountCents: discount, promoCode: promo?.code || null, clientKey: b.clientKey || null });
+  if (made.duplicate) return res.json({ id: made.id, number: made.number, duplicate: true });
+  const orderId = made.id; const number = made.number;
   let buzzer = null;
   if (b.attachBuzzer) {
     const g = createGuest({ kind: 'order', name: b.customerName || `Order ${number}`, phone: b.phone, party_size: 1, order_id: orderId });
@@ -782,12 +767,14 @@ staff.get('/orders', (req, res) => {
 staff.post('/orders/:id/ready', wrap(async (req, res) => {
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
   if (!o || !['held', 'open', 'sent'].includes(o.status)) return res.status(409).json({ error: 'Order not in progress' });
-  db.prepare("UPDATE orders SET status='ready', ready_at=? WHERE id=?").run(now(), o.id);
+  const pickupGuest = o.guest_id ? db.prepare('SELECT kind FROM guests WHERE id=?').get(o.guest_id)?.kind === 'order' : false;
+  db.prepare("UPDATE orders SET status=?, ready_at=? WHERE id=?").run(o.prepaid && !pickupGuest ? 'paid' : 'ready', now(), o.id);
   audit(req.user, 'order.ready', `#${o.number}`, clientIp(req));
   let buzz = null;
   if (o.guest_id && o.source !== 'guest') {
     const g = db.prepare('SELECT * FROM guests WHERE id=?').get(o.guest_id);
-    if (g && g.kind === 'order' && ACTIVE.includes(g.status)) buzz = await buzzGuest(g, null, req.user, clientIp(req));
+    const msg = o.fulfillment === 'delivery' ? `Order #${o.number} is on its way to you!` : null;
+    if (g && g.kind === 'order' && ACTIVE.includes(g.status)) buzz = await buzzGuest(g, msg, req.user, clientIp(req));
   }
   notifyStaff('orders');
   res.json({ ok: true, buzz });
@@ -809,19 +796,25 @@ staff.post('/orders/:id/pay', (req, res) => {
   if (!o || ['paid', 'void'].includes(o.status)) return res.status(409).json({ error: 'Order already closed' });
   if (o.guest_id) setTimeout(() => pushGuest(o.guest_id), 0);
   const tip = b.tipCents || 0;
-  const total = o.subtotal_cents - o.discount_cents + o.tax_cents + tip;
-  if (b.method === 'cash' && b.tenderedCents !== undefined && b.tenderedCents < total) return res.status(400).json({ error: 'Not enough cash tendered' });
-  db.prepare("UPDATE orders SET status='paid', tip_cents=?, total_cents=?, payment_method=?, paid_at=? WHERE id=?").run(tip, total, b.method, now(), id);
+  if (o.prepaid) return res.status(409).json({ error: 'This order was already paid online' });
+  const total = o.subtotal_cents - o.discount_cents + o.tax_cents + (o.fee_cents || 0) + tip;
+  const owed = dueOf(o) + tip;
+  if (b.method === 'cash' && b.tenderedCents !== undefined && b.tenderedCents < owed) return res.status(400).json({ error: 'Not enough cash tendered' });
+  // still being made → stays on the kitchen screen as paid; closes when served or picked up
+  const stillCooking = ['sent', 'open', 'held'].includes(o.status);
+  db.prepare(`UPDATE orders SET status=?, prepaid=?, tip_cents=?, total_cents=?, payment_method=?, paid_at=?, sent_at=COALESCE(sent_at, ?) WHERE id=?`)
+    .run(stillCooking ? (o.status === 'held' ? 'sent' : o.status) : 'paid', stillCooking ? 1 : 0, tip, total, o.gift_cents ? `${b.method}+gift` : b.method, now(), now(), id);
   if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='done', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); pushGuest(o.guest_id); }
   audit(req.user, 'order.pay', `#${o.number} ${b.method} ${(total / 100).toFixed(2)}`, clientIp(req));
   notifyStaff('orders'); notifyStaff('guests');
-  res.json({ ok: true, totalCents: total, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - total : 0 });
+  res.json({ ok: true, totalCents: owed, changeCents: b.tenderedCents !== undefined ? b.tenderedCents - owed : 0 });
 });
 
 staff.post('/orders/:id/void', (req, res, next) => G.managerOr('void')(req, res, next), (req, res) => {
   const o = db.prepare('SELECT * FROM orders WHERE id=?').get(idParam(req));
   if (!o || o.status === 'void') return res.status(409).json({ error: 'Cannot void' });
   db.prepare("UPDATE orders SET status='void' WHERE id=?").run(o.id);
+  returnStock(o.id, req.user.id);
   if (o.guest_id && o.source !== 'guest') { db.prepare("UPDATE guests SET status='cancelled', closed_at=? WHERE id=? AND kind='order' AND status IN ('waiting','buzzed','acknowledged')").run(now(), o.guest_id); }
   if (o.guest_id) pushGuest(o.guest_id);
   audit(req.user, 'order.void', `#${o.number} ${(o.total_cents / 100).toFixed(2)}${req.approvedBy ? ` (approved by ${req.approvedBy.name})` : ''}`, clientIp(req));
@@ -1097,6 +1090,7 @@ staff.get('/customers', requireAuth('manager'), (req, res) => {
     FROM customers c ORDER BY c.id DESC LIMIT 500`).all());
 });
 
+registerCommerce({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, notifyStaff, publicLimiter, publicBase, createGuest, pushGuest, buzzGuest, orderLimiter }) });
 registerFloorPay({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, notifyStaff, publicLimiter, publicBase }) });
 registerLocations({ app, staff, h: { parse, clientIp, requireAuth, issueSession, wrap, seedDemoData } });
 registerGuard({ app, staff, io, h: Object.assign(G, { wrap, parse, idParam, now, clientIp, requireAuth, issueSession, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails, authLimiter, notifyStaff, pushToUsers }) });
@@ -1118,7 +1112,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
   const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
   if (status >= 500) console.error(err);
-  res.status(status).json({ error: status >= 500 ? 'Server error' : err.message });
+  res.status(status).json({ error: status === 500 ? 'Server error' : err.message });
 });
 
 /* ---------- realtime ---------- */

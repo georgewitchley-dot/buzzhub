@@ -9,6 +9,7 @@ import Join from './pages/Join.jsx';
 import Account from './pages/Account.jsx';
 import { RateVisit } from './pages/Feedback.jsx';
 import PayPhone from './pages/PayPhone.jsx';
+import { GiftPage, OrderOnline, TableOrder } from './pages/OrderOnline.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -21,6 +22,9 @@ createRoot(document.getElementById('root')).render(
           <Route path="/account" element={<Account />} />
           <Route path="/f/:token" element={<RateVisit />} />
           <Route path="/p/:token" element={<PayPhone />} />
+          <Route path="/order" element={<OrderOnline />} />
+          <Route path="/t/:token" element={<TableOrder />} />
+          <Route path="/gift" element={<GiftPage />} />
           <Route path="/*" element={<CommandCenter />} />
         </Routes>
       </BrowserRouter>

@@ -289,7 +289,7 @@ export function registerGuard({ app, staff, io, h }) {
   /* ---------- refunds ---------- */
   staff.post('/orders/:id/refund', (req, res, next) => h.managerOr('refund')(req, res, next), (req, res) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(idParam(req));
-    if (!o || o.status !== 'paid') return res.status(409).json({ error: 'Only paid orders can be refunded' });
+    if (!o || !o.paid_at || o.status === 'void') return res.status(409).json({ error: 'Only paid orders can be refunded' });
     const done = db.prepare('SELECT COALESCE(SUM(amount_cents),0) c FROM refunds WHERE order_id = ?').get(o.id).c;
     const b = parse(z.object({ amountCents: z.number().int().min(1), reason: z.string().trim().min(1).max(120) }), req.body);
     if (b.amountCents > o.total_cents - done) return res.status(400).json({ error: `You can refund at most ${((o.total_cents - done) / 100).toFixed(2)}` });

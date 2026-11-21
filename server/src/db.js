@@ -299,6 +299,15 @@ const DEFAULTS = {
   feedback_delay_minutes: '60',
   feedback_review_threshold: '4',
   review_url: '',
+  online_enabled: '0',
+  online_pickup: '1',
+  online_delivery: '0',
+  delivery_fee_cents: '499',
+  delivery_min_cents: '1500',
+  delivery_area: '',
+  online_prep_minutes: '15',
+  online_pay_later: '1',
+  table_ordering: '0',
 };
 
 /* ---------- business-local dates (per location) ---------- */

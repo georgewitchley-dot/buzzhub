@@ -50,8 +50,16 @@ export default function Kitchen() {
                 <span className="grow">{o.table_label ? `${settings.unit_label} ${o.table_label}` : o.customer_name || o.guest_name || 'To go'}</span>
                 <span className="age num">{age >= 60 ? `${Math.floor(age / 60)}h ${age % 60}m` : `${age}m`}</span>
               </header>
-              {o.source === 'guest' && <span className="chip blue">Ordered ahead</span>}
-              <ul>{o.items.map((i, k) => <li key={k}><b className="num">{i.qty}</b><span>{i.name}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
+              <div className="row wrap" style={{ gap: 6 }}>
+                {o.source === 'guest' && <span className="chip blue">Ordered ahead</span>}
+                {o.source === 'table' && <span className="chip blue">Ordered at table</span>}
+                {o.fulfillment === 'delivery' && <span className="chip rose">Delivery</span>}
+                {o.fulfillment === 'pickup' && o.source === 'online' && <span className="chip amber">Online pickup</span>}
+                {o.prepaid ? <span className="chip teal">Paid</span> : null}
+              </div>
+              {o.delivery_address && <div className="muted" style={{ fontSize: 14 }}>{o.delivery_address}</div>}
+              {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
+              <ul>{o.items.map((i, k) => <li key={k}><b className="num">{i.qty}</b><span>{i.name}{i.mods?.length > 0 && <em>{i.mods.map((m) => m.name).join(', ')}</em>}{i.note && <em>{i.note}</em>}</span></li>)}</ul>
               <button className="btn primary lg block" onClick={() => act(`/staff/orders/${o.id}/ready`, `#${o.number} ready`)}><Icon name="check" size={18} />Ready</button>
             </article>
           );

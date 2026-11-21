@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { gsap } from 'gsap';
 import Aurora from '../bits/Aurora.jsx';
 import StarBorder from '../bits/StarBorder.jsx';
+import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
 import {
   api, applyAccent, connectGuest, enablePush, isIOS, isStandalone, money, playBuzz, playChime, pushSupported,
   pushIsOn, registerSW, withLoc, setManifest, unlockAudio, useLenis,
@@ -14,62 +15,38 @@ const ORDER_STATUS = { held: 'Waiting for your table', sent: 'Being made now', r
 /* ---------- order-ahead menu sheet ---------- */
 function MenuSheet({ token, g, onClose }) {
   const [menu, setMenu] = useState(null);
-  const [cart, setCart] = useState(() => Object.fromEntries((g.preorder.order?.items || []).map((i) => [i.name, i.qty])));
+  const cart = useCart();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const sheet = useRef(null);
   const canOrder = g.preorder.open && (!g.preorder.order || g.preorder.order.status === 'held');
-
   useEffect(() => {
     api(`/g/${token}/menu`).then(setMenu).catch((e) => setErr(e.message));
     gsap.fromTo(sheet.current, { yPercent: 100 }, { yPercent: 0, duration: 0.45, ease: 'power3.out' });
   }, [token]);
-
-  const byName = useMemo(() => Object.fromEntries((menu?.items || []).map((i) => [i.name, i])), [menu]);
-  const lines = Object.entries(cart).filter(([n, q]) => q > 0 && byName[n]);
-  const subtotal = lines.reduce((a, [n, q]) => a + q * byName[n].price_cents, 0);
-  const cats = [...new Set((menu?.items || []).map((i) => i.category))];
-  const bump = (n, d) => setCart((c) => ({ ...c, [n]: Math.max(0, Math.min(12, (c[n] || 0) + d)) }));
-
   const place = async () => {
     setBusy(true); setErr('');
-    try {
-      await api(`/g/${token}/preorder`, { method: 'POST', body: { items: lines.map(([n, q]) => ({ itemId: byName[n].id, qty: q })) } });
-      navigator.vibrate?.(60); playChime(); onClose();
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    try { await api(`/g/${token}/preorder`, { method: 'POST', body: { items: cart.payload } }); navigator.vibrate?.(60); playChime(); onClose(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
-
   return (
     <div className="overlay sheet-wrap" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet" ref={sheet} role="dialog" aria-modal="true" aria-label="Menu">
         <div className="sheet-grip" />
         <header className="row"><h2 className="grow">{canOrder ? 'Order ahead' : 'Menu'}</h2><button className="btn ghost sm" onClick={onClose}>Close</button></header>
         <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-          {canOrder ? "We'll start making these when your table is called, so they're waiting when you sit down. You pay at your table."
+          {canOrder ? `We'll start making these when your table is called, so they're waiting when you sit down. You pay at your table.${g.preorder.order ? ' Your new order replaces the one you placed.' : ''}`
             : g.preorder.order ? 'Your order is already being made. Ask your server to add more.'
             : `Ordering opens about ${g.preorder.opensInMinutes} minutes from now. Have a look in the meantime.`}
         </p>
         {!menu && !err && <p className="muted">Loading the menu…</p>}
         {menu && menu.items.length === 0 && <p className="muted">Nothing is available to order ahead right now.</p>}
-        <div className="sheet-list">
-          {cats.map((c) => (
-            <section key={c}>
-              <h3 className="sheet-cat">{c}</h3>
-              {menu.items.filter((i) => i.category === c).map((i) => (
-                <div className="menu-line" key={i.id}>
-                  <span className="grow"><b>{i.name}</b><span className="muted num">{money(i.price_cents, menu.currency)}</span></span>
-                  {canOrder && (
-                    <span className="qty"><button onClick={() => bump(i.name, -1)} aria-label={`One less ${i.name}`}>−</button><span>{cart[i.name] || 0}</span><button onClick={() => bump(i.name, 1)} aria-label={`One more ${i.name}`}>+</button></span>
-                  )}
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
+        {menu && <GuestMenu items={canOrder ? menu.items : menu.items.map((i) => ({ ...i, soldOut: true }))} currency={menu.currency} onAdd={cart.add} />}
+        {cart.count > 0 && <div><CartLines cart={cart} currency={menu.currency} /></div>}
         {err && <div className="lock-msg">{err}</div>}
         {canOrder && (
-          <button className="btn primary lg block" disabled={!lines.length || busy} onClick={place}>
-            {busy ? 'Sending…' : lines.length ? `${g.preorder.order ? 'Update' : 'Place'} order, ${money(subtotal, menu?.currency)} + tax` : 'Pick something above'}
+          <button className="btn primary lg block" disabled={!cart.count || busy} onClick={place}>
+            {busy ? 'Sending…' : cart.count ? `${g.preorder.order ? 'Replace' : 'Place'} order, ${money(cart.subtotal, menu?.currency)} + tax` : 'Pick something above'}
           </button>
         )}
       </div>
@@ -107,6 +84,8 @@ export default function Guest() {
 
   useEffect(() => {
     if (isIOS()) setManifest(`/api/g/${token}/manifest.webmanifest`);
+    const sid = new URLSearchParams(window.location.search).get('session_id');
+    if (sid) api(`/g/${token}/confirm?session_id=${encodeURIComponent(sid)}`).catch(() => {});
     registerSW();
     api(`/g/${token}`).then((d) => {
       setG(d); applyAccent(d.business.accent); document.title = d.business.name;
@@ -160,7 +139,7 @@ export default function Guest() {
     headline = 'See you in a moment'; sub = "We've let the team know you're on the way.";
     core = <><b style={{ fontSize: 'clamp(3rem,16vw,4.5rem)' }}>{g.tableLabel || '✓'}</b><span>{g.tableLabel ? g.business.unitLabel : 'On the way'}</span></>;
   } else if (g.status === 'waiting') {
-    headline = g.headsUp ? 'Almost your turn' : `Hi ${g.name}, you're on the list`;
+    headline = isOrder ? `Thanks ${g.name}, your order is in` : g.headsUp ? 'Almost your turn' : `Hi ${g.name}, you're on the list`;
     sub = isOrder ? `Order #${g.orderNumber} is being made. We'll buzz your phone when it's ready.` : g.headsUp ? 'Please stay close. We will buzz you any minute.' : g.business.welcome;
     core = isOrder ? <><b>#{g.orderNumber}</b><span>Order</span></> : <><b>{g.position}</b><span>{g.position === 1 ? "You're next" : 'in line'}</span></>;
   } else {

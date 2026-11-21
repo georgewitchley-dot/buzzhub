@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, imageToPng, logoUrl, money, timeOf } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PrintSign } from './PrintSign.jsx';
+import { OnlinePanel, OptionsAdmin } from './Commerce.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 
 /* ================= Menu ================= */
@@ -51,6 +52,7 @@ export function MenuAdmin() {
           </tr>
         ))}</tbody>
       </table></section>
+      <OptionsAdmin />
       {edit !== undefined && <ItemModal item={edit} currency={settings.currency} onClose={() => setEdit(undefined)} />}
     </>
   );
@@ -183,6 +185,7 @@ export function SettingsAdmin() {
     e?.preventDefault();
     const keys = ['business_name', 'business_type', 'unit_label', 'accent', 'currency', 'tax_rate', 'avg_turn_minutes', 'idle_lock_minutes', 'self_checkin', 'welcome_message',
       'preorder_enabled', 'preorder_open_minutes', 'heads_up_minutes', 'sign_headline', 'timezone',
+      'online_enabled', 'online_pickup', 'online_delivery', 'delivery_fee_cents', 'delivery_min_cents', 'delivery_area', 'online_prep_minutes', 'online_pay_later', 'table_ordering',
       'smart_waits', 'loyalty_enabled', 'loyalty_visits', 'loyalty_reward', 'feedback_enabled', 'feedback_delay_minutes', 'feedback_review_threshold', 'review_url',
       'booking_enabled', 'booking_open', 'booking_close', 'booking_days', 'booking_slot_minutes', 'booking_capacity', 'booking_days_ahead', 'booking_reminder_minutes'];
     try { await api('/staff/settings', { method: 'PUT', body: Object.fromEntries(keys.map((k) => [k, f[k]])) }); toast('Settings saved', 'ok'); reloadSettings(); } catch (e2) { toast(e2.message, 'err'); }
@@ -276,6 +279,8 @@ export function SettingsAdmin() {
             </>
           )}
         </div></section>
+
+        <OnlinePanel f={f} setF={setF} />
 
         <PaymentsPanel />
 

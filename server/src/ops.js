@@ -47,13 +47,13 @@ export function registerOps({ app, staff, io, h }) {
 
   /* ================= Kitchen display ================= */
   staff.get('/kitchen', (req, res) => {
-    const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, t.label table_label, g.name guest_name
+    const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, t.label table_label, g.name guest_name
       FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
       WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-10 minutes'))
       ORDER BY CASE WHEN o.status IN ('open','sent') THEN 0 ELSE 1 END, COALESCE(o.sent_at, o.created_at)`).all();
-    const items = orders.length ? db.prepare(`SELECT order_id, name, qty, note FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',')})`).all() : [];
+    const items = orders.length ? db.prepare(`SELECT order_id, name, qty, note, mods FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',')})`).all() : [];
     const held = db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'held'").get().c;
-    res.json({ orders: orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id) })), held, lateMinutes: Number(getSettings().kds_late_minutes || 12) });
+    res.json({ orders: orders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id).map((i) => ({ ...i, mods: JSON.parse(i.mods || '[]') })) })), held, lateMinutes: Number(getSettings().kds_late_minutes || 12) });
   });
   staff.post('/kitchen/:id/recall', (req, res) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(idParam(req));
@@ -66,7 +66,7 @@ export function registerOps({ app, staff, io, h }) {
   /* ================= End-of-day report ================= */
   function dayReport(date) {
     const { start, end } = dayBounds(date);
-    const paid = db.prepare("SELECT * FROM orders WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?").all(start, end);
+    const paid = db.prepare("SELECT * FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND paid_at >= ? AND paid_at < ?").all(start, end);
     const voids = db.prepare("SELECT * FROM orders WHERE status = 'void' AND created_at >= ? AND created_at < ?").all(start, end);
     const sum = (arr, k) => arr.reduce((a, o) => a + (o[k] || 0), 0);
     const byMethod = {};
@@ -120,7 +120,7 @@ export function registerOps({ app, staff, io, h }) {
 
   /* ================= Cash drawer ================= */
   function cashSummary(cs) {
-    const cashSales = db.prepare("SELECT COALESCE(SUM(total_cents),0) c FROM orders WHERE status='paid' AND payment_method='cash' AND paid_at >= ? AND paid_at < COALESCE(?, datetime('now','+1 second'))").get(cs.opened_at, cs.closed_at).c;
+    const cashSales = db.prepare("SELECT COALESCE(SUM(total_cents),0) c FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND payment_method='cash' AND paid_at >= ? AND paid_at < COALESCE(?, datetime('now','+1 second'))").get(cs.opened_at, cs.closed_at).c;
     const moves = db.prepare('SELECT m.*, u.name user_name FROM cash_moves m LEFT JOIN users u ON u.id = m.user_id WHERE session_id = ? ORDER BY id').all(cs.id);
     const ins = moves.filter((m) => m.kind === 'in').reduce((a, m) => a + m.amount_cents, 0);
     const outs = moves.filter((m) => m.kind === 'out').reduce((a, m) => a + m.amount_cents, 0);
@@ -200,7 +200,7 @@ export function registerOps({ app, staff, io, h }) {
     const sched = db.prepare('SELECT sc.*, u.name FROM schedule sc JOIN users u ON u.id = sc.user_id WHERE substr(sc.start_local,1,10) >= ? AND substr(sc.start_local,1,10) <= ? ORDER BY sc.start_local')
       .all(date, new Date(Date.parse(`${date}T12:00:00Z`) + 6 * 86400000).toISOString().slice(0, 10));
     const today = dayBounds(localToday());
-    const salesToday = db.prepare("SELECT COALESCE(SUM(subtotal_cents - discount_cents),0) c FROM orders WHERE status='paid' AND paid_at >= ? AND paid_at < ?").get(today.start, today.end).c;
+    const salesToday = db.prepare("SELECT COALESCE(SUM(subtotal_cents - discount_cents),0) c FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND paid_at >= ? AND paid_at < ?").get(today.start, today.end).c;
     const laborToday = isMgr ? db.prepare('SELECT s.*, u.hourly_cents FROM shifts s JOIN users u ON u.id=s.user_id WHERE s.clock_in < ? AND (s.clock_out IS NULL OR s.clock_out >= ?)').all(today.end, today.start)
       .reduce((a, s) => a + Math.max(0, hoursBetween(s.clock_in < today.start ? today.start : s.clock_in, s.clock_out) - s.break_minutes / 60) * s.hourly_cents, 0) : null;
     res.json({ from: date, today: localToday(), onNow, shifts, schedule: sched, salesTodayCents: salesToday, laborTodayCents: laborToday === null ? null : Math.round(laborToday) });

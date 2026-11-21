@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { api, applyAccent, connectStaff, money, playChime, useLenis } from '../lib.js';
+import { api, applyAccent, connectStaff, money, playChime, registerSW, useLenis } from '../lib.js';
+import { pendingSales, syncQueue } from '../offline.js';
 import { Icon, Puck, useToast } from '../ui.jsx';
 import Lock from './Lock.jsx';
 import Setup from './Setup.jsx';
@@ -18,6 +19,7 @@ import Shifts from './Shifts.jsx';
 import Security from './Security.jsx';
 import { FeedbackAdmin } from './Feedback.jsx';
 import Locations, { switchLocation } from './Locations.jsx';
+import { GiftCards, Inventory } from './Commerce.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -54,6 +56,8 @@ const NAV = [
   { to: '/reports', icon: 'chart', label: 'Reports', min: 'manager' },
   { to: '/feedback', icon: 'star', label: 'Feedback', min: 'manager', when: (s) => s?.feedback_enabled === '1' },
   { to: '/menu', icon: 'menu', label: 'Menu', min: 'manager' },
+  { to: '/inventory', icon: 'box', label: 'Inventory', min: 'manager' },
+  { to: '/giftcards', icon: 'gift', label: 'Gift cards', min: 'manager' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
@@ -100,6 +104,17 @@ function Shell({ user, business, onLock, reloadBusiness }) {
   const [waitCount, setWaitCount] = useState(0);
   const [clock, setClock] = useState(() => new Date());
   const [locs, setLocs] = useState(null);
+  const [queued, setQueued] = useState(() => pendingSales().length);
+  const [netOk, setNetOk] = useState(() => navigator.onLine);
+  useEffect(() => {
+    registerSW();
+    const upd = () => setQueued(pendingSales().length);
+    const sync = async () => { const r = await syncQueue(api); upd(); if (r.sent) toast(`Sent ${r.sent} sale${r.sent === 1 ? '' : 's'} made while offline`, 'ok'); };
+    const on = () => { setNetOk(true); sync(); }; const off = () => setNetOk(false);
+    window.addEventListener('bh:queue', upd); window.addEventListener('online', on); window.addEventListener('offline', off);
+    sync(); const t = setInterval(sync, 30000);
+    return () => { window.removeEventListener('bh:queue', upd); window.removeEventListener('online', on); window.removeEventListener('offline', off); clearInterval(t); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (RANK[user.role] >= RANK.manager) api('/staff/locations').then(setLocs).catch(() => {}); }, [user.role]);
   const scrollRef = useRef(null); const contentRef = useRef(null);
   useLenis(scrollRef, contentRef);
@@ -119,6 +134,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('preorder:new', ({ name, count, updated }) => { playChime(); toast(`${name} ${updated ? 'changed their order' : `ordered ${count} item${count === 1 ? '' : 's'} ahead`}`, 'ok'); });
     s.on('preorder:fired', ({ number, table }) => toast(`Pre-order #${number} sent to make${table ? ` for ${table}` : ''}`, 'ok'));
     s.on('paid:phone', ({ number, totalCents }) => { playChime(); toast(`Order #${number} paid by phone, ${money(totalCents, settings?.currency || 'USD')}`, 'ok'); });
+    s.on('online:new', ({ number, name, fulfillment }) => { playChime(); toast(fulfillment === 'paid' ? 'An online order was paid' : `New ${fulfillment === 'table' ? 'table' : fulfillment} order${number ? ` #${number}` : ''} from ${name}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
     s.on('security', ({ type, ip, detail }) => { if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
@@ -164,6 +180,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
         <div className="main">
           <header className="topbar">
             <div className="grow" />
+            {(!netOk || queued > 0) && <span className="chip amber" role="status">{!netOk ? 'Offline. Sales are saved on this device' : `${queued} offline sale${queued === 1 ? '' : 's'} waiting to send`}</span>}
             <span className={`live ${online ? '' : 'off'}`}><i />{online ? 'Live' : 'Reconnecting'}</span>
             <span className="clock">{clock.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
             <button className="btn sm tab-lock" onClick={onLock} aria-label="Lock terminal"><Icon name="lock" size={16} /></button>
@@ -182,6 +199,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('manager') && <Route path="reports" element={<Reports />} />}
                   {can('manager') && <Route path="feedback" element={<FeedbackAdmin />} />}
                   {can('manager') && <Route path="locations" element={<Locations />} />}
+                  {can('manager') && <Route path="inventory" element={<Inventory />} />}
+                  {can('manager') && <Route path="giftcards" element={<GiftCards />} />}
                   <Route path="register" element={<Register />} />
                   <Route path="orders" element={<Orders />} />
                   {can('manager') && <Route path="menu" element={<MenuAdmin />} />}

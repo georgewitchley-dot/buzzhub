@@ -2,17 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, minutesSince, useTick } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { TableQrModal } from './Commerce.jsx';
+import { SplitModal } from './Register.jsx';
 
 const STATUS = { open: 'Open', reserved: 'Held for guest', seated: 'Seated', dirty: 'Needs bussing' };
 const initials = (n) => (n || '').split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
 
 function TableModal({ table, waiting, unit, team, onClose }) {
   const toast = useToast();
+  const { settings } = useCC();
+  const [qr, setQr] = useState(false);
+  const [split, setSplit] = useState(false);
   const [guestId, setGuestId] = useState('');
   const run = async (fn, msg) => { try { await fn(); toast(msg, 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); } };
   const setStatus = (status) => run(() => api(`/staff/tables/${table.id}/status`, { method: 'POST', body: { status } }), `${unit} ${table.label} is ${STATUS[status].toLowerCase()}`);
   const seat = () => run(() => api(`/staff/guests/${guestId}/seat`, { method: 'POST', body: { tableId: table.id } }), `Seated at ${unit} ${table.label}`);
   const buzz = () => run(() => api(`/staff/guests/${guestId}/buzz`, { method: 'POST', body: { tableId: table.id } }), 'Buzzed. The table is held for them.');
+  if (qr) return <TableQrModal table={table} settings={settings} onClose={() => setQr(false)} />;
+  if (split) return <SplitModal tableId={table.id} currency={settings.currency} onClose={onClose} />;
   const assign = (v) => api(`/staff/tables/${table.id}/server`, { method: 'POST', body: { userId: v ? Number(v) : null } }).then(() => toast(v ? 'Server assigned' : 'Server removed', 'ok')).catch((e) => toast(e.message, 'err'));
   return (
     <Modal title={`${unit} ${table.label}`} onClose={onClose}>
@@ -37,6 +44,10 @@ function TableModal({ table, waiting, unit, team, onClose }) {
         {table.status === 'seated' && <button className="btn primary grow" onClick={() => setStatus('dirty')}>Guests left, needs bussing</button>}
         {table.status !== 'open' && <button className="btn grow" onClick={() => setStatus('open')}>Mark open</button>}
         {table.status === 'open' && <button className="btn grow" onClick={() => setStatus('reserved')}>Hold</button>}
+      </div>
+      <div className="row wrap">
+        {table.status === 'seated' && <button className="btn grow" onClick={() => setSplit(true)}>Check and split</button>}
+        <button className="btn grow" onClick={() => setQr(true)}>Table QR code</button>
       </div>
     </Modal>
   );

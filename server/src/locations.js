@@ -18,8 +18,8 @@ function slugForToken(table, token, column = 'token') {
   return null;
 }
 export function resolveSlug(req) {
-  const m = /^\/api\/(g|f|p)\/([A-Za-z0-9_-]{16,40})/.exec(req.path);
-  if (m) { const s = m[1] === 'p' ? slugForToken('orders', m[2], 'pay_token') : slugForToken(m[1] === 'g' ? 'guests' : 'feedback', m[2]); if (s) return s; }
+  const m = /^\/api\/(g|f|p|t)\/([A-Za-z0-9_-]{16,40})/.exec(req.path);
+  if (m) { const s = m[1] === 'p' ? slugForToken('bills', m[2]) : m[1] === 't' ? slugForToken('tables', m[2], 'qr_token') : slugForToken(m[1] === 'g' ? 'guests' : 'feedback', m[2]); if (s) return s; }
   const pick = [req.get('X-Location'), req.query?.l, locOfToken(req.cookies?.[SESSION_COOKIE] || ''), locOfToken(req.cookies?.[CUSTOMER_COOKIE] || ''), req.cookies?.bh_loc];
   for (const p of pick) if (typeof p === 'string' && p && locationExists(p)) return p;
   return 'main';
@@ -67,7 +67,7 @@ export function registerLocations({ app, staff, h }) {
   function snapshot() {
     const s = getSettings();
     const waiting = db.prepare("SELECT COUNT(*) c FROM guests WHERE kind='table' AND status IN ('waiting','buzzed','acknowledged')").get().c;
-    const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) t, COUNT(*) n FROM orders WHERE status='paid' AND localdate(paid_at) = localtoday()").get();
+    const sales = db.prepare("SELECT COALESCE(SUM(total_cents),0) t, COUNT(*) n FROM orders WHERE paid_at IS NOT NULL AND status <> 'void' AND localdate(paid_at) = localtoday()").get();
     const open = db.prepare("SELECT COUNT(*) c FROM orders WHERE status IN ('open','sent','ready','held')").get().c;
     const tables = db.prepare("SELECT COUNT(*) total, SUM(status='seated') seated FROM tables").get();
     const clock = db.prepare('SELECT COUNT(*) c FROM shifts WHERE clock_out IS NULL').get().c;
