@@ -58,6 +58,22 @@ New server modules:
 - Client: `order-ui.jsx` (ModPicker, useCart, GuestMenu), `offline.js` (register sale queue, synced with idempotent clientKey), service worker app-shell cache `buzzhub-shell-v4`. Pages: `Commerce.jsx` (options, inventory, gift cards, online settings, table QR), `Team.jsx` (marketing, tips, forecast, settings panel), `OrderOnline.jsx` (/order, /t/:token, /gift).
 - Fixed: `dayBounds` in ops.js mis-parsed days 1–9 of a month. It now uses formatToParts.
 
+## 3e. Round 5 (2026-11-21): pro features + every way to get paid
+New server modules:
+- `payments.js`: one pay page (`/pay/:token`, `payments.pay_token`). Every online flow (bill shares, online orders, online gift cards, deposits) inserts a `payments` row and calls `G.startPay(pid, {base, lines, successUrl ({TOKEN} placeholder), cancelUrl})`.
+  - Card goes to the Square payment link or Stripe Checkout; it comes back to `/pay/:token?back=1` and is verified with `/verify`.
+  - PayPal and Venmo use JS SDK buttons with server-side create and capture.
+  - Handles (Zelle, Venmo, Cash App, PayPal.me): `/claim` sets `claimed_at`; staff confirm or reject at `/staff/payments/:id/confirm|reject`. Everything ends in `completePayment`.
+  - Refunds go through `G.refundRef('stripe:pi|square:pay|paypal:cap|manual:x')`.
+  - Webhooks: `/api/square/webhook` (HMAC of URL+body).
+  - Env: `SQUARE_ACCESS_TOKEN`, `SQUARE_LOCATION_ID`, `SQUARE_ENVIRONMENT` (sandbox|production), `SQUARE_WEBHOOK_SIGNATURE_KEY`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENVIRONMENT`. Stripe is optional.
+- `pro.js`: Stripe Terminal (server-driven) and Square Terminal readers (`sq_` ids), with `terminal_charges` and `G.startReaderCharge`. Also receipts (`orders.receipt_token`, `/api/r/:token`) and booking deposits (bookings.deposit_*; the deposit is credited at check-in as a one-time gift card).
+- `crm.js`: customer profiles (customers.tags/notes/birthday), automatic offers (`auto_sends`, one-time promo codes, a daily run after 10am local), and insights (daily owner summary, `insight_alerts`, `/staff/insights/fees` payment cost estimates from setting `fee_rates`).
+- `back.js`: ingredients, recipes, ingredient moves through `orderHooks` in commerce.js; suppliers and purchase orders; payroll (`/staff/payroll`, CSV, weekly overtime); overtime and break alerts.
+- `delivery.js`: drivers (users.is_driver, orders.driver_id/out_at/delivered_at, driver_pos), Nominatim geocoding, and `deliveryView` shown on the buzzer. Kiosk uses a JWT in the `X-Kiosk` header (secret is jwt+':kiosk', revoked with `kiosk_version`); orders go through `/api/k/*`, and exit needs a manager PIN.
+- Cash discount: setting `cash_discount_pct`, applied in `/staff/orders/:id/pay` for cash.
+- Client: `pro-ui.jsx`, `i18n.jsx` (en/es), `track.jsx` (Leaflet + OSM tiles), and pages `PayPage`, `Receipt`, `Kiosk`, `Back.jsx` (Insights, Purchasing, Payroll) and `Field.jsx` (Deliveries, customer profile, auto offers, settings panels, payment claims bar, payment costs).
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

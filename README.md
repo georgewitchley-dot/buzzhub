@@ -78,6 +78,21 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Staffing forecast**: people needed per hour for the next 7 days, from your own sales plus free weather data, compared to the schedule.
 - **Offline register**: sales made without internet are queued and sent automatically when it returns.
 
+## Getting paid, for less
+
+- One pay page with every method you turn on, cheapest for you listed first: Zelle (no fees), Venmo, cards through Square (including Apple Pay, Google Pay, Cash App Pay and Afterpay), PayPal and Venmo buttons, Cash App and PayPal.me. Stripe is optional.
+- Card readers at the counter: Square Terminal or Stripe readers.
+- Cash discount at the register, and a report of what each way of paying costs you.
+
+## Pro tools
+
+- Receipts by QR code, print or email, and a kitchen ticket print station.
+- Booking deposits that come off the bill at check-in.
+- Customer profiles (tags like allergies, notes, birthday, usual order) and automatic birthday, win-back and thank-you offers.
+- Insights: a daily summary on the owner's phone, plus alerts for unusual voids, refunds, discounts or a slow kitchen.
+- Purchasing: recipes, food cost per item, suppliers and purchase orders. Payroll export with overtime.
+- Delivery drivers with live location on the customer's phone. Self-order kiosk. Spanish customer pages.
+
 ## More security
 
 - **Two-step sign-in** (authenticator app codes) for owners and managers, with 8 recovery codes. Secrets are encrypted at rest.
