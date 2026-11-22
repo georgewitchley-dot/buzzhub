@@ -163,6 +163,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 16: every seat, shelf and second
+- **Seat numbers** on tickets.
+- **Pass timer** for food waiting to go out.
+- **Messages between kitchen screens.**
+- **Batch timers** with alarms.
+- **Online pickup slots** with a per-slot limit.
+- **Pickup shelves** shown to customers.
+- **"On my way"** with live ETA for curbside.
+- **Who made it**: speed and remakes per cook.
+- **Rate each dish** in guest feedback.
+- **Schedules by area.**
+
 ## Round 15: the line runs itself
 - **Print at each area**, **recipe cards** and **86** right on the area screens.
 - **Remakes** with reasons and their cost.

@@ -39,13 +39,13 @@ function board() {
     FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
     WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-45 minutes'))
     ORDER BY COALESCE(o.sent_at, o.created_at)`).all();
-  const items = orders.length ? db.prepare(`SELECT oi.id, oi.order_id, oi.item_id, oi.name, oi.qty, oi.note, oi.mods, oi.course, oi.fired_at, oi.done_at, oi.done_station, m.category, m.station, m.cook_minutes
+  const items = orders.length ? db.prepare(`SELECT oi.id, oi.order_id, oi.item_id, oi.name, oi.qty, oi.note, oi.mods, oi.course, oi.fired_at, oi.done_at, oi.done_station, oi.seat, oi.done_by, m.category, m.station, m.cook_minutes
     FROM order_items oi LEFT JOIN menu_items m ON m.id = oi.item_id WHERE oi.order_id IN (${orders.map((x) => x.id).join(',')})`).all() : [];
   const pacing = s.kds_pacing === '1';
   return orders.map((x) => {
     let tags = []; try { tags = JSON.parse(x.customer_tags || '[]'); } catch { /* none */ }
     const allergy = [x.allergy_note, ...tags.filter((t) => /allerg|free|vegan|celiac|dairy|lactose/i.test(t))].filter(Boolean).join(', ');
-    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at }));
+    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at, seat: i.seat || null }));
     // pacing: the longest dish on the ticket starts now; shorter ones wait so everything finishes together
     if (pacing && ['open', 'sent'].includes(x.status)) {
       const open = its.filter((i) => !i.held && !i.done && i.cook);
@@ -54,7 +54,8 @@ function board() {
     }
     const areas = {}; for (const i of its) if (!i.held) { const a = (areas[i.area] = areas[i.area] || { total: 0, done: 0 }); a.total += 1; if (i.done) a.done += 1; }
     const { customer_tags, ...rest } = x; // eslint-disable-line no-unused-vars
-    return { ...rest, allergy, items: its, areas, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
+    const live2 = its.filter((i) => !i.held); const passSince = ['open', 'sent'].includes(x.status) && live2.length && live2.every((i) => i.done) ? live2.map((i) => i.doneAt).sort().pop() : null;
+    return { ...rest, allergy, items: its, areas, passSince, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
   });
 }
 /** How many of each item are still to make, for one area or all. */
@@ -129,7 +130,7 @@ export function registerKds({ app, staff, h }) {
     const today = localToday();
     const lists = db.prepare('SELECT * FROM checklist_templates WHERE active = 1 AND area = ? ORDER BY sort, id').all(w.area).map((t) => { const run = db.prepare('SELECT * FROM checklist_runs WHERE template_id = ? AND day = ?').get(t.id, today); const done = pj(run?.done || '{}', {}); const items = pj(t.items, []); return { id: t.id, name: t.name, kind: t.kind, dueTime: t.due_time, items: items.map((it, i) => ({ text: it.text, needsValue: Boolean(it.needsValue), done: done[i] || null })), count: items.filter((_, i) => done[i]).length, total: items.length }; });
     const events = (h.eventsToday?.() || []).map((e) => ({ ...e, items: kind === 'station' ? e.items.filter((i) => stationFor(i) === w.area) : e.items })).filter((e) => e.items.length);
-    res.json({ rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
+    res.json({ ...(h.kdsExtra?.(w.area) || {}), enRoute: kind === 'pack' || kind === 'expo' || kind === 'all' ? (h.enRoute?.() || []) : [], rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
       arrivals: kind === 'pack' || kind === 'expo' || kind === 'all' ? all.filter((o) => o.arrived).map((o) => ({ id: o.id, number: o.number, name: o.customer_name || o.guest_name, note: o.arrival_note, ready: !o.cooking })) : [],
       stations: stationList(), areas: areaNames(), lateMinutes: Number(s.kds_late_minutes || 12), orders, recent,
       allDay: allDay(all, kind === 'station' ? w.area : null), held: db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'held'").get().c });
@@ -141,13 +142,14 @@ export function registerKds({ app, staff, h }) {
 
   // An area finishes some or all of its items on a ticket.
   app.post('/api/kds/bump', wrap(async (req, res) => {
-    const w = who(req); const b = parse(z.object({ orderId: z.number().int(), itemIds: z.array(z.number().int()).max(100).optional(), undo: z.boolean().optional(), allergyConfirmed: z.boolean().optional() }), req.body);
+    const w = who(req); const b = parse(z.object({ orderId: z.number().int(), itemIds: z.array(z.number().int()).max(100).optional(), undo: z.boolean().optional(), allergyConfirmed: z.boolean().optional(), cookId: z.number().int().optional() }), req.body);
+    const cook = h.cookFor?.(b) || w.user?.id || null;
     const o = order(b.orderId); const list = stationList();
     const items = db.prepare('SELECT oi.*, m.category, m.station FROM order_items oi LEFT JOIN menu_items m ON m.id = oi.item_id WHERE oi.order_id = ?').all(o.id)
       .filter((i) => live(i) && ([ALL, EXPO].includes(w.area) || stationFor(i, list) === w.area) && (!b.itemIds || b.itemIds.includes(i.id)));
     if (!items.length) throw err('Nothing on this ticket for this area');
-    const q = b.undo ? db.prepare('UPDATE order_items SET done_at = NULL, done_station = NULL WHERE id = ?') : db.prepare("UPDATE order_items SET done_at = COALESCE(done_at, datetime('now')), done_station = COALESCE(done_station, ?) WHERE id = ?");
-    for (const i of items) (b.undo ? q.run(i.id) : q.run(stationFor(i, list), i.id));
+    const q = b.undo ? db.prepare('UPDATE order_items SET done_at = NULL, done_station = NULL, done_by = NULL WHERE id = ?') : db.prepare("UPDATE order_items SET done_at = COALESCE(done_at, datetime('now')), done_station = COALESCE(done_station, ?), done_by = COALESCE(done_by, ?) WHERE id = ?");
+    for (const i of items) (b.undo ? q.run(i.id) : q.run(stationFor(i, list), cook, i.id));
     if (b.undo && ['ready', 'paid'].includes(o.status) && !o.paid_at) db.prepare("UPDATE orders SET status = 'sent', ready_at = NULL WHERE id = ?").run(o.id);
     let ready = null; let needsAllergyCheck = false;
     if (!b.undo && finished(o.id) && ['open', 'sent'].includes(o.status) && getSettings().kds_expo !== '1') {
@@ -181,9 +183,9 @@ export function registerKds({ app, staff, h }) {
   });
   // Packing: the bag is checked and sealed.
   app.post('/api/kds/packed', (req, res) => {
-    const w = who(req); const { orderId } = parse(z.object({ orderId: z.number().int() }), req.body);
+    const w = who(req); const { orderId, shelf } = parse(z.object({ orderId: z.number().int(), shelf: z.string().trim().max(8).optional() }), req.body);
     if (![PACK, ALL, EXPO].includes(w.area)) throw err('Use the packing screen');
-    const o = order(orderId); db.prepare("UPDATE orders SET packed_at = datetime('now') WHERE id = ?").run(o.id);
+    const o = order(orderId); db.prepare("UPDATE orders SET packed_at = datetime('now'), shelf = COALESCE(?, shelf) WHERE id = ?").run(shelf || null, o.id); if (shelf && o.guest_id) h.pushGuest?.(o.guest_id);
     audit(byLabel(w), 'kds.packed', `#${o.number}`, clientIp(req)); notifyStaff('orders'); res.json({ ok: true });
   });
 

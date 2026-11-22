@@ -3,6 +3,7 @@ import { api } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { RemakesPanel } from './Line.jsx';
+import { CookStats, OnMyWay } from './Pass.jsx';
 
 const t12 = (hm) => new Date(`2000-01-01T${hm}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -20,6 +21,7 @@ export function Curbside({ token, c }) {
         <button className="btn primary lg block" disabled={busy} onClick={send}>I'm here</button>
       </>}
       {c.arrived && <button className="btn ghost sm" onClick={send} disabled={busy}>Update where I am</button>}
+      {!c.arrived && <OnMyWay token={token} />}
     </div>
   );
 }
@@ -69,6 +71,7 @@ export function KitchenSpeed() {
       </div>
       <div className="stack" style={{ gap: 18 }}>
         <RemakesPanel days={days} />
+        <CookStats days={days} />
         <T title="By area" rows={d.byArea} empty="Area times appear once cooks mark items done on the area screens." />
         <T title="By hour" rows={d.byHour} label={(k) => new Date(2000, 0, 1, Number(k)).toLocaleTimeString([], { hour: 'numeric' })} />
         <T title="By day" rows={d.byDay} />

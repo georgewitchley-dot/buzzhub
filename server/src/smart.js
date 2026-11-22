@@ -73,6 +73,7 @@ export function reviewThemes(days = 90) {
 }
 
 /* ---------- auto-built schedule ---------- */
+let h0 = {};
 export function proposeSchedule(weekStart) {
   const s = getSettings(); const today = localToday();
   const perStaff = Math.max(1000, Number(s.staff_sales_per_hour_cents) || 15000); const minStaff = Math.max(0, Number(s.staff_min) || 1);
@@ -82,18 +83,24 @@ export function proposeSchedule(weekStart) {
   const sales = db.prepare(`SELECT substr(datetime(paid_at, '${tzOff} minutes'),1,10) d, CAST(substr(datetime(paid_at, '${tzOff} minutes'),12,2) AS INTEGER) h, SUM(subtotal_cents - discount_cents) c FROM orders WHERE paid_at >= ? AND status <> 'void' GROUP BY d, h`).all(dayBounds(histFrom).start);
   const byDow = Array.from({ length: 7 }, () => Array(24).fill(0)); const seen = Array.from({ length: 7 }, () => new Set());
   for (const r of sales) { if (r.d >= today) continue; const dw = dowOf(r.d); byDow[dw][r.h] += r.c; seen[dw].add(r.d); }
-  const staff = db.prepare("SELECT id, name, role FROM users WHERE active = 1 AND role = 'staff'").all();
+  const allStaff = db.prepare("SELECT id, name, role, area FROM users WHERE active = 1 AND role = 'staff'").all();
+  const byArea = s.schedule_by_area === '1' && h0.areaSalesByDow ? h0.areaSalesByDow(dayBounds(histFrom).start, tzOff, today) : null;
+  const areaNames = byArea ? Object.keys(byArea).filter((a) => allStaff.some((u) => u.area === a)) : [];
+  const staff = allStaff;
   const avail = db.prepare('SELECT * FROM availability').all();
   const off = db.prepare("SELECT * FROM time_off WHERE status IN ('approved','pending') AND end_date >= ? AND start_date <= ?").all(weekStart, addDays(weekStart, 6));
   const existing = db.prepare('SELECT user_id, start_local, end_local FROM schedule WHERE substr(start_local,1,10) BETWEEN ? AND ?').all(weekStart, addDays(weekStart, 6));
   const hrsOf = (a, b) => (Date.parse(`${b.replace(' ', 'T')}:00Z`) - Date.parse(`${a.replace(' ', 'T')}:00Z`)) / 3600000;
   const weekHours = Object.fromEntries(staff.map((u) => [u.id, existing.filter((e) => e.user_id === u.id).reduce((a, e) => a + hrsOf(e.start_local, e.end_local), 0)]));
   const shifts = []; const gaps = [];
-  for (let i = 0; i < 7; i += 1) {
+  const groups = byArea ? [...areaNames.map((a) => ({ area: a, people: allStaff.filter((u) => u.area === a), sales: byArea[a], per: Math.max(1000, Number(s.area_sales_per_hour_cents) || 20000), min: 1 })), { area: 'Front of house', people: allStaff.filter((u) => !areaNames.includes(u.area)), sales: byDow, per: perStaff, min: minStaff }]
+    : [{ area: null, people: allStaff, sales: byDow, per: perStaff, min: minStaff }];
+  for (const grp of groups) for (let i = 0; i < 7; i += 1) {
     const date = addDays(weekStart, i); const dw = dowOf(date); const n = Math.max(1, seen[dw].size);
-    const need = byDow[dw].map((c) => (c ? Math.max(minStaff, Math.ceil(c / n / perStaff)) : 0));
+    const need = grp.sales[dw].map((c) => (c ? Math.max(grp.min, Math.ceil(c / n / grp.per)) : 0));
     const already = Array(24).fill(0);
-    for (const e of existing.filter((x) => x.start_local.startsWith(date))) for (let h = Number(e.start_local.slice(11, 13)); h < Math.ceil(Number(e.end_local.slice(11, 13)) + Number(e.end_local.slice(14, 16)) / 60); h += 1) if (h < 24) already[h] += 1;
+    const groupIds = new Set(grp.people.map((u) => u.id));
+    for (const e of existing.filter((x) => x.start_local.startsWith(date) && (!grp.area || groupIds.has(x.user_id)))) for (let h = Number(e.start_local.slice(11, 13)); h < Math.ceil(Number(e.end_local.slice(11, 13)) + Number(e.end_local.slice(14, 16)) / 60); h += 1) if (h < 24) already[h] += 1;
     const peak = Math.max(0, ...need);
     for (let k = 1; k <= peak; k += 1) {
       const hrs = need.map((x, h) => (x - already[h] >= k ? h : -1)).filter((h) => h >= 0);
@@ -103,7 +110,7 @@ export function proposeSchedule(weekStart) {
       const blocks = end - start > maxShift ? [[start, start + Math.ceil((end - start) / 2)], [start + Math.ceil((end - start) / 2), end]] : [[start, end]];
       for (const [a, b] of blocks) {
         const len = b - a; const st = `${pad(a)}:00`; const en = b >= 24 ? '23:59' : `${pad(b)}:00`;
-        const free = staff.filter((u) => {
+        const free = grp.people.filter((u) => {
           if (off.some((t) => t.user_id === u.id && t.start_date <= date && t.end_date >= date)) return false;
           const av = avail.find((x) => x.user_id === u.id && x.dow === dw);
           if (av && !av.available) return false;
@@ -113,11 +120,11 @@ export function proposeSchedule(weekStart) {
           return weekHours[u.id] + len <= maxWeek;
         }).sort((x, y) => weekHours[x.id] - weekHours[y.id]);
         const pick = free[0];
-        if (pick) { weekHours[pick.id] += len; shifts.push({ userId: pick.id, name: pick.name, date, start: st, end: en, hours: len }); } else gaps.push({ date, start: st, end: en });
+        if (pick) { weekHours[pick.id] += len; shifts.push({ userId: pick.id, name: pick.name, date, start: st, end: en, hours: len, area: grp.area }); } else gaps.push({ date, start: st, end: en, area: grp.area });
       }
     }
   }
-  return { weekStart, shifts, gaps, hours: Object.entries(weekHours).map(([id, hrs]) => ({ name: staff.find((u) => u.id === Number(id))?.name, hours: hrs })).filter((x) => x.hours > 0), historyDays: seen.reduce((a, x) => a + x.size, 0) };
+  return { weekStart, byArea: Boolean(byArea), shifts, gaps, hours: Object.entries(weekHours).map(([id, hrs]) => ({ name: staff.find((u) => u.id === Number(id))?.name, hours: hrs })).filter((x) => x.hours > 0), historyDays: seen.reduce((a, x) => a + x.size, 0) };
 }
 
 /* ---------- supplier bills for the accounting export ---------- */
@@ -145,6 +152,7 @@ function safeBalance() {
 }
 
 export function registerSmart({ app, staff, io, h }) {
+  h0 = h;
   const { wrap, parse, idParam, clientIp, requireAuth, publicLimiter, notifyStaff, publicBase } = h;
   const mgr = requireAuth('manager'); const owner = requireAuth('owner');
 
@@ -242,9 +250,9 @@ export function registerSmart({ app, staff, io, h }) {
     res.json(proposeSchedule(w));
   });
   staff.post('/schedule/auto', mgr, (req, res) => {
-    const b = parse(z.object({ shifts: z.array(z.object({ userId: z.number().int(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), start: z.string().regex(/^\d{2}:\d{2}$/), end: z.string().regex(/^\d{2}:\d{2}$/) })).min(1).max(300) }), req.body);
+    const b = parse(z.object({ shifts: z.array(z.object({ userId: z.number().int(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), start: z.string().regex(/^\d{2}:\d{2}$/), end: z.string().regex(/^\d{2}:\d{2}$/), area: z.string().max(24).nullable().optional() })).min(1).max(300) }), req.body);
     const ins = db.prepare('INSERT INTO schedule (user_id, start_local, end_local, role_note) VALUES (?, ?, ?, ?)');
-    db.transaction(() => { for (const x of b.shifts) { if (x.end <= x.start) continue; if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(x.userId)) continue; ins.run(x.userId, `${x.date} ${x.start}`, `${x.date} ${x.end}`, 'Auto'); } })();
+    db.transaction(() => { for (const x of b.shifts) { if (x.end <= x.start) continue; if (!db.prepare('SELECT 1 FROM users WHERE id = ? AND active = 1').get(x.userId)) continue; ins.run(x.userId, `${x.date} ${x.start}`, `${x.date} ${x.end}`, x.area || 'Auto'); } })();
     audit(req.user, 'schedule.auto', `${b.shifts.length} shifts`, clientIp(req)); notifyStaff('shifts'); res.json({ ok: true, added: b.shifts.length });
   });
 

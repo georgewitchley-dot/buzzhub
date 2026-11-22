@@ -11,6 +11,7 @@ import {
   pushIsOn, registerSW, withLoc, setManifest, unlockAudio, useLenis,
 } from '../lib.js';
 import { Curbside } from './Pace.jsx';
+import { ShelfCard } from './Pass.jsx';
 
 const ACTIVE = ['waiting', 'buzzed', 'acknowledged'];
 const ORDER_STATUS = { held: 'Waiting for your table', sent: 'Being made now', ready: 'Ready', open: 'Being made now', paid: 'Paid', void: 'Cancelled' };
@@ -248,6 +249,7 @@ export default function Guest() {
           </div>
         )}
 
+        {g.shelf && <ShelfCard s={g.shelf} />}
         {g.curbside && <Curbside token={token} c={g.curbside} />}
 
         {active && (

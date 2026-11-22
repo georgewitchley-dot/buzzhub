@@ -5,6 +5,7 @@ import { api, applyAccent, timeOf } from '../lib.js';
 import { Puck } from '../ui.jsx';
 import { PageHead, useLive } from './CommandCenter.jsx';
 import { ReviewThemes } from './Smart.jsx';
+import { DishRatings } from './Pass.jsx';
 
 /* ---------- guest: rate the visit ---------- */
 export function RateVisit() {
@@ -14,9 +15,10 @@ export function RateVisit() {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [sent, setSent] = useState(false);
+  const [liked, setLiked] = useState({});
   useEffect(() => { api(`/f/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); if (x.rating) setRating(x.rating); setSent(x.done); }).catch((e) => setErr(e.message)); }, [token]);
   const [offer, setOffer] = useState(null);
-  const send = async () => { try { const r = await api(`/f/${token}`, { method: 'POST', body: { rating, comment: comment || undefined } }); setOffer(r.recovery || null); setSent(true); } catch (e) { setErr(e.message); } };
+  const send = async () => { try { const r = await api(`/f/${token}`, { method: 'POST', body: { rating, comment: comment || undefined, dishes: Object.entries(liked).map(([name, v]) => ({ name, liked: v })) } }); setOffer(r.recovery || null); setSent(true); } catch (e) { setErr(e.message); } };
   if (err) return <div className="guest"><main className="guest-in"><h1>Thanks!</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   const happy = rating >= d.threshold;
@@ -34,6 +36,7 @@ export function RateVisit() {
             {rating > 0 && (
               <div className="card">
                 <label className="field"><span>{happy ? 'What did you like? (optional)' : 'What could we do better? (optional)'}</span><textarea className="input" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={600} /></label>
+                {d.dishes?.length > 0 && <div className="stack" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 14 }}>How was each dish? (optional)</span>{d.dishes.map((x) => <div key={x.name} className="row"><span className="grow">{x.name}</span><button type="button" className={`btn sm ${liked[x.name] === 1 ? 'primary' : ''}`} aria-pressed={liked[x.name] === 1} onClick={() => setLiked({ ...liked, [x.name]: 1 })}>Loved it</button><button type="button" className={`btn sm ${liked[x.name] === 0 ? 'primary' : ''}`} aria-pressed={liked[x.name] === 0} onClick={() => setLiked({ ...liked, [x.name]: 0 })}>Not great</button></div>)}</div>}
                 <button className="btn primary lg block" onClick={send}>Send</button>
               </div>
             )}
@@ -82,6 +85,7 @@ export function FeedbackAdmin() {
         </div></section>
       </div>
       <ReviewThemes />
+      <DishRatings />
     </>
   );
 }

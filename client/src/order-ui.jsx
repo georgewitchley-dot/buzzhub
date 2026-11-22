@@ -4,7 +4,7 @@ import { api, money } from './lib.js';
 import { Modal } from './ui.jsx';
 import { tr } from './i18n.jsx';
 
-export const lineKey = (l) => `${l.comboId ? `c${l.comboId}:${JSON.stringify(l.picks)}` : l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}:${l.course || 1}`;
+export const lineKey = (l) => `${l.comboId ? `c${l.comboId}:${JSON.stringify(l.picks)}` : l.itemId}:${(l.mods || []).slice().sort().join(',')}:${l.note || ''}:${l.course || 1}:${l.seat || ''}`;
 export const lineTotal = (l) => l.qty * l.unitCents;
 
 /** Pick options for one item. onAdd({ itemId, qty, mods, note, name, modNames, unitCents }) */
@@ -51,7 +51,7 @@ export function useCart() {
   const bump = (k, d) => setLines((cur) => cur.map((x) => (lineKey(x) === k ? { ...x, qty: x.qty + d } : x)).filter((x) => x.qty > 0));
   const clear = () => setLines([]);
   const subtotal = lines.reduce((a, l) => a + lineTotal(l), 0);
-  const payload = lines.map((l) => (l.comboId ? { comboId: l.comboId, picks: l.picks, qty: l.qty, note: l.note, course: l.course > 1 ? l.course : undefined } : { itemId: l.itemId, qty: l.qty, mods: l.mods?.length ? l.mods : undefined, note: l.note, course: l.course > 1 ? l.course : undefined }));
+  const payload = lines.map((l) => (l.comboId ? { comboId: l.comboId, picks: l.picks, qty: l.qty, note: l.note, course: l.course > 1 ? l.course : undefined, seat: l.seat || undefined } : { itemId: l.itemId, qty: l.qty, mods: l.mods?.length ? l.mods : undefined, note: l.note, course: l.course > 1 ? l.course : undefined, seat: l.seat || undefined }));
   return { lines, add, bump, clear, subtotal, payload, count: lines.reduce((a, l) => a + l.qty, 0) };
 }
 
@@ -59,7 +59,7 @@ export function CartLines({ cart, currency }) {
   return cart.lines.map((l) => (
     <div className="line" key={lineKey(l)}>
       <span className="qty"><button onClick={() => cart.bump(lineKey(l), -1)} aria-label={`Remove one ${l.name}`}>−</button><span>{l.qty}</span><button onClick={() => cart.bump(lineKey(l), 1)} aria-label={`Add one ${l.name}`}>+</button></span>
-      <span>{l.name}{l.course > 1 && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{(l.modNames?.length || l.note) && <small className="mods">{[...(l.modNames || []), l.note].filter(Boolean).join(', ')}</small>}</span>
+      <span>{l.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{l.seat}</span> : null}{l.name}{l.course > 1 && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{(l.modNames?.length || l.note) && <small className="mods">{[...(l.modNames || []), l.note].filter(Boolean).join(', ')}</small>}</span>
       <span className="num">{money(lineTotal(l), currency)}</span>
     </div>
   ));

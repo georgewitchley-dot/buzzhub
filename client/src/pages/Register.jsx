@@ -225,6 +225,7 @@ export default function Register() {
   const [picking, setPicking] = useState(null);
   const [combo, setCombo] = useState(null);
   const [hold, setHold] = useState(false);
+  const [seat, setSeat] = useState(0);
   const [pair, setPair] = useState(false);
   const [punchPicks, setPunchPicks] = useState({});
   const [sellPunch, setSellPunch] = useState(false);
@@ -245,13 +246,13 @@ export default function Register() {
     const hit = (m.allergens || []).filter((a) => allergies.includes(a));
     if (hit.length && !confirm(`${m.name} contains ${hit.join(' and ')}. Add it anyway?`)) return;
     if (m.groups.length) return setPicking(m);
-    cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents, course: hold ? 2 : 1 });
+    cart.add({ itemId: m.id, qty: 1, mods: [], name: m.name, modNames: [], unitCents: m.price_cents, course: hold ? 2 : 1, seat: tableId && seat ? seat : undefined });
     gsap.fromTo(totalRef.current, { scale: 1.06 }, { scale: 1, duration: 0.3, ease: 'back.out(3)' });
   };
-  const addLine = (l) => cart.add({ ...l, course: hold ? 2 : 1 });
+  const addLine = (l) => cart.add({ ...l, course: hold ? 2 : 1, seat: tableId && seat ? seat : undefined });
   const displayCode = useDisplayPush(paying ? { stage: 'tip', lines: paying.lines || [], subtotalCents: paying.subtotal_cents, discountCents: paying.discount_cents, taxCents: paying.tax_cents, totalCents: paying.subtotal_cents - paying.discount_cents + paying.tax_cents, tipBaseCents: paying.subtotal_cents - paying.discount_cents }
     : thanks ? { stage: 'paid' } : cart.count ? { stage: 'cart', lines: cart.lines.map((l) => ({ name: l.name, qty: l.qty, cents: l.qty * l.unitCents })), subtotalCents: cart.subtotal, discountCents: disc, taxCents: tax, totalCents: total } : { stage: 'idle' });
-  const reset = () => { setHold(false); cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); setCust(null); setAllergies([]); };
+  const reset = () => { setHold(false); setSeat(0); cart.clear(); setCustomer(''); setTableId(''); setDiscount(0); setPhone(''); setPromo(''); setCust(null); setAllergies([]); };
 
   const submit = async (payNow) => {
     if (!cart.count) return;
@@ -319,6 +320,7 @@ export default function Register() {
                 </select>
               )}
             </div>
+            {tableId && settings.business_type === 'restaurant' && <div className="row wrap" style={{ gap: 4 }}><span className="muted" style={{ fontSize: 13 }}>Seat for the next items:</span>{[0, ...Array.from({ length: Math.min(20, (tables || []).find((t) => String(t.id) === String(tableId))?.seats || 4) }, (_, i) => i + 1)].map((n) => <button key={n} type="button" className={`btn sm ${seat === n ? 'primary' : 'ghost'}`} style={{ minWidth: 34 }} onClick={() => setSeat(n)}>{n || 'Any'}</button>)}</div>}
             <CustomerPicker value={cust} onChange={setCust} allergies={allergies} setAllergies={setAllergies} currency={cur} />
             <TierChip customer={cust} />
             <PunchUse customer={cust} picks={punchPicks} setPicks={setPunchPicks} />

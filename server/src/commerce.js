@@ -62,7 +62,7 @@ const err = (msg, status = 400) => Object.assign(new Error(msg), { status });
 export const lineSchema = z.object({
   itemId: z.number().int().optional(), comboId: z.number().int().optional(),
   picks: z.array(z.object({ itemId: z.number().int(), mods: z.array(z.number().int()).max(20).optional() })).max(8).optional(),
-  qty: z.number().int().min(1).max(99), note: z.string().trim().max(80).optional(), mods: z.array(z.number().int()).max(20).optional(), course: z.number().int().min(1).max(3).optional(),
+  qty: z.number().int().min(1).max(99), note: z.string().trim().max(80).optional(), mods: z.array(z.number().int()).max(20).optional(), course: z.number().int().min(1).max(3).optional(), seat: z.number().int().min(1).max(40).optional(),
 }).refine((l) => l.itemId !== undefined || (l.comboId !== undefined && l.picks?.length), { message: 'Each line needs an item or a combo' });
 
 export function menuWithMods({ where = 'active = 1' } = {}) {
@@ -101,13 +101,13 @@ export function priceLines(lines, { guestOnly = false } = {}) {
       if (!menuHooks.combo) throw err('Combos are not available');
       const parts = menuHooks.combo(l, menu, pickMods);
       for (const p of parts) need[p.item_id] = (need[p.item_id] || 0) + p.qty;
-      return parts.map((p) => ({ ...p, course }));
+      return parts.map((p) => ({ ...p, course, seat: l.seat || null }));
     }
     const m = menu.get(l.itemId);
     if (!m) throw err('An item is no longer available');
     const mods = pickMods(m, l.mods);
     need[m.id] = (need[m.id] || 0) + l.qty;
-    return [{ item_id: m.id, name: m.name, qty: l.qty, price_cents: m.price_cents + mods.reduce((a, o) => a + o.price_cents, 0), note: l.note || null, mods, course }];
+    return [{ item_id: m.id, name: m.name, qty: l.qty, price_cents: m.price_cents + mods.reduce((a, o) => a + o.price_cents, 0), note: l.note || null, mods, course, seat: l.seat || null }];
   });
   for (const [id, q] of Object.entries(need)) {
     const m = menu.get(Number(id));
@@ -156,8 +156,8 @@ export function insertOrder({ lines, status = 'sent', source = 'staff', tableId 
         promo_code, fulfillment, delivery_address, contact_phone, contact_email, order_notes, client_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(number, status, tableId, guestId, customerName, subtotal, tax, discount, feeCents, subtotal - discount + tax + feeCents, createdBy, status === 'sent' ? now : null, source,
         promoCode, fulfillment, address, phone, email, notes, clientKey).lastInsertRowid;
-    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note, mods, course, fired_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const l of lines) ins.run(id, l.item_id, l.name, l.qty, l.price_cents, l.note, l.mods?.length ? JSON.stringify(l.mods) : null, l.course || 1, (l.course || 1) > 1 ? null : now);
+    const ins = db.prepare('INSERT INTO order_items (order_id, item_id, name, qty, price_cents, note, mods, course, fired_at, seat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const l of lines) ins.run(id, l.item_id, l.name, l.qty, l.price_cents, l.note, l.mods?.length ? JSON.stringify(l.mods) : null, l.course || 1, (l.course || 1) > 1 ? null : now, l.seat || null);
     takeStock(lines, createdBy, `order #${number}`);
     for (const f of orderHooks.inserted) f(id, lines, createdBy);
     return { id, number };
@@ -532,7 +532,7 @@ export function registerCommerce({ app, staff, io, h }) {
     return {
       enabled: s.online_enabled === '1' && h.rushState?.().level !== 'paused', paused: s.online_enabled === '1' && h.rushState?.().level === 'paused', busy: h.rushState?.().level === 'busy', pickup: s.online_pickup === '1', delivery: s.online_delivery === '1',
       deliveryFeeCents: Number(s.delivery_fee_cents), deliveryMinCents: Number(s.delivery_min_cents), deliveryArea: s.delivery_area,
-      readyInMinutes: h.quoteMinutes ? h.quoteMinutes().minutes : Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
+      readyInMinutes: h.slotQuote ? h.slotQuote() : h.quoteMinutes ? h.quoteMinutes().minutes : Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
       taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1', schedule: s.online_schedule === '1', scheduleDays: Number(s.online_schedule_days || 7), prepMinutes: Number(s.online_prep_minutes),
       business: { name: s.business_name, accent: s.accent, type: s.business_type, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
     };
@@ -552,6 +552,7 @@ export function registerCommerce({ app, staff, io, h }) {
       scheduledFor: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/).optional(),
     }), req.body);
     if (b.scheduledFor) h.checkSchedule?.(b.scheduledFor);
+    const slot = h.slotFor ? h.slotFor(b.scheduledFor) : null;
     if (b.fulfillment === 'delivery' && (!info.delivery || !b.address || b.address.length < 8)) return res.status(400).json({ error: info.delivery ? 'Enter a delivery address' : 'Delivery is not available' });
     if (b.fulfillment === 'pickup' && !info.pickup) return res.status(400).json({ error: 'Pickup is not available' });
     if (b.payNow && !info.payOnline) return res.status(400).json({ error: 'Paying online is not available' });
@@ -569,6 +570,7 @@ export function registerCommerce({ app, staff, io, h }) {
     db.prepare('UPDATE guests SET order_id = ? WHERE id = ?').run(o.id, g.id);
     h.linkOrderCustomer?.(req, o.id);
     if (b.scheduledFor) db.prepare('UPDATE orders SET scheduled_for = ?, sched_pay = ? WHERE id = ?').run(b.scheduledFor, b.payNow ? 'now' : 'later', o.id);
+    if (slot) db.prepare('UPDATE orders SET promised_at = ? WHERE id = ?').run(slot.promisedAt, o.id);
     const buzzer = `/b/${g.token}`;
     if (!b.payNow) {
       audit(null, 'online.order', `#${o.number} ${b.fulfillment} for ${b.name}, pay at ${b.fulfillment === 'pickup' ? 'pickup' : 'door'}`, clientIp(req));

@@ -211,6 +211,19 @@ Server: `server/src/line.js` plus hooks in `commerce.js` (online quote/pause), `
 - **Labor by area**: `users.area`; `/staff/labor-by-area` (owner) = hours and wages per area vs. sales of dishes that area makes (`stationFor`), Front of house vs. all sales.
 - **Tip-out at clock-out** (`tipout_at_clockout`): `shiftTipout()` applies `tipout_rules` for the person's `tip_role` to their sales and tips (card tips + declared) for that shift; returned as `tipout` on the clock-out punch.
 
+## 3p. Round 16 (2026-11-21)
+Server: `server/src/pass.js` plus hooks in `commerce.js` (seat on lines, slots), `kds.js` (seat, cook, pass, shelf, extra data), `growth.js` (dish ratings), `smart.js` (schedules by area). Client: `client/src/pages/Pass.jsx`, `Areas.jsx`.
+- **Seat numbers**: `order_items.seat`; `lineSchema.seat` (1–40); register seat chips for the next items when a table is chosen; shown on tickets, area screens and printed slips.
+- **Pass timer** (`pass_alert_minutes`, needs `kds_expo`): order `passSince` = last item done when all are done; expo shows "At the pass Nm", red past the limit; a 30-second job pushes staff once (`orders.pass_alerted`).
+- **Screen-to-screen messages**: `kds_messages`; `POST /api/kds/msg {to, body}`, `/api/kds/msg/:id/ack`; quick messages from `kds_quick_messages`; banner with "Got it".
+- **Batch timers**: `kds_timers` per area (≤ 8), `POST /api/kds/timers`, `/api/kds/timers/:id/restart|done|stop|delete`; the screen beeps until tapped.
+- **Order slots** (`slot_capacity` per 15 min): `h.slotFor(scheduledFor)` picks the first slot with room after the quote (or rejects a full chosen time); `orders.promised_at`; `/api/o/slots`; `onlineInfo().readyInMinutes` uses it.
+- **Pickup shelves** (`pickup_shelves` "A1-A6, B1-B6" or a count): packing asks for a free shelf on Bagged (`orders.shelf`), guest page shows it; `/api/kds/shelf`, `/staff/orders/:id/shelf`.
+- **On my way**: `POST /api/g/:token/eta {lat,lng}` (needs `biz_lat/biz_lng`) stores `eta_minutes/eta_km`; within 150 m marks arrived; packing/expo banner.
+- **Who made it**: area screen cook picker (on-clock staff) → `order_items.done_by`; `/staff/cook-stats` (dishes, average minutes, remakes) on Kitchen speed.
+- **Rate each dish** (`dish_ratings`): `/api/f/:token` returns `dishes`; POST accepts `dishes [{name, liked}]` → `dish_ratings`; `/staff/dish-ratings` on Feedback.
+- **Schedules by area** (`schedule_by_area`, `area_sales_per_hour_cents`): `proposeSchedule` runs once per area team (`users.area`) on that area's item sales (`h.areaSalesByDow`), plus Front of house; shifts carry `area` into `schedule.role_note`.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

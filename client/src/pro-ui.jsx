@@ -119,7 +119,7 @@ export function TicketPrint({ orders, unit }) {
           <h2>#{o.number}</h2>
           <p>{o.table_label ? `${unit} ${o.table_label}` : o.fulfillment === 'delivery' ? 'DELIVERY' : o.fulfillment === 'pickup' ? 'PICKUP' : o.customer_name || 'To go'}{o.customer_name && o.table_label ? `, ${o.customer_name}` : ''}</p>
           <p>{timeOf(o.sent_at || o.created_at)}</p>
-          {o.items.map((i, k) => <div key={k} className="slip-line"><b>{i.qty}</b> {i.name}{i.mods?.length ? <div>  {i.mods.map((m) => m.name || m).join(', ')}</div> : null}{i.note && <div>  * {i.note}</div>}</div>)}
+          {o.items.map((i, k) => <div key={k} className="slip-line"><b>{i.qty}</b> {i.seat ? `S${i.seat} ` : ''}{i.name}{i.mods?.length ? <div>  {i.mods.map((m) => m.name || m).join(', ')}</div> : null}{i.note && <div>  * {i.note}</div>}</div>)}
           {(o.allergy_note || /allerg/i.test(o.customer_tags || '')) && <p><b>ALLERGY: {[o.allergy_note, ...(() => { try { return JSON.parse(o.customer_tags || '[]').filter((t) => /allerg|free|vegan/i.test(t)); } catch { return []; } })()].filter(Boolean).join(', ')}</b></p>}
           {o.order_notes && <p>Note: {o.order_notes}</p>}
           {o.delivery_address && <p>{o.delivery_address}</p>}

@@ -136,13 +136,14 @@ export function registerGrowth({ app, staff, io, h }) {
     const f = fbByToken(req.params.token); if (!f) return res.status(404).json({ error: 'This link is not valid.' });
     const s = getSettings();
     res.json({ name: f.name.split(' ')[0], rating: f.rating, done: Boolean(f.responded_at), business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
-      reviewUrl: s.review_url || null, threshold: Number(s.feedback_review_threshold || 4) });
+      reviewUrl: s.review_url || null, threshold: Number(s.feedback_review_threshold || 4), dishes: s.dish_ratings !== '0' && h.feedbackDishes ? h.feedbackDishes(f) : [] });
   });
   app.post('/api/f/:token', publicLimiter, (req, res) => {
     const f = fbByToken(req.params.token); if (!f) return res.status(404).json({ error: 'This link is not valid.' });
     if (f.responded_at && Date.now() - Date.parse(`${f.responded_at.replace(' ', 'T')}Z`) > 3_600_000) return res.status(409).json({ error: 'Thanks, we already have your feedback.' });
-    const b = parse(z.object({ rating: z.number().int().min(1).max(5), comment: z.string().trim().max(600).optional() }), req.body);
+    const b = parse(z.object({ rating: z.number().int().min(1).max(5), comment: z.string().trim().max(600).optional(), dishes: z.array(z.object({ name: z.string().max(80), liked: z.number().int().min(0).max(1) })).max(20).optional() }), req.body);
     db.prepare('UPDATE feedback SET rating = ?, comment = ?, responded_at = ? WHERE id = ?').run(b.rating, b.comment || null, now(), f.id);
+    if (b.dishes?.length && getSettings().dish_ratings !== '0') h.saveDishRatings?.(f, b.dishes);
     audit(null, 'feedback.received', `${f.name}: ${b.rating}/5${b.comment ? ` — ${b.comment.slice(0, 80)}` : ''}`, clientIp(req));
     const recovery = !f.rating && h.onLowRating ? h.onLowRating(f, b.rating, b.comment) : null;
     if (b.rating <= 2 && !f.rating) alertOwners?.(`${getSettings().business_name}: unhappy guest`, `${f.name} rated their visit ${b.rating}/5${b.comment ? `: "${b.comment.slice(0, 120)}"` : ''}${recovery ? '. An apology offer was sent automatically.' : ''}`, 'feedback');

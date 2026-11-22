@@ -95,7 +95,7 @@ export function AutoSchedule() {
   if (!can('manager')) return null;
   const open = (week) => api(`/staff/schedule/auto${week ? `?week=${week}` : ''}`).then((x) => { setD(x); setOff({}); }).catch((e) => toast(e.message, 'err'));
   const keep = d ? d.shifts.filter((_, i) => !off[i]) : [];
-  const add = () => api('/staff/schedule/auto', { method: 'POST', body: { shifts: keep.map((x) => ({ userId: x.userId, date: x.date, start: x.start, end: x.end })) } }).then((r) => { toast(`${r.added} shifts added`, 'ok'); setD(null); }).catch((e) => toast(e.message, 'err'));
+  const add = () => api('/staff/schedule/auto', { method: 'POST', body: { shifts: keep.map((x) => ({ userId: x.userId, date: x.date, start: x.start, end: x.end, area: x.area || null })) } }).then((r) => { toast(`${r.added} shifts added`, 'ok'); setD(null); }).catch((e) => toast(e.message, 'err'));
   const day = (x) => new Date(`${x}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   return (
     <>
@@ -105,7 +105,7 @@ export function AutoSchedule() {
           <div className="row"><button className="btn sm" onClick={() => open(addDays(d.weekStart, -7))}>Week before</button><button className="btn sm" onClick={() => open(addDays(d.weekStart, 7))}>Week after</button><span className="grow" /><span className="dim" style={{ fontSize: 12.5 }}>From {d.historyDays} days of sales, everyone's availability and time off</span></div>
           {d.shifts.length === 0 ? <span className="muted">Nothing to add. Either the week is already covered, or there isn't enough sales history yet.</span> : (
             <div className="stack" style={{ gap: 4, maxHeight: 340, overflow: 'auto' }}>{d.shifts.map((x, i) => (
-              <label key={i} className="row" style={{ fontSize: 14, opacity: off[i] ? 0.45 : 1 }}><input type="checkbox" checked={!off[i]} onChange={(e) => setOff({ ...off, [i]: !e.target.checked })} /><span style={{ width: 110 }}>{day(x.date)}</span><b className="grow">{x.name}</b><span className="num">{t12(x.start)} – {t12(x.end)}</span><span className="dim num" style={{ width: 40, textAlign: 'right' }}>{x.hours}h</span></label>
+              <label key={i} className="row" style={{ fontSize: 14, opacity: off[i] ? 0.45 : 1 }}><input type="checkbox" checked={!off[i]} onChange={(e) => setOff({ ...off, [i]: !e.target.checked })} /><span style={{ width: 110 }}>{day(x.date)}</span><b className="grow">{x.name}{x.area && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{x.area}</span>}</b><span className="num">{t12(x.start)} – {t12(x.end)}</span><span className="dim num" style={{ width: 40, textAlign: 'right' }}>{x.hours}h</span></label>
             ))}</div>
           )}
           {d.gaps.length > 0 && <div className="ticket-allergy" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--text)' }}>Nobody free for {d.gaps.length} shift{d.gaps.length === 1 ? '' : 's'}: {d.gaps.slice(0, 4).map((g) => `${day(g.date)} ${t12(g.start)}–${t12(g.end)}`).join(', ')}{d.gaps.length > 4 ? '…' : ''}. Hire, ask for more availability, or cover it yourself.</div>}

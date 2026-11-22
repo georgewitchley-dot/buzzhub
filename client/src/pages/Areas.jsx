@@ -4,6 +4,7 @@ import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { useCC } from './CommandCenter.jsx';
 import { KdsCard, KdsEightySix, KdsRemake, KdsTemps, RushBar } from './Line.jsx';
 import { TicketPrint, printPart } from '../pro-ui.jsx';
+import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -24,7 +25,8 @@ export function KdsScreen() {
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
   const [card, setCard] = useState(null); const [eightySix, setEightySix] = useState(false); const [remake, setRemake] = useState(null); const [temps, setTemps] = useState(false); const [tempCount, setTempCount] = useState(0);
-  const [reasons, setReasons] = useState([]); const [toPrint, setToPrint] = useState([]);
+  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null);
+  const [cook, setCookState] = useState(() => localStorage.getItem('bh_kds_cook') || ''); const setCook = (v) => { setCookState(v); localStorage.setItem('bh_kds_cook', v); }; const [toPrint, setToPrint] = useState([]);
   const [printHere, setPrintHere] = useState(() => localStorage.getItem('bh_kds_print') === '1'); const printRef = useRef(printHere); printRef.current = printHere;
   const dRef = useRef(null);
   const token = localStorage.getItem('bh_kds') || '';
@@ -48,18 +50,19 @@ export function KdsScreen() {
   const flash = (t) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
   const call = async (path, body, ok) => { setBusy((x) => x + 1); try { const r = await api(path, { method: 'POST', body: { ...body, ...(area ? { area } : {}) }, headers: hdr() }); ok?.(r); await load(); } catch (e) { flash(e.message); } setBusy((x) => x - 1); };
   const tap = (o, i) => setStruck((s) => { const set = new Set(s[o.id] || []); if (set.has(i.id)) set.delete(i.id); else set.add(i.id); return { ...s, [o.id]: set }; });
-  const bump = (o, all) => { const ids = all ? undefined : [...(struck[o.id] || [])]; call('/kds/bump', { orderId: o.id, ...(ids?.length ? { itemIds: ids } : {}) }, (r) => { setStruck((s) => ({ ...s, [o.id]: new Set() })); if (r.needsAllergyCheck) { setAllergy({ order: o, text: r.allergy }); return; } flash(r.ready ? `#${o.number} ready${r.buzz ? ', customer buzzed' : ''}` : r.waitingForExpo ? `#${o.number} done, sent to expo` : `#${o.number} updated`); }); };
+  const bump = (o, all) => { const ids = all ? undefined : [...(struck[o.id] || [])]; call('/kds/bump', { orderId: o.id, ...(ids?.length ? { itemIds: ids } : {}), ...(cook ? { cookId: Number(cook) } : {}) }, (r) => { setStruck((s) => ({ ...s, [o.id]: new Set() })); if (r.needsAllergyCheck) { setAllergy({ order: o, text: r.allergy }); return; } flash(r.ready ? `#${o.number} ready${r.buzz ? ', customer buzzed' : ''}` : r.waitingForExpo ? `#${o.number} done, sent to expo` : `#${o.number} updated`); }); };
   const complete = (o, confirmed) => {
     if (o.allergy && dRef.current?.allergyCheck && !confirmed) { setAllergy({ order: o, text: o.allergy }); return; }
     call('/kds/complete', { orderId: o.id, ...(confirmed ? { allergyConfirmed: true } : {}) }, (r) => { setAllergy(null); flash(`#${o.number} complete${r.buzz ? ', customer buzzed' : ''}`); });
   };
+  const pack = (o) => { if (dRef.current?.shelves?.length) setShelfFor(o); else call('/kds/packed', { orderId: o.id }, () => flash(`#${o.number} bagged`)); };
   // the main button on a ticket (also what the bump bar's Enter does)
   const primary = (o) => {
     const x = dRef.current; if (!x) return;
     if (x.kind === 'station') bump(o, !struck[o.id]?.size);
     else if (x.kind === 'expo') { const done = Object.values(o.areas).every((a) => a.done >= a.total); if (done || confirm(`Some areas are still cooking #${o.number}. Complete it anyway?`)) complete(o); }
     else if (x.kind === 'all') { if (x.expo) bump(o, !struck[o.id]?.size); else complete(o); }
-    else if (x.kind === 'pack') { const need = o.items.filter((i) => !i.held).length; if ((struck[o.id]?.size || 0) >= need) call('/kds/packed', { orderId: o.id }, () => flash(`#${o.number} bagged`)); else flash('Check each item first'); }
+    else if (x.kind === 'pack') { const need = o.items.filter((i) => !i.held).length; if ((struck[o.id]?.size || 0) >= need) pack(o); else flash('Check each item first'); }
   };
   // Bump bars and keyboards: 1-9 pick a ticket, arrows move, Enter/Space bumps, R or Backspace recalls the last one.
   useEffect(() => {
@@ -86,7 +89,7 @@ export function KdsScreen() {
   const itemLine = (o, i, { tappable, showArea }) => (
     <li key={i.id} className={`${i.done || struck[o.id]?.has(i.id) ? 'done' : ''} ${i.held ? 'held' : ''} ${d.pacing && i.startIn > 0 && !i.done ? 'wait' : ''}`} onClick={tappable && !i.done && !i.held ? (e) => { e.stopPropagation(); tap(o, i); } : undefined} role={tappable ? 'button' : undefined}>
       <b className="num">{i.qty}</b>
-      <span><button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
+      <span>{i.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{i.seat}</span> : null}<button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
     </li>
   );
   return (
@@ -97,6 +100,9 @@ export function KdsScreen() {
         <span className="chip">{d.orders.length} ticket{d.orders.length === 1 ? '' : 's'}</span>
         {d.held > 0 && d.kind !== 'pack' && <span className="chip amber">{d.held} pre-order{d.held === 1 ? '' : 's'} waiting</span>}
         <span className="num kds-clock">{now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+        <CookPicker d={d} cook={cook} setCook={setCook} />
+        <KdsTimers d={d} call={call} flash={flash} />
+        <KdsMessages d={d} call={call} flash={flash} />
         {tempCount > 0 && <button className="btn sm" onClick={() => setTemps(true)}>Temps</button>}
         <button className="btn sm" onClick={() => setEightySix(true)}>86</button>
         <button className="btn sm" aria-pressed={printHere} title="Print this area's new tickets on this device's printer" onClick={() => { const v = !printHere; setPrintHere(v); localStorage.setItem('bh_kds_print', v ? '1' : '0'); }}>{printHere ? 'Printing' : 'Print'}</button>
@@ -109,6 +115,7 @@ export function KdsScreen() {
       {msg && <div className="kds-msg" role="status">{msg}</div>}
       {d.rush && (d.rush.level !== 'normal' || d.kind === 'expo' || d.kind === 'all') && <RushBar rush={d.rush} quote={d.quote} canPause={d.kind === 'expo' || d.kind === 'all'} onPause={(m) => call('/kds/pause', { minutes: m }, () => flash(m ? `Online orders paused for ${m} minutes` : 'Online orders back on'))} />}
       {d.arrivals.length > 0 && <div className="kds-banner here">{d.arrivals.map((a) => <span key={a.id} className="row" style={{ gap: 8 }}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''} is here</b>{a.note && <span>{a.note}</span>}<span className="dim">{a.ready ? 'ready' : 'still cooking'}</span><button className="btn sm" onClick={() => call('/kds/handed', { orderId: a.id }, () => flash(`#${a.number} brought out`))}>Brought out</button></span>)}</div>}
+      {d.enRoute?.length > 0 && <div className="kds-banner">{d.enRoute.map((a) => <span key={a.id}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''}</b> is about {a.etaMinutes} min away ({a.km} km){a.ready ? ', order ready' : ', still cooking'}</span>)}</div>}
       {d.events.length > 0 && <div className="kds-banner">{d.events.map((e) => <span key={e.id}><b>Event {t12k(e.start)}: {e.name}</b> ({e.room}, {e.guests} guests): {e.items.map((i) => `${i.qty} ${i.name}`).join(', ')}{e.fired ? ' · sent' : e.fireTime ? ` · fires ${t12k(e.fireTime)}` : ''}</span>)}</div>}
       <div className={`kds-body ${showAll && d.kind !== 'pack' ? 'with-side' : ''}`}>
         <div className="kds-grid">
@@ -117,7 +124,7 @@ export function KdsScreen() {
             const areas = Object.entries(o.areas);
             const allDone = areas.every(([, a]) => a.done >= a.total);
             return (
-              <article key={o.id} className={`ticket-card ${tone(o)} ${idx === Math.min(sel, d.orders.length - 1) ? 'kds-sel' : ''}`} onClick={() => setSel(idx)}>
+              <article key={o.id} className={`ticket-card ${tone(o)} ${o.passSince && d.passMinutes && Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`) >= d.passMinutes * 60000 ? 'pass-late' : ''} ${idx === Math.min(sel, d.orders.length - 1) ? 'kds-sel' : ''}`} onClick={() => setSel(idx)}>
                 <header>{idx < 9 && <span className="kds-key" aria-hidden="true">{idx + 1}</span>}<b>#{o.number}</b><span className="grow">{who(o)}</span><span className="age num">{(() => { const m = ago(o.sent_at || o.created_at); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; })()}</span></header>
                 <div className="row wrap" style={{ gap: 6 }}>
                   {o.fulfillment === 'delivery' && <span className="chip rose">Delivery{o.driver_name ? `: ${o.driver_name.split(' ')[0]}` : ''}</span>}
@@ -128,13 +135,14 @@ export function KdsScreen() {
                   {d.kind === 'station' && areas.filter(([n]) => n !== d.area).map(([n, a]) => <span key={n} className={`chip ${a.done >= a.total ? 'teal' : ''}`} title="Other areas on this ticket">{n} {a.done >= a.total ? 'done' : 'cooking'}</span>)}
                 </div>
                 {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}</div>}
+                {o.passSince && d.kind !== 'station' && (() => { const m = Math.max(0, Math.round((Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`)) / 60000)); return <span className={`chip ${d.passMinutes && m >= d.passMinutes ? 'rose' : 'teal'}`}>At the pass {m}m</span>; })()}
                 {o.arrived && <span className="chip rose">Customer is here{o.arrival_note ? `: ${o.arrival_note}` : ''}</span>}
                 {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
                 <ul>{(d.kind === 'station' ? o.mine : o.items).map((i) => itemLine(o, i, { tappable: d.kind === 'station' || d.kind === 'all' || d.kind === 'pack', showArea: d.kind === 'expo' || d.kind === 'all' }))}</ul>
                 {d.kind === 'station' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); bump(o, !struck[o.id]?.size); }}><Icon name="check" size={18} />{struck[o.id]?.size ? `Done: ${struck[o.id].size} item${struck[o.id].size === 1 ? '' : 's'}` : `${d.area} done`}</button>}
                 {d.kind === 'all' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{d.expo ? 'Done, send to expo' : 'Ready'}</button>}
                 {d.kind === 'expo' && <button className={`btn lg block ${allDone ? 'primary' : ''}`} disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{allDone ? 'Complete and buzz' : 'Waiting on areas'}</button>}
-                {d.kind === 'pack' && <button className="btn primary lg block" disabled={busy > 0 || (struck[o.id]?.size || 0) < o.items.filter((i) => !i.held).length} onClick={(e) => { e.stopPropagation(); call('/kds/packed', { orderId: o.id }, () => flash(`#${o.number} bagged`)); }} title="Tap each item as it goes in the bag">{(struck[o.id]?.size || 0) < o.items.filter((i) => !i.held).length ? `Check items (${struck[o.id]?.size || 0}/${o.items.filter((i) => !i.held).length})` : 'Bagged'}</button>}
+                {d.kind === 'pack' && <button className="btn primary lg block" disabled={busy > 0 || (struck[o.id]?.size || 0) < o.items.filter((i) => !i.held).length} onClick={(e) => { e.stopPropagation(); pack(o); }} title="Tap each item as it goes in the bag">{(struck[o.id]?.size || 0) < o.items.filter((i) => !i.held).length ? `Check items (${struck[o.id]?.size || 0}/${o.items.filter((i) => !i.held).length})` : 'Bagged'}</button>}
               </article>
             );
           })}
@@ -156,6 +164,7 @@ export function KdsScreen() {
           <button className="btn ghost block" onClick={() => setAllergy(null)}>Not yet</button>
         </Modal>
       )}
+      {shelfFor && <ShelfPicker d={d} order={shelfFor} onClose={() => setShelfFor(null)} onPick={(s) => { const o = shelfFor; setShelfFor(null); call('/kds/packed', { orderId: o.id, ...(s ? { shelf: s } : {}) }, () => flash(`#${o.number} bagged${s ? ` on shelf ${s}` : ''}`)); }} />}
       {card && <KdsCard itemId={card} hdr={hdr()} q={q} onClose={() => setCard(null)} />}
       {eightySix && <KdsEightySix hdr={hdr()} q={q} flash={flash} onClose={() => setEightySix(false)} />}
       {remake && <KdsRemake order={remake} hdr={hdr()} reasons={reasons} flash={(t) => { flash(t); load(); }} onClose={() => setRemake(null)} />}
