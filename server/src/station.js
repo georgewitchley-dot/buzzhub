@@ -17,7 +17,7 @@ registerSchema((db) => {
 });
 
 const err = (msg, status = 400) => Object.assign(new Error(msg), { status });
-const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
+const pj = (v, d) => { try { return JSON.parse(v) ?? d; } catch { return d; } };
 export const PRIORITY = { 0: null, 1: 'RUSH', 2: 'VIP' };
 
 export function registerStation({ app, staff, h }) {

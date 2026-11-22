@@ -261,6 +261,14 @@ New module `server/src/station.js` (`registerStation`, after `registerTable`) an
 - Checkout: cash to hand in = cash collected − cash tips − card tips. Tip-outs come from `shiftTipout`.
 - Staff customer lookup is `/staff/customer-find` (not `/customers/find`, which `/customers/:id` would catch).
 
+## 3t. Round 20 (2026-11-22)
+New module `server/src/flow.js` (`registerFlow`, after `registerStation`). Client additions in `pages/Station.jsx` (SeatMap, MoveTable, SignaturePad, PrepPars), `Run.jsx` (station shortcuts, prep counts), `Areas.jsx` (rush toggle, `bh_kds_theme` standard|contrast|safe → `.kds-theme-*`), `Field.jsx` (signature).
+- Transfer moves unpaid orders, open bills and open tabs to the new table, moves the guest and marks the old table dirty; handing to a server sets `tables.server_id` and the unpaid orders' `created_by` (so server checkout follows the checks).
+- Pars: `h.applyPars(items, keep)` runs inside `/api/kds/prep` before recipe totals; `prep = max(forecast, par) − onHand` (today's `prep_counts`).
+- Signature gate lives in delivery.js `/orders/:id/delivered` via `h.needsSignature`; error flag `needsSignature` added to the error handler.
+- Pre-order reminder job every 10 minutes; manager trigger `POST /staff/preorder-reminders/run`. Settings `preorder_reminder`, `preorder_reminder_hour`, `delivery_signature_cents`.
+- Fixed `pj()` in station.js: `JSON.parse(null)` returns null, which broke `/staff/bookings`.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

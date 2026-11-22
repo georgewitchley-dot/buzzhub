@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PadPay, PadTables } from './Table.jsx';
-import { PriorityPick, StationFire, StationHost } from './Station.jsx';
+import { MoveTable, PrepPars, PriorityPick, SeatMap, StationFire, StationHost } from './Station.jsx';
 
 /* ================= Server order pad (/pad) ================= */
 export function OrderPad() {
@@ -12,9 +12,27 @@ export function OrderPad() {
   const [menu, setMenu] = useState(null); const [tables] = useLive(['tables'], () => api('/staff/tables'));
   const [tableId, setTableId] = useState(() => localStorage.getItem('bh_pad_table') || '');
   const [seat, setSeat] = useState(1); const [hold, setHold] = useState(false); const [paying, setPaying] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
-  const [priority, setPriority] = useState(0); const [host, setHost] = useState(() => localStorage.getItem('bh_station_host') !== '0');
+  const [priority, setPriority] = useState(0); const [host, setHost] = useState(() => localStorage.getItem('bh_station_host') !== '0'); const [moving, setMoving] = useState(false);
   const cart = useCart();
+  const keys = useRef({});
   useEffect(() => { api('/o/menu').then(setMenu).catch(() => api('/staff/menu').then((m) => setMenu({ items: Array.isArray(m) ? m : m.items }))); }, []);
+  useEffect(() => {
+    const onKey = (e) => {
+      const el = e.target; if (e.ctrlKey || e.metaKey || e.altKey || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable || document.querySelector('.modal')) return;
+      const k = keys.current;
+      if (/^[0-9]$/.test(e.key) && k.t) { const n = Number(e.key); if (n === 0) k.setSeat(0); else if (n <= (k.t.seats || 4)) k.setSeat(n); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'f' && k.t) { const b = document.querySelector('.station-fire button'); if (b) { b.click(); e.preventDefault(); } }
+      else if (e.key.toLowerCase() === 'h' && k.t) { k.setHold((v) => !v); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'r') { k.setPriority((v) => (v === 1 ? 0 : 1)); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'v') { k.setPriority((v) => (v === 2 ? 0 : 2)); e.preventDefault(); }
+      else if (e.key.toLowerCase() === 'c' && k.t) { k.setPaying(true); e.preventDefault(); }
+      else if (e.key === 'Enter' && k.count && k.t && !k.busy) { k.send(); e.preventDefault(); }
+      else if (e.key === 'Escape' && k.count) { k.clear(); e.preventDefault(); }
+      else if (e.key === '?') { k.setHelp((v) => !v); e.preventDefault(); }
+    };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const [help, setHelp] = useState(false);
   if (!menu || !tables) return null;
   const t = tables.find((x) => String(x.id) === String(tableId));
   const pick = (id) => { setTableId(String(id)); localStorage.setItem('bh_pad_table', String(id)); setSeat(1); };
@@ -25,10 +43,12 @@ export function OrderPad() {
     catch (e) { toast(e.message, 'err'); }
     setBusy(false);
   };
+  keys.current = { t, setSeat, setHold, setPriority, setPaying, setHelp, send, count: cart.count, busy, clear: cart.clear };
   const toggleHost = () => { setHost(!host); localStorage.setItem('bh_station_host', host ? '0' : '1'); };
   return (
     <div className={`station ${host ? 'with-host' : ''}`}>
       <PageHead title="Server station" sub="Pick a table, tap a seat, add dishes, send. Fire the next course and run the waitlist from here.">
+        <button className="btn ghost" aria-pressed={help} onClick={() => setHelp(!help)} title="Keyboard shortcuts (?)">Keys</button>
         <button className="btn" aria-pressed={host} onClick={toggleHost}>{host ? 'Hide waitlist' : 'Waitlist'}</button>
       </PageHead>
       <div className="station-grid">
@@ -40,10 +60,9 @@ export function OrderPad() {
           {t ? <>
             <div className="station-bar">
               <b className="station-t">{settings.unit_label} {t.label}</b>
-              <div className="row wrap" style={{ gap: 4 }}>{Array.from({ length: Math.min(20, t.seats || 4) }, (_, i) => i + 1).map((n) => <button key={n} className={`btn sm ${seat === n ? 'primary' : ''}`} style={{ minWidth: 40 }} onClick={() => setSeat(n)}>S{n}</button>)}<button className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => setSeat(0)}>Share</button></div>
+              <SeatMap table={t} seat={seat} onSeat={setSeat} />
               <span className="grow" />
-              <StationFire tableId={t.id} />
-              <button className="btn" onClick={() => setPaying(true)}>Check</button>
+              <div className="row wrap" style={{ gap: 6 }}><StationFire tableId={t.id} /><button className="btn" onClick={() => setMoving(true)}>Move</button><button className="btn" onClick={() => setPaying(true)}>Check</button></div>
             </div>
             <div className="row wrap" style={{ gap: 8 }}><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />Hold as the next course</label><input className="input grow" style={{ minWidth: 160 }} placeholder="Note for the next dish (no onions…)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></div>
             <div className="card"><GuestMenu items={menu.items} currency={cur} onAdd={add} /></div>
@@ -60,6 +79,8 @@ export function OrderPad() {
         </aside>
       </div>
       {paying && t && <PadPay tableId={t.id} label={t.label} onClose={() => setPaying(false)} />}
+      {moving && t && <MoveTable table={t} onClose={(to) => { setMoving(false); if (to) pick(to); }} />}
+      {help && <div className="station-keys" role="note"><b>Keyboard</b><span><kbd>1</kbd>–<kbd>9</kbd> seat · <kbd>0</kbd> share · <kbd>H</kbd> hold next course · <kbd>F</kbd> fire course · <kbd>R</kbd> rush · <kbd>V</kbd> VIP · <kbd>Enter</kbd> send · <kbd>Esc</kbd> clear · <kbd>C</kbd> check · <kbd>?</kbd> this help</span></div>}
     </div>
   );
 }
@@ -77,6 +98,8 @@ export function KdsPrep({ hdr, q, onClose }) {
   const [d, setD] = useState(null); const [done, setDone] = useState({}); const [note, setNote] = useState('');
   const loadLog = () => api(`/kds/prep-log${q}`, { headers: hdr }).then((rows) => setDone(Object.fromEntries(rows.map((r) => [`${r.kind === 'item' ? 'i' : 'g'}${r.ref_id}`, r]))));
   useEffect(() => { api(`/kds/prep${q}`, { headers: hdr }).then(setD); loadLog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const reloadPrep = () => api(`/kds/prep${q}`, { headers: hdr }).then(setD);
+  const count = (i, v) => { const qty = v === '' ? null : Math.max(0, Math.round(Number(v))); if (qty !== null && Number.isNaN(qty)) return; api(`/kds/prep-count${q}`, { method: 'POST', headers: hdr, body: { itemId: i.id, qty, by: localStorage.getItem('bh_kds_name') || undefined } }).then(reloadPrep).catch((e) => setNote(e.message)); };
   const tick = (k) => { const kind = k[0] === 'i' ? 'item' : 'ingredient'; const id = Number(k.slice(1)); const row = kind === 'item' ? d.items.find((x) => x.id === id) : d.ingredients.find((x) => x.id === id);
     api(`/kds/prep-log${q}`, { method: 'POST', headers: hdr, body: { kind, refId: id, qty: kind === 'item' ? row.prep : row.need, done: !done[k], by: localStorage.getItem('bh_kds_name') || undefined } }).then((r) => { if (r.lot) setNote(`${row.name} added to Use first`); loadLog(); }); };
   return (
@@ -84,7 +107,7 @@ export function KdsPrep({ hdr, q, onClose }) {
       {d && <>
         <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra. Ticks show on every screen; prepped ingredients with a shelf life go into Use first.</span>
         {note && <span className="chip teal">{note}</span>}
-        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
+        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{(i.par || i.onHand !== null) && <span className="prep-recipe">{i.par ? `Par ${i.par} · forecast ${i.forecast} · ` : ''}On hand <input className="input prep-onhand" type="number" min={0} defaultValue={i.onHand ?? ''} onClick={(e) => e.preventDefault()} onBlur={(e) => count(i, e.target.value)} aria-label={`On hand ${i.name}`} /></span>}{!(i.par || i.onHand !== null) && <button type="button" className="linkish prep-recipe" onClick={(e) => { e.preventDefault(); const v = prompt(`How many ${i.name} are already made?`, ''); if (v !== null) count(i, v); }}>Count what's on hand</button>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
         {d.ingredients.length > 0 && <><b>Ingredients</b>{d.ingredients.map((g) => <label key={g.id} className="row" style={{ fontSize: 15 }}><input type="checkbox" checked={Boolean(done[`g${g.id}`])} onChange={() => tick(`g${g.id}`)} /><span className="grow">{g.name}</span><span className="num">{g.need} {g.unit}</span>{g.short > 0 && <span className="chip rose">short {g.short}</span>}</label>)}</>}
       </>}
     </Modal>
@@ -185,6 +208,8 @@ export function RunPanel({ f, setF }) {
       <div className="row wrap">{num('makegood_minutes', 'Late-ticket make-good after (minutes, 0 = off)')}
         <label className="field"><span>Dish to send "on us"</span><select className="input" value={f.makegood_item_id} onChange={(e) => setF({ ...f, makegood_item_id: e.target.value })}><option value="">Pick a dish</option>{items.filter((i) => i.active).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
         {num('makegood_pct', 'Or % off')}</div>
+      {num('delivery_signature_cents', 'Ask for a customer signature on deliveries of this many cents or more (0 = never)', 120)}
+      <PrepPars />
       <div className="row wrap">{num('batch_radius_km', 'Group deliveries within (km)')}{num('batch_window_minutes', 'and ready within (minutes)')}</div>
       <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.bar_tabs === '1'} onChange={flag('bar_tabs')} />Bar tabs: guests start a tab from the table QR code and pay once at the end</label>
       <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.area_alerts === '1'} onChange={flag('area_alerts')} />Area staffing alerts: tell managers when an area is slammed or overstaffed</label>

@@ -163,6 +163,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 20: station speed, kitchen visibility
+
+- **Seat map** on the server station: tap seats on a drawing of the table (round or rectangular, from the floor plan).
+- **Move a table**: move open checks, the party and the open bill to another table and/or hand them to another server (`POST /api/staff/tables/:id/transfer`, `GET /api/staff/servers-on`).
+- **Rush from expo**: expo and all-areas screens can rush or un-rush a ticket.
+- **Kitchen colours**: each area screen cycles Standard, High contrast, and Colour-safe (blue/orange plus written LATE/SOON tags).
+- **Prep par levels** (Settings, in the courses/deliveries panel): the prep list asks for the bigger of par and forecast, minus what's counted on hand (`menu_items.prep_par`, `prep_counts`, `POST /api/kds/prep-count`).
+- **Delivery signature** for orders at or above `delivery_signature_cents` (`delivery_signatures`, `POST /api/staff/orders/:id/signature`). Mark delivered is refused with `needsSignature` until it's signed.
+- **Pre-order reminders**: the day before a booking (from `preorder_reminder_hour`), guests without a pre-order get a push/email nudge (`bookings.preorder_reminded`).
+- **Station keyboard shortcuts**: 1–9 seat, 0 share, H hold, F fire, R rush, V VIP, Enter send, Esc clear, C check, ? help.
+- Fix: the staff Bookings list failed when a booking had no pre-order (round 19).
+
 ## Round 19: the server station
 
 - **Server station (/pad, was "Order pad")** is now a workstation layout: tables and the waitlist on the left, the menu in the middle, the new round on the right. It stacks on narrower screens.

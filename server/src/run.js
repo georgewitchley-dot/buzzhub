@@ -110,9 +110,15 @@ export function registerRun({ app, staff, io, h }) {
   app.get('/api/kds/prep', (req, res) => {
     const w = who(req); const list = stationList(); const p = prepList(localToday()); const all = ['All areas', 'Expo', 'Packing', 'Runner'].includes(w.area);
     const meta = Object.fromEntries(db.prepare('SELECT id, category, station FROM menu_items').all().map((m) => [m.id, m]));
-    const items = p.items.filter((i) => all || stationFor(meta[i.id] || i, list) === w.area);
+    const keep = (i) => all || stationFor(meta[i.id] || i, list) === w.area;
+    const items = h.applyPars ? h.applyPars(p.items.filter(keep), keep) : p.items.filter(keep);
     const ingIds = new Set(db.prepare(`SELECT ingredient_id FROM item_recipes WHERE item_id IN (${items.map((i) => i.id).join(',') || 0})`).all().map((r) => r.ingredient_id));
     res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
+  });
+
+  app.post('/api/kds/prep-count', (req, res) => {
+    const w = who(req); const b = parse(z.object({ itemId: z.number().int(), qty: z.number().int().min(0).max(9999).nullable(), by: z.string().trim().max(30).optional() }), req.body);
+    h.prepCount(b.itemId, b.qty, w.user ? w.user.name : b.by || label(w)); res.json({ ok: true });
   });
 
   /* ===== runner screen ===== */

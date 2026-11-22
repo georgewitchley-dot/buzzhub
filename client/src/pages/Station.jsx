@@ -184,3 +184,76 @@ export function BookingPreorder({ booking, onClose }) {
     </Modal>
   );
 }
+
+/* ================= Round 20: seat map ================= */
+export function SeatMap({ table, seat, onSeat }) {
+  const n = Math.max(1, Math.min(20, table.seats || 4)); const round = table.shape === 'round';
+  const W = 220; const H = 128; const cx = W / 2; const cy = H / 2;
+  const pos = Array.from({ length: n }, (_, i) => {
+    if (round) { const a = (-Math.PI / 2) + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * 88, cy + Math.sin(a) * 50]; }
+    const top = Math.ceil(n / 2); const onTop = i < top; const k = onTop ? i : i - top; const cnt = onTop ? top : n - top;
+    return [cx - 70 + ((k + 0.5) * 140) / cnt, onTop ? 14 : H - 14];
+  });
+  return (
+    <div className="seatmap" role="group" aria-label="Seats">
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
+        {round ? <ellipse cx={cx} cy={cy} rx={64} ry={32} className="seatmap-table" /> : <rect x={cx - 78} y={cy - 30} width={156} height={60} rx={10} className="seatmap-table" />}
+        <text x={cx} y={cy + 5} textAnchor="middle" className="seatmap-label">{table.label}</text>
+        {pos.map(([x, y], i) => (
+          <g key={i} className={`seatmap-seat ${seat === i + 1 ? 'on' : ''}`} onClick={() => onSeat(i + 1)} role="button" tabIndex={0} aria-label={`Seat ${i + 1}`} aria-pressed={seat === i + 1} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeat(i + 1); } }}>
+            <circle cx={x} cy={y} r={12} /><text x={x} y={y + 4} textAnchor="middle">{i + 1}</text>
+          </g>
+        ))}
+      </svg>
+      <button type="button" className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => onSeat(0)}>Share</button>
+    </div>
+  );
+}
+
+/* ================= Round 20: move a table ================= */
+export function MoveTable({ table, onClose }) {
+  const { settings } = useCC(); const toast = useToast();
+  const [tables, setTables] = useState([]); const [people, setPeople] = useState([]); const [to, setTo] = useState(''); const [who, setWho] = useState('');
+  useEffect(() => { api('/staff/tables').then((t) => setTables(t.filter((x) => x.id !== table.id))); api('/staff/servers-on').then(setPeople).catch(() => {}); }, [table.id]);
+  const go = () => api(`/staff/tables/${table.id}/transfer`, { method: 'POST', body: { ...(to ? { toTableId: Number(to) } : {}), ...(who ? { toUserId: Number(who) } : {}) } })
+    .then((r) => { toast(`${settings.unit_label} ${table.label} ${r.done.join(', ')}`, 'ok'); onClose(to ? Number(to) : null); }).catch((e) => toast(e.message, 'err'));
+  return (
+    <Modal title={`Move ${settings.unit_label} ${table.label}`} onClose={() => onClose(null)} width={420}>
+      <span className="muted" style={{ fontSize: 14 }}>Open checks, the party and the bill move together. Paid checks stay where they were.</span>
+      <label className="field"><span>Move to {settings.unit_label.toLowerCase()}</span><select className="input" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Keep this {settings.unit_label.toLowerCase()}</option>{tables.map((t) => <option key={t.id} value={t.id} disabled={t.status === 'seated'}>{settings.unit_label} {t.label}{t.status === 'seated' ? ' (seated)' : ''}</option>)}</select></label>
+      <label className="field"><span>Hand to server</span><select className="input" value={who} onChange={(e) => setWho(e.target.value)}><option value="">Keep the same server</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <button className="btn primary lg block" disabled={!to && !who} onClick={go}>Move</button>
+    </Modal>
+  );
+}
+
+/* ================= Round 20: signature pad ================= */
+export function SignaturePad({ orderId, onSigned }) {
+  const ref = useRef(null); const drawing = useRef(false); const [has, setHas] = useState(false); const [name, setName] = useState(''); const [saved, setSaved] = useState(false); const toast = useToast();
+  const pt = (e) => { const r = ref.current.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return [(p.clientX - r.left) * (ref.current.width / r.width), (p.clientY - r.top) * (ref.current.height / r.height)]; };
+  const start = (e) => { e.preventDefault(); drawing.current = true; const c = ref.current.getContext('2d'); c.lineWidth = 3; c.lineCap = 'round'; c.strokeStyle = '#111'; const [x, y] = pt(e); c.beginPath(); c.moveTo(x, y); };
+  const move = (e) => { if (!drawing.current) return; e.preventDefault(); const c = ref.current.getContext('2d'); const [x, y] = pt(e); c.lineTo(x, y); c.stroke(); setHas(true); };
+  const end = () => { drawing.current = false; };
+  const clear = () => { ref.current.getContext('2d').clearRect(0, 0, ref.current.width, ref.current.height); setHas(false); setSaved(false); };
+  const save = () => api(`/staff/orders/${orderId}/signature`, { method: 'POST', body: { signature: ref.current.toDataURL('image/png'), name: name.trim() || undefined } }).then(() => { setSaved(true); toast('Signature saved', 'ok'); onSigned?.(); }).catch((e) => toast(e.message, 'err'));
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <b>Customer signature</b>
+      <canvas ref={ref} width={600} height={200} className="sigpad" onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end} onTouchStart={start} onTouchMove={move} onTouchEnd={end} aria-label="Sign here" />
+      <div className="row" style={{ gap: 6 }}><input className="input grow" placeholder="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /><button type="button" className="btn" onClick={clear}>Clear</button><button type="button" className="btn primary" disabled={!has || saved} onClick={save}>{saved ? 'Signed' : 'Save signature'}</button></div>
+    </div>
+  );
+}
+
+/* ================= Round 20: prep pars (settings) ================= */
+export function PrepPars() {
+  const toast = useToast(); const [items, setItems] = useState(null);
+  useEffect(() => { api('/staff/prep-pars').then(setItems).catch(() => setItems([])); }, []);
+  if (!items?.length) return null;
+  const save = (i, v) => api(`/staff/menu/${i.id}/prep-par`, { method: 'PUT', body: { par: v === '' ? null : Number(v) } }).then(() => toast(`${i.name}: ${v === '' ? 'no par' : `par ${v}`}`, 'ok')).catch((e) => toast(e.message, 'err'));
+  return (
+    <details className="stack"><summary style={{ cursor: 'pointer', fontSize: 14 }}><b>Prep par levels</b> <span className="dim">How many of each to have ready. The prep list asks for the bigger of the par and the forecast, minus what's on hand.</span></summary>
+      <div className="par-grid">{items.map((i) => <label key={i.id} className="row" style={{ fontSize: 14, gap: 6 }}><span className="grow">{i.name}</span><input className="input" style={{ width: 72 }} type="number" min={0} max={999} defaultValue={i.prep_par ?? ''} onBlur={(e) => { if (String(e.target.value) !== String(i.prep_par ?? '')) { save(i, e.target.value); i.prep_par = e.target.value === '' ? null : Number(e.target.value); } }} aria-label={`Par for ${i.name}`} /></label>)}</div>
+    </details>
+  );
+}

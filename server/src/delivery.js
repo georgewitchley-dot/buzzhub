@@ -98,6 +98,7 @@ export function registerDelivery({ app, staff, io, h }) {
     const o = db.prepare("SELECT * FROM orders WHERE id = ? AND fulfillment = 'delivery'").get(idParam(req));
     if (!o || o.delivered_at) throw err('Already delivered', 409);
     if (!mineOrMgr(req, o)) throw err('This delivery is assigned to someone else', 403);
+    if (h.needsSignature?.(o)) throw Object.assign(err('Get the customer to sign first', 409), { needsSignature: true });
     const t = now();
     if (o.prepaid || o.paid_at) db.prepare("UPDATE orders SET delivered_at = ?, status = 'paid' WHERE id = ?").run(t, o.id);
     else {

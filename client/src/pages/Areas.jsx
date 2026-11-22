@@ -25,6 +25,7 @@ export function KdsScreen() {
   const [sel, setSel] = useState(0); // bump bar / keyboard selection
   const [speak, setSpeak] = useState(() => localStorage.getItem('bh_kds_speak') === '1');
   const [big, setBig] = useState(() => localStorage.getItem('bh_kds_big') === '1');
+  const [theme, setTheme] = useState(() => localStorage.getItem('bh_kds_theme') || 'standard');
   const speakRef = useRef(speak); speakRef.current = speak;
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
@@ -115,7 +116,7 @@ export function KdsScreen() {
     </li>
   );
   return (
-    <div className={`kds-screen ${big ? 'kds-big' : ''}`}>
+    <div className={`kds-screen ${big ? 'kds-big' : ''} kds-theme-${theme}`}>
       <header className="kds-top">
         <Puck state="buzzed" size={30} />
         <div className="grow"><b className="kds-area">{d.area}</b><span className="dim">{kindLabel}</span></div>
@@ -134,6 +135,7 @@ export function KdsScreen() {
         {d.kind !== 'pack' && d.kind !== 'runner' && <button className="btn sm" aria-pressed={showAll} onClick={() => { setShowAll(!showAll); localStorage.setItem('bh_kds_allday', showAll ? '0' : '1'); }}>All day</button>}
         {!d.device && <select className="input" style={{ width: 150, height: 34 }} value={d.area} onChange={(e) => { location.href = withLoc(`/kds?area=${encodeURIComponent(e.target.value)}`, new URLSearchParams(location.search).get('l')); }} aria-label="Area">{d.areas.map((a) => <option key={a}>{a}</option>)}</select>}
         <button className="btn sm" aria-pressed={big} title="Bigger text for screens across the kitchen" onClick={() => { setBig(!big); localStorage.setItem('bh_kds_big', big ? '0' : '1'); }}>{big ? 'Big text' : 'Aa'}</button>
+        <button className="btn sm" title="Ticket colours: standard, high contrast, or colour-blind safe" onClick={() => { const n = { standard: 'contrast', contrast: 'safe', safe: 'standard' }[theme]; setTheme(n); localStorage.setItem('bh_kds_theme', n); }}>{{ standard: 'Colours', contrast: 'High contrast', safe: 'Colour-safe' }[theme]}</button>
         <button className="btn sm" onClick={full} aria-label="Full screen"><Icon name="expand" size={16} /></button>
       </header>
       {msg && <div className="kds-msg" role="status">{msg}</div>}
@@ -151,7 +153,7 @@ export function KdsScreen() {
             const allDone = areas.every(([, a]) => a.done >= a.total);
             return (
               <article key={o.id} className={`ticket-card ${tone(o)} ${o.passSince && d.passMinutes && Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`) >= d.passMinutes * 60000 ? 'pass-late' : ''} ${idx === Math.min(sel, d.orders.length - 1) ? 'kds-sel' : ''} ${o.priority ? 'prio' : ''}`} onClick={() => setSel(idx)}>
-                <header>{idx < 9 && <span className="kds-key" aria-hidden="true">{idx + 1}</span>}<b>#{o.number}</b><PriorityChip p={o.priority} /><span className="grow">{who(o)}</span><span className="age num">{(() => { const m = ago(o.sent_at || o.created_at); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; })()}</span></header>
+                <header>{idx < 9 && <span className="kds-key" aria-hidden="true">{idx + 1}</span>}<b>#{o.number}</b><PriorityChip p={o.priority} /><span className="grow">{who(o)}</span><span className="age num">{(() => { const m = ago(o.sent_at || o.created_at); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; })()}</span></header>{['expo', 'all'].includes(d.kind) && <button type="button" className={`rush-tog ${o.priority ? 'on' : ''}`} title={o.priority ? 'Back to normal' : 'Make this a rush'} onClick={(e) => { e.stopPropagation(); call('/kds/priority', { orderId: o.id, priority: o.priority ? 0 : 1 }, () => flash(o.priority ? `#${o.number} back to normal` : `#${o.number} is a rush`)); }}>{o.priority ? 'Take off rush' : 'Rush this'}</button>}
                 <div className="row wrap" style={{ gap: 6 }}>
                   {o.fulfillment === 'delivery' && <span className="chip rose">Delivery{o.driver_name ? `: ${o.driver_name.split(' ')[0]}` : ''}</span>}
                   {o.fulfillment === 'pickup' && o.source !== 'staff' && <span className="chip amber">Pickup</span>}

@@ -5,7 +5,7 @@ import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { forgetReaders } from '../pro-ui.jsx';
 import { DeliveryBatches } from './Run.jsx';
 import { DeliveryRoute } from './Table.jsx';
-import { DropPhoto } from './Station.jsx';
+import { DropPhoto, SignaturePad } from './Station.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 
@@ -30,7 +30,9 @@ function DeliveredModal({ o, currency, onClose }) {
   const toast = useToast();
   const [method, setMethod] = useState('cash');
   const [tip, setTip] = useState('');
-  const done = async () => { try { await api(`/staff/orders/${o.id}/delivered`, { method: 'POST', body: o.dueCents ? { method, tipCents: dollars(tip) } : {} }); toast(`#${o.number} delivered`, 'ok'); onClose(); } catch (e) { toast(e.message, 'err'); } };
+  const { settings } = useCC(); const sigMin = Number(settings.delivery_signature_cents || 0);
+  const [needSig, setNeedSig] = useState(() => sigMin > 0 && (o.total_cents || o.totalCents || o.dueCents || 0) >= sigMin);
+  const done = async () => { try { await api(`/staff/orders/${o.id}/delivered`, { method: 'POST', body: o.dueCents ? { method, tipCents: dollars(tip) } : {} }); toast(`#${o.number} delivered`, 'ok'); onClose(); } catch (e) { if (e.data?.needsSignature) { setNeedSig(true); toast('This order needs the customer to sign first', 'err'); } else toast(e.message, 'err'); } };
   return (
     <Modal title={`Deliver #${o.number}`} onClose={onClose} width={420}>
       {o.dueCents > 0 ? (
@@ -41,6 +43,7 @@ function DeliveredModal({ o, currency, onClose }) {
         </>
       ) : <p className="muted" style={{ margin: 0 }}>Already paid. Just hand it over.</p>}
       <DropPhoto orderId={o.id} />
+      {needSig && <SignaturePad orderId={o.id} />}
       <button className="btn primary lg block" onClick={done}>Mark delivered</button>
     </Modal>
   );
