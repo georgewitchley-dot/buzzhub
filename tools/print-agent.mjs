@@ -28,6 +28,7 @@ export function escpos(job) {
   const width = job.printer?.width || 42; const parts = [Buffer.from([ESC, 0x40])];
   const lines = job.lines || htmlToLines(job.html || '');
   for (const l of lines) {
+    if (l.qr) { const d = Buffer.from(String(l.qr), 'utf8'); const n = d.length + 3; parts.push(Buffer.from([ESC, 0x61, 1, GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0, GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, 6, GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31, GS, 0x28, 0x6b, n & 0xff, n >> 8, 0x31, 0x50, 0x30]), d, Buffer.from([GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30, 0x0a])); continue; }
     const w = l.big ? Math.floor(width / 2) : width;
     let text = l.text || '';
     if (l.right) { const gap = Math.max(1, w - text.length - l.right.length); text = text.length + l.right.length + 1 > w ? `${text}\n${' '.repeat(Math.max(0, w - l.right.length))}${l.right}` : `${text}${' '.repeat(gap)}${l.right}`; }

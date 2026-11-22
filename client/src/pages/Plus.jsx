@@ -182,6 +182,7 @@ export function PairDisplay({ onClose }) {
 
 /* ================= Customer display (second screen) ================= */
 export function CustomerDisplay() {
+  const [idle, setIdle] = useState(null);
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [custom, setCustom] = useState(false);
@@ -196,6 +197,7 @@ export function CustomerDisplay() {
     loop(); navigator.wakeLock?.request('screen').catch(() => {});
     return () => { stop = true; };
   }, []);
+  useEffect(() => { const load = () => api('/display/idle', { headers: { 'X-Display': localStorage.getItem('bh_display_token') || '' } }).then(setIdle).catch(() => {}); load(); const t = setInterval(load, 10 * 60_000); return () => clearInterval(t); }, []);
   if (err && !d) return <div className="lobby"><div className="lobby-msg"><h1>{err}</h1><a className="btn" href="/">Open the command center</a></div></div>;
   if (!d) return <div className="lobby" />;
   const s = d.state; const cur = d.currency;
@@ -203,7 +205,7 @@ export function CustomerDisplay() {
   return (
     <div className="lobby cdisp">
       <header className="lobby-top">{d.business.logo ? <img src={d.business.logo} alt="" /> : <Puck state="buzzed" size={40} />}<b>{d.business.name}</b><span className="grow" />{s.stage === 'idle' && <span className="dim" style={{ fontSize: '2vh' }}>Display {d.code}</span>}</header>
-      {s.stage === 'idle' && <div className="lobby-msg"><h1 style={{ fontSize: '6vh' }}>Welcome!</h1></div>}
+      {s.stage === 'idle' && (idle?.slides?.length ? <IdleSlides slides={idle.slides} seconds={idle.seconds} cur={cur} /> : <div className="lobby-msg"><h1 style={{ fontSize: '6vh' }}>Welcome!</h1></div>)}
       {s.stage === 'paid' && <div className="lobby-msg"><h1 style={{ fontSize: '7vh' }}>Thank you!</h1><p style={{ fontSize: '3vh' }}>{s.message || 'See you again soon.'}</p></div>}
       {(s.stage === 'cart' || s.stage === 'tip') && (
         <div className="cdisp-grid">
@@ -415,4 +417,16 @@ export function FireButton({ orderId, held, onDone }) {
   const toast = useToast();
   if (!held) return null;
   return <button className="btn sm primary" onClick={() => api(`/staff/orders/${orderId}/fire-course`, { method: 'POST', body: {} }).then((r) => { toast(`${r.fired} held item${r.fired === 1 ? '' : 's'} fired`, 'ok'); onDone?.(); }).catch((e) => toast(e.message, 'err'))}><Icon name="flame" size={14} />Fire {held} held</button>;
+}
+
+function IdleSlides({ slides, seconds = 8, cur }) {
+  const [i, setI] = useState(0);
+  useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % slides.length), seconds * 1000); return () => clearInterval(t); }, [slides.length, seconds]);
+  const s = slides[i % slides.length];
+  return (
+    <div className="idle-slide" key={i}>
+      {s.photo && <img src={s.photo} alt="" />}
+      <div className="idle-text">{s.tag && <span className="chip amber">{s.tag}</span>}<h1>{s.name}</h1>{s.description && <p>{s.description}</p>}<b className="num">{s.regularCents && s.regularCents > s.priceCents ? <><s className="dim">{money(s.regularCents, cur)}</s> </> : null}{money(s.priceCents, cur)}</b></div>
+    </div>
+  );
 }

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, applyAccent, connectStaff, money, playChime, registerSW, useLenis } from '../lib.js';
 import { pendingSales, syncQueue } from '../offline.js';
 import { Icon, Puck, useToast } from '../ui.jsx';
@@ -157,7 +157,28 @@ export default function CommandCenter() {
 
 function Shell({ user, business, onLock, reloadBusiness }) {
   const [vip, setVip] = useState(null); const [vipOpen, setVipOpen] = useState(null);
-  const toast = useToast();
+  const navTo = useNavigate(); const toastRef = useRef(null);
+  // Barcode scanners type fast and end with Enter: catch scans anywhere (not inside a text box).
+  useEffect(() => {
+    let buf = ''; let last = 0;
+    const onKey = (e) => {
+      if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return;
+      const now = Date.now(); if (now - last > 60) buf = ''; last = now;
+      if (e.key === 'Enter') {
+        const code = buf; buf = ''; if (code.length < 6) return;
+        e.preventDefault();
+        api(`/staff/scan?code=${encodeURIComponent(code)}`).then((r) => {
+          if (r.type === 'customer') setVipOpen(r.id);
+          else if (r.type === 'gift') toastRef.current?.(`Gift card ${r.code}: ${money(r.balanceCents)} left${r.status !== 'active' ? ` (${r.status})` : ''}`, 'ok');
+          else if (r.type === 'ingredient') navTo(`/count?code=${encodeURIComponent(code)}`);
+          else if (r.type === 'ticket') navTo(`/ticketing?code=${encodeURIComponent(r.code)}`);
+          else toastRef.current?.(`Scanned ${code}: not recognised`, 'err');
+        }).catch(() => {});
+      } else if (e.key.length === 1) buf += e.key;
+    };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const toast = useToast(); toastRef.current = toast;
   const [socket, setSocket] = useState(null);
   const [online, setOnline] = useState(true);
   const [settings, setSettings] = useState(null);

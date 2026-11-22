@@ -296,6 +296,13 @@ New modules `server/src/care.js` (`registerCare`) and `server/src/print.js` (`re
 - care.js: seat history `/staff/tables/:id/seat/:seat/history`; allergy hand-off (`orders.allergy_handed_by/at`, `/api/kds/allergy-handoff`); `table_combos` + `bookings.combo_id` (joined in the seat route before auto-join); `h.wasteAdjust` (over-prepped waste on the same weekday over 4 weeks, cut ≤ 30%); driver checkout; remake alerts (2-minute sweep); `/staff/customers/:id/vip-card` (not `/card`, which crm.js owns); `h.partyGap` (median gap by course and party bucket, used before the general gap).
 - Bug caught in testing: VIP banner state must live in `Shell`, not the boot component.
 
+## 3x. Round 24 (2026-11-22)
+New module `server/src/hardware.js` (`registerHardware`, after `registerPrint`). print.js gains `sticker` kind, `backup_id`, QR lines (`{qr}`), receipt QR URL. Client: `PrinterLight`, `NoSaleButton`, `ScannerTest`, `BumpBarKeys`, `AutoPrints` in `Devices.jsx`; global scan listener in `Shell` (CommandCenter.jsx); `IdleSlides` in Plus.jsx.
+- Scanner detection: keys < 60 ms apart ending in Enter, 6+ characters, not inside a text box. Resolves member card (`BH-C-…` via `findByScan`), gift card (12–20 digits), ingredient barcode, event ticket code.
+- `money(cents, '')` throws (bad currency); call `money(cents)` or pass the business currency.
+- Bump keys: `{next, prev, bump, recall, allday, select: '1-9'|'off'}`; area screens fall back to the old keys when unset.
+- EOD print runs every 5 minutes after `eod_print_hour`, once per day (`eod_printed`).
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

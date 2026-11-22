@@ -9,6 +9,7 @@ import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.js
 import { PlatePhoto, TimelineStrip, kdsOffline } from './Table.jsx';
 import { PriorityChip, RecallList } from './Station.jsx';
 import { devicePrint, printRoutes } from '../printing.js';
+import { PrinterLight } from './Devices.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -94,12 +95,13 @@ export function KdsScreen() {
     const onKey = (e) => {
       const x = dRef.current; if (!x || allergy || lists || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
       const n = x.orders.length;
-      if (/^[1-9]$/.test(e.key)) { const i = Number(e.key) - 1; if (i < n) setSel(i); e.preventDefault(); }
-      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { setSel((v) => Math.min(n - 1, v + 1)); e.preventDefault(); }
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { setSel((v) => Math.max(0, v - 1)); e.preventDefault(); }
-      else if (e.key === 'Enter' || e.key === ' ') { const o = x.orders[Math.min(sel, n - 1)]; if (o) primary(o); e.preventDefault(); }
-      else if (e.key === 'r' || e.key === 'R' || e.key === 'Backspace') { const r = x.recent[0]; if (r) call('/kds/recall', { orderId: r.id }, () => flash(`#${r.number} back on the screen`)); e.preventDefault(); }
-      else if (e.key === 'a' || e.key === 'A') setShowAll((v) => { localStorage.setItem('bh_kds_allday', v ? '0' : '1'); return !v; });
+      const K = x.bumpKeys || {}; const is = (id, ...alt) => [K[id], ...(K[id] ? [] : alt)].filter(Boolean).some((v) => String(v).toLowerCase() === e.key.toLowerCase());
+      if (K.select !== 'off' && /^[1-9]$/.test(e.key)) { const i = Number(e.key) - 1; if (i < n) setSel(i); e.preventDefault(); }
+      else if (is('next', 'ArrowRight') || e.key === 'ArrowDown') { setSel((v) => Math.min(n - 1, v + 1)); e.preventDefault(); }
+      else if (is('prev', 'ArrowLeft') || e.key === 'ArrowUp') { setSel((v) => Math.max(0, v - 1)); e.preventDefault(); }
+      else if (is('bump', 'Enter') || e.key === ' ') { const o = x.orders[Math.min(sel, n - 1)]; if (o) primary(o); e.preventDefault(); }
+      else if (is('recall', 'r') || e.key === 'Backspace') { const r = x.recent[0]; if (r) call('/kds/recall', { orderId: r.id }, () => flash(`#${r.number} back on the screen`)); e.preventDefault(); }
+      else if (is('allday', 'a')) setShowAll((v) => { localStorage.setItem('bh_kds_allday', v ? '0' : '1'); return !v; });
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   });
@@ -132,7 +134,7 @@ export function KdsScreen() {
         <button className="btn sm" onClick={() => setEightySix(true)}>86</button>
         {d.kind !== 'runner' && d.kind !== 'pack' && <button className="btn sm" onClick={() => setPrep(true)}>Prep</button>}
         <button className="btn sm" title="Bring back a finished ticket" onClick={() => setRecall(true)}>Recent</button>
-        {routes.some((p) => !p.area || p.area === 'All areas' || p.area === d.area) && <span className="chip teal" title="New tickets print automatically on this printer">Printer: {routes.filter((p) => !p.area || p.area === 'All areas' || p.area === d.area).map((p) => p.name).join(', ')}</span>}
+        <PrinterLight kinds={d.kind === 'pack' ? 'sticker,ticket' : 'ticket'} area={d.area} headers={hdr()} />
         <button className="btn sm" aria-pressed={printHere} title="Print this area's new tickets on this device's printer" onClick={() => { const v = !printHere; setPrintHere(v); localStorage.setItem('bh_kds_print', v ? '1' : '0'); }}>{printHere ? 'Printing' : 'Print'}</button>
         {d.lists.length > 0 && <button className="btn sm" onClick={() => setLists(true)}>Lists {d.lists.reduce((a, l) => a + l.count, 0)}/{d.lists.reduce((a, l) => a + l.total, 0)}</button>}
         <button className="btn sm" aria-pressed={speak} title="Read new tickets out loud" onClick={() => { const v = !speak; setSpeak(v); localStorage.setItem('bh_kds_speak', v ? '1' : '0'); if (v && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Talking tickets on')); }}>{speak ? 'Talking' : 'Silent'}</button>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, money, timeOf } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { NoSaleButton } from './Devices.jsx';
 
 const DENOMS = [[10000, '$100'], [5000, '$50'], [2000, '$20'], [1000, '$10'], [500, '$5'], [100, '$1'], [25, '25¢'], [10, '10¢'], [5, '5¢'], [1, '1¢']];
 const toCents = (v) => Math.round(Number(String(v).replace(/[^\d.]/g, '') || 0) * 100);
@@ -48,6 +49,7 @@ export default function Cash() {
     <>
       <PageHead title="Cash drawer" sub={c ? `Opened at ${timeOf(c.opened_at)} by ${c.openedByName}` : 'The drawer is closed.'}>
         {c && <button className="btn primary" onClick={() => setCounting(true)}>Count and close</button>}
+        <NoSaleButton />
       </PageHead>
       {!c ? (
         <section className="panel" style={{ maxWidth: 460 }}><div className="panel-b stack">

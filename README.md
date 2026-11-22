@@ -163,6 +163,19 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 24: hardware polish
+
+- **Printer lights** on the server station and every area screen (green, or red and blinking with the problem) from `GET /api/print/status`.
+- **Reprint** kitchen tickets and **bag stickers** from the Orders page (`/staff/orders/:id/print-tickets`, `/print-sticker`).
+- **Backup printers** (`printers.backup_id`): jobs go to the backup when a printer's helper is offline, and failed jobs (3 tries) are re-sent there.
+- **Bag stickers** (job kind `sticker`) print automatically when the packing screen bags an order: name, number, shelf, pickup/delivery, items, allergies.
+- **QR codes on printed receipts** (`receipt_qr`) link to the receipt page, which offers rewards sign-up and rating. ESC/POS QR (GS ( k) in both encoders.
+- **No sale** button on the Register and Cash drawer pages opens the drawer through drawer-kick printers; needs a manager (approval action `nosale`), logged, owners alerted (`/staff/drawer/no-sales`).
+- **Barcode scanners** (USB, Bluetooth, wireless; keyboard mode): scans anywhere in the command center open member profiles, show gift card balances, open stock counts or event tickets (`GET /api/staff/scan`). Test box on Devices.
+- **Bump bar keys** set on Devices (`bumpbar_keys`, sent to area screens as `bumpKeys`).
+- **End-of-day print** (`eod_print`, `eod_print_hour`, or "Print end of day now"): sales, discounts, tax, tips, refunds, voids, payment methods, hours, sales per hour, best sellers.
+- **Idle customer display** (`display_idle`): specials, deals and dish photos (or best sellers) rotate when nobody is paying (`GET /api/display/idle`).
+
 ## Round 23: printers, devices and the guest at the table
 
 **Printers and devices** (new `Devices` page, managers):

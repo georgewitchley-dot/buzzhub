@@ -76,6 +76,8 @@ export default function Orders() {
               <b className="num">{money(o.total_cents, cur)}</b>
             </div>
             {o.paid_at && <button className="btn sm ghost" onClick={() => setReceipt(o)}>Receipt</button>}
+            {o.status !== 'void' && <button className="btn sm ghost" title="Print this order's kitchen tickets again" onClick={() => api(`/staff/orders/${o.id}/print-tickets`, { method: 'POST' }).then((r) => toast(r.queued ? `Ticket${r.queued === 1 ? '' : 's'} sent to the kitchen printer${r.queued === 1 ? '' : 's'}` : 'No kitchen printer is set up for these dishes (Devices)', r.queued ? 'ok' : 'err')).catch((e) => toast(e.message, 'err'))}>Reprint</button>}
+            {o.fulfillment && o.fulfillment !== 'dine_in' && !o.table_id && <button className="btn sm ghost" onClick={() => api(`/staff/orders/${o.id}/print-sticker`, { method: 'POST' }).then((r) => toast(r.queued ? 'Bag sticker printing' : 'No printer takes bag stickers yet (Devices)', r.queued ? 'ok' : 'err')).catch((e) => toast(e.message, 'err'))}>Sticker</button>}
             {scope !== 'open' && o.status === 'paid' && <button className="btn sm ghost" onClick={() => setRefunding(o)}>Refund</button>}
             {scope === 'open' && (
               <div className="row wrap">

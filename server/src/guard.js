@@ -252,7 +252,7 @@ export function registerGuard({ app, staff, io, h }) {
   });
 
   /* ---------- manager approval for risky actions ---------- */
-  const ACTIONS = { void: 'Void an order', discount: 'Give a big discount', refund: 'Refund an order', cash_close: 'Close the cash drawer' };
+  const ACTIONS = { void: 'Void an order', discount: 'Give a big discount', refund: 'Refund an order', cash_close: 'Close the cash drawer', nosale: 'Open the cash drawer without a sale' };
   staff.post('/approve', authLimiter, wrap(async (req, res) => {
     const ip = clientIp(req);
     const wait = loginBlocked(ip); if (wait) return res.status(429).json({ error: `Locked for ${wait}s` });

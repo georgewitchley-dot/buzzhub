@@ -13,6 +13,7 @@ import { TierChip } from './Owner.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { QrModal, RedeemModal } from './Waitlist.jsx';
 import { queueSale, attachPayment, isNetworkError } from '../offline.js';
+import { NoSaleButton } from './Devices.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.]/g, '') || 0) * 100);
 
@@ -280,7 +281,7 @@ export default function Register() {
 
   return (
     <>
-      <PageHead title="Register" sub="Tap items to add them to the ticket.">
+      <PageHead title="Register" sub="Tap items to add them to the ticket."><NoSaleButton />
         <button className="btn" onClick={() => setSellGift(true)}><Icon name="gift" size={17} />Sell gift card</button>
         <button className="btn" onClick={() => setSellPunch(true)}>Sell punch card</button>
         {settings.loyalty_enabled === '1' && <button className="btn" onClick={() => setRedeem(true)}>Redeem reward</button>}

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import { db, getSettings, setSettings, audit, registerSchema, currentSlug, getJwtSecret, forEachLocation, runIn } from './db.js';
 import { orderHooks } from './commerce.js';
-import { receiptData } from './pro.js';
+import { receiptData, receiptToken } from './pro.js';
 import { userFromToken, SESSION_COOKIE } from './security.js';
 import { stationFor, stationList } from './kds.js';
 
@@ -22,10 +22,12 @@ registerSchema((db) => {
     CREATE TABLE IF NOT EXISTS print_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, printer_id INTEGER NOT NULL, kind TEXT NOT NULL, title TEXT, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', tries INTEGER NOT NULL DEFAULT 0,
       error TEXT, by_label TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), sent_at TEXT, done_at TEXT);
     CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status, printer_id);`);
+  const pc = db.prepare('PRAGMA table_info(printers)').all().map((c) => c.name);
+  if (!pc.includes('backup_id')) db.exec('ALTER TABLE printers ADD COLUMN backup_id INTEGER');
 });
 
 /** Kinds of print a printer can take. */
-export const JOB_KINDS = { ticket: 'Kitchen tickets', receipt: 'Receipts', allergy: 'Allergy slips', label: 'Prep and shelf labels', checkout: 'Server and driver checkouts', report: 'Reports and full pages', test: 'Test prints' };
+export const JOB_KINDS = { ticket: 'Kitchen tickets', receipt: 'Receipts', allergy: 'Allergy slips', label: 'Prep and shelf labels', sticker: 'To-go bag stickers', checkout: 'Server and driver checkouts', report: 'Reports and full pages', test: 'Test prints' };
 const CONNECTIONS = ['network', 'usb', 'bluetooth', 'browser', 'device'];
 const err = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const pj = (v, d) => { try { return JSON.parse(v) ?? d; } catch { return d; } };
@@ -34,7 +36,7 @@ const bus = new EventEmitter(); bus.setMaxListeners(200);
 const fmt = (c) => `$${(c / 100).toFixed(2)}`;
 
 /* ---------- plain lines for receipt-style printers ---------- */
-const lineSchema = z.object({ text: z.string().max(200), bold: z.boolean().optional(), big: z.boolean().optional(), center: z.boolean().optional(), right: z.string().max(40).optional(), invert: z.boolean().optional() });
+const lineSchema = z.object({ qr: z.string().max(300).optional(), text: z.string().max(200).default(''), bold: z.boolean().optional(), big: z.boolean().optional(), center: z.boolean().optional(), right: z.string().max(40).optional(), invert: z.boolean().optional() });
 const jobSchema = z.object({ kind: z.enum(Object.keys(JOB_KINDS)), title: z.string().max(80).optional(), area: z.string().max(40).optional(), printerId: z.number().int().optional(),
   lines: z.array(lineSchema).max(400).optional(), html: z.string().max(400000).optional(), drawer: z.boolean().optional() });
 
@@ -48,7 +50,11 @@ export function registerPrint({ app, staff, io, h }) {
   /** Queue a job; returns how many printers took it (0 = nothing routed, print in the browser instead). */
   const enqueue = (job, by) => {
     const targets = job.printerId ? db.prepare('SELECT * FROM printers WHERE id = ? AND active = 1').all(job.printerId) : route(job.kind, job.area);
-    for (const p of targets) {
+    const online = (p) => { const a = p.agent_id ? db.prepare('SELECT last_seen FROM print_agents WHERE id = ? AND active = 1').get(p.agent_id) : null; return Boolean(a?.last_seen && Date.now() - Date.parse(`${a.last_seen.replace(' ', 'T')}Z`) < 120_000); };
+    const used = new Set();
+    for (let p of targets) {
+      if (!job.printerId && !online(p) && p.backup_id) { const b = db.prepare('SELECT * FROM printers WHERE id = ? AND active = 1').get(p.backup_id); if (b && online(b)) { p = { ...b }; job = { ...job, title: `${job.title || JOB_KINDS[job.kind]} (backup for ${targets.find((x) => x.backup_id === b.id)?.name || 'another printer'})` }; } }
+      if (used.has(p.id)) continue; used.add(p.id);
       for (let c = 0; c < Math.max(1, Math.min(5, p.copies || 1)); c++) {
         db.prepare('INSERT INTO print_jobs (printer_id, kind, title, payload, by_label) VALUES (?, ?, ?, ?, ?)').run(p.id, job.kind, job.title || JOB_KINDS[job.kind], JSON.stringify({ lines: job.lines || null, html: job.html || null, drawer: Boolean(job.drawer && p.drawer) }), by || null);
       }
@@ -77,11 +83,11 @@ export function registerPrint({ app, staff, io, h }) {
   /* ----- printers (managers) ----- */
   const printerBody = z.object({ name: z.string().trim().min(1).max(40), agentId: z.number().int().nullable().optional(), connection: z.enum(CONNECTIONS), address: z.string().trim().max(120).optional().nullable(),
     width: z.number().int().refine((w) => [32, 42, 48, 64].includes(w)).default(42), jobs: z.array(z.enum(Object.keys(JOB_KINDS))).max(10), area: z.string().max(40).optional().nullable(),
-    copies: z.number().int().min(1).max(5).default(1), cut: z.boolean().default(true), drawer: z.boolean().default(false), active: z.boolean().default(true) });
+    copies: z.number().int().min(1).max(5).default(1), cut: z.boolean().default(true), drawer: z.boolean().default(false), active: z.boolean().default(true), backupId: z.number().int().nullable().optional() });
   const out = (p) => {
     const a = p.agent_id ? db.prepare('SELECT id, name, last_seen FROM print_agents WHERE id = ?').get(p.agent_id) : null;
     const q = db.prepare("SELECT COUNT(*) n FROM print_jobs WHERE printer_id = ? AND status IN ('queued','sent')").get(p.id).n;
-    return { id: p.id, name: p.name, agentId: p.agent_id, agent: a?.name || null, agentOnline: Boolean(a?.last_seen && Date.now() - Date.parse(`${a.last_seen.replace(' ', 'T')}Z`) < 90_000), connection: p.connection, address: p.address, width: p.width, jobs: pj(p.jobs, []), area: p.area, copies: p.copies, cut: Boolean(p.cut), drawer: Boolean(p.drawer), active: Boolean(p.active), lastOk: p.last_ok, lastError: p.last_error, waiting: q };
+    return { id: p.id, name: p.name, agentId: p.agent_id, agent: a?.name || null, agentOnline: Boolean(a?.last_seen && Date.now() - Date.parse(`${a.last_seen.replace(' ', 'T')}Z`) < 90_000), connection: p.connection, address: p.address, width: p.width, jobs: pj(p.jobs, []), area: p.area, copies: p.copies, cut: Boolean(p.cut), drawer: Boolean(p.drawer), active: Boolean(p.active), backupId: p.backup_id || null, lastOk: p.last_ok, lastError: p.last_error, waiting: q };
   };
   staff.get('/printers', (req, res) => res.json({ kinds: JOB_KINDS, areas: ['All areas', ...stationList(), 'Expo', 'Packing', 'Runner'], printers: db.prepare('SELECT * FROM printers ORDER BY name').all().map(out),
     agents: db.prepare('SELECT id, name, kind, last_seen, info, active FROM print_agents WHERE active = 1 ORDER BY name').all().map((a) => ({ ...a, info: pj(a.info, {}), online: Boolean(a.last_seen && Date.now() - Date.parse(`${a.last_seen.replace(' ', 'T')}Z`) < 90_000) })) }));
@@ -89,12 +95,14 @@ export function registerPrint({ app, staff, io, h }) {
     const b = parse(printerBody, req.body);
     const id = db.prepare('INSERT INTO printers (name, agent_id, connection, address, width, jobs, area, copies, cut, drawer, active) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
       .run(b.name, b.agentId || null, b.connection, b.address || null, b.width, JSON.stringify(b.jobs), b.area || null, b.copies, b.cut ? 1 : 0, b.drawer ? 1 : 0, b.active ? 1 : 0).lastInsertRowid;
+    db.prepare('UPDATE printers SET backup_id = ? WHERE id = ?').run(b.backupId || null, id);
     audit(req.user, 'printer.add', b.name, clientIp(req)); res.json(out(db.prepare('SELECT * FROM printers WHERE id = ?').get(id)));
   });
   staff.put('/printers/:id', mgr, (req, res) => {
     const b = parse(printerBody, req.body); const id = Number(req.params.id);
     db.prepare('UPDATE printers SET name=?, agent_id=?, connection=?, address=?, width=?, jobs=?, area=?, copies=?, cut=?, drawer=?, active=? WHERE id=?')
       .run(b.name, b.agentId || null, b.connection, b.address || null, b.width, JSON.stringify(b.jobs), b.area || null, b.copies, b.cut ? 1 : 0, b.drawer ? 1 : 0, b.active ? 1 : 0, id);
+    db.prepare('UPDATE printers SET backup_id = ? WHERE id = ?').run(b.backupId && b.backupId !== id ? b.backupId : null, id);
     audit(req.user, 'printer.edit', b.name, clientIp(req)); bus.emit(`${currentSlug()}:${b.agentId}`); res.json({ ok: true });
   });
   staff.delete('/printers/:id', mgr, (req, res) => { db.prepare("UPDATE print_jobs SET status = 'cancelled' WHERE printer_id = ? AND status IN ('queued','sent')").run(Number(req.params.id)); db.prepare('DELETE FROM printers WHERE id = ?').run(Number(req.params.id)); res.json({ ok: true }); });
@@ -156,7 +164,7 @@ export function registerPrint({ app, staff, io, h }) {
     else {
       db.prepare("UPDATE print_jobs SET status = ?, error = ? WHERE id = ?").run(j.tries >= 3 ? 'failed' : 'queued', b.error || 'Failed', j.id);
       db.prepare('UPDATE printers SET last_error = ? WHERE id = ?').run(b.error || 'Failed', j.printer_id);
-      if (j.tries >= 3) { io.to('staff').emit('security', { type: 'printer', detail: `Printer "${j.pname}" couldn't print ${j.title || j.kind}: ${b.error || 'failed'}` }); notifyStaff('printers'); }
+      if (j.tries >= 3) { const pr = db.prepare('SELECT backup_id FROM printers WHERE id = ?').get(j.printer_id); const bk = pr?.backup_id ? db.prepare('SELECT * FROM printers WHERE id = ? AND active = 1').get(pr.backup_id) : null; if (bk) { db.prepare('INSERT INTO print_jobs (printer_id, kind, title, payload, by_label) VALUES (?, ?, ?, ?, ?)').run(bk.id, j.kind, `${j.title || j.kind} (backup)`, j.payload, 'Backup'); bus.emit(`${currentSlug()}:${bk.agent_id}`); } io.to('staff').emit('security', { type: 'printer', detail: `Printer "${j.pname}" couldn't print ${j.title || j.kind}: ${b.error || 'failed'}` }); notifyStaff('printers'); }
       else bus.emit(`${currentSlug()}:${a.id}`);
     }
     res.json({ ok: true });
@@ -204,11 +212,14 @@ export function registerPrint({ app, staff, io, h }) {
     if (r.feeCents) lines.push({ text: 'Delivery', right: fmt(r.feeCents) });
     if (r.tipCents) lines.push({ text: 'Tip', right: fmt(r.tipCents) });
     lines.push({ text: 'Total', right: fmt(r.totalCents), bold: true, big: true }, { text: r.paid ? `Paid${r.method ? ` by ${r.method}` : ''}` : 'Not paid yet', center: true }, { text: '' }, { text: 'Thank you!', center: true });
+    if (r.qrUrl) lines.push({ text: '' }, { qr: r.qrUrl, text: '' }, { text: 'Scan to rate your visit and join our rewards', center: true });
     return lines;
   };
   staff.post('/orders/:id/print-receipt', (req, res) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(req.params.id)); if (!o) throw err('Not found', 404);
     const r = receiptData(o);
+    const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    if (getSettings().receipt_qr !== '0') r.qrUrl = `${base}/r/${receiptToken(o.id)}${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}`;
     res.json({ queued: enqueue({ kind: 'receipt', title: `Receipt #${o.number}`, lines: h.receiptLines(r), drawer: o.payment_method === 'cash' }, req.user.name) });
   });
 

@@ -134,7 +134,7 @@ export function registerKds({ app, staff, h }) {
     const today = localToday();
     const lists = db.prepare('SELECT * FROM checklist_templates WHERE active = 1 AND area = ? ORDER BY sort, id').all(w.area).map((t) => { const run = db.prepare('SELECT * FROM checklist_runs WHERE template_id = ? AND day = ?').get(t.id, today); const done = pj(run?.done || '{}', {}); const items = pj(t.items, []); return { id: t.id, name: t.name, kind: t.kind, dueTime: t.due_time, items: items.map((it, i) => ({ text: it.text, needsValue: Boolean(it.needsValue), done: done[i] || null })), count: items.filter((_, i) => done[i]).length, total: items.length }; });
     const events = (h.eventsToday?.() || []).map((e) => ({ ...e, items: kind === 'station' ? e.items.filter((i) => stationFor(i) === w.area) : e.items })).filter((e) => e.items.length);
-    res.json({ ...(h.kdsExtra?.(w.area) || {}), timeline: kind === 'expo' || kind === 'all' || kind === 'runner' ? (h.tableTimeline?.() || []) : [], enRoute: kind === 'pack' || kind === 'expo' || kind === 'all' ? (h.enRoute?.() || []) : [], rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
+    res.json({ ...(h.kdsExtra?.(w.area) || {}), bumpKeys: h.bumpKeys ? h.bumpKeys() : null, timeline: kind === 'expo' || kind === 'all' || kind === 'runner' ? (h.tableTimeline?.() || []) : [], enRoute: kind === 'pack' || kind === 'expo' || kind === 'all' ? (h.enRoute?.() || []) : [], rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
       arrivals: kind === 'pack' || kind === 'expo' || kind === 'all' ? all.filter((o) => o.arrived).map((o) => ({ id: o.id, number: o.number, name: o.customer_name || o.guest_name, note: o.arrival_note, ready: !o.cooking })) : [],
       stations: stationList(), areas: areaNames(), lateMinutes: Number(s.kds_late_minutes || 12), orders, recent,
       allDay: allDay(all, kind === 'station' ? w.area : null), held: db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'held'").get().c });
@@ -192,7 +192,9 @@ export function registerKds({ app, staff, h }) {
     const w = who(req); const { orderId, shelf } = parse(z.object({ orderId: z.number().int(), shelf: z.string().trim().max(8).optional() }), req.body);
     if (![PACK, ALL, EXPO].includes(w.area)) throw err('Use the packing screen');
     const o = order(orderId); db.prepare("UPDATE orders SET packed_at = datetime('now'), shelf = COALESCE(?, shelf) WHERE id = ?").run(shelf || null, o.id); if (shelf && o.guest_id) h.pushGuest?.(o.guest_id);
-    audit(byLabel(w), 'kds.packed', `#${o.number}`, clientIp(req)); notifyStaff('orders'); res.json({ ok: true });
+    audit(byLabel(w), 'kds.packed', `#${o.number}`, clientIp(req)); notifyStaff('orders');
+    try { H.printSticker?.(o.id, label(w)); } catch { /* best-effort */ }
+    res.json({ ok: true });
   });
 
   /** Allergy on an order: the note on the order plus the customer's allergy tags. */

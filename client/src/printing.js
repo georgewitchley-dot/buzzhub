@@ -31,6 +31,7 @@ export function htmlToLines(html) {
 export function escpos(job) {
   const width = job.printer?.width || 42; const out = [ESC, 0x40];
   for (const l of job.lines || htmlToLines(job.html || '')) {
+    if (l.qr) { const d = Array.from(new TextEncoder().encode(String(l.qr))); const n = d.length + 3; out.push(ESC, 0x61, 1, GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0, GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, 6, GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31, GS, 0x28, 0x6b, n & 0xff, n >> 8, 0x31, 0x50, 0x30, ...d, GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30, 0x0a); continue; }
     const w = l.big ? Math.floor(width / 2) : width; let text = l.text || '';
     if (l.right) text = text.length + l.right.length + 1 > w ? `${text}\n${' '.repeat(Math.max(0, w - l.right.length))}${l.right}` : `${text}${' '.repeat(w - text.length - l.right.length)}${l.right}`;
     out.push(ESC, 0x61, l.center ? 1 : 0, ESC, 0x45, l.bold || l.big ? 1 : 0, GS, 0x21, l.big ? 0x11 : 0, GS, 0x42, l.invert ? 1 : 0, ...ascii(text), 0x0a);

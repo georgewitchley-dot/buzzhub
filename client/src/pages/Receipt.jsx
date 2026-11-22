@@ -15,6 +15,7 @@ export default function Receipt() {
       <div className="stack" style={{ width: '100%', maxWidth: 360 }}>
         <ReceiptBody r={{ ...r, token }} />
         <button className="btn no-print" onClick={() => window.print()}>Print or save as PDF</button>
+        <a className="btn primary no-print" href={`/account${location.search}`}>Join our rewards and rate your visit</a>
       </div>
     </div>
   );

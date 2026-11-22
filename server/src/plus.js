@@ -221,6 +221,16 @@ export function registerPlus({ app, staff, io, h }) {
     function on(d) { clearTimeout(t); bus.off(key, on); send(d); }
     bus.on(key, on); req.on('close', () => { clearTimeout(t); bus.off(key, on); });
   }));
+  app.get('/api/display/idle', (req, res) => {
+    dispAuth(req); const s = getSettings(); if (s.display_idle === '0') return res.json({ slides: [] });
+    const items = menuWithMods().filter((i) => !i.soldOut && i.active !== 0);
+    let pick = [...items.filter((i) => i.special || i.deal), ...items.filter((i) => i.photo && !(i.special || i.deal))].slice(0, 10);
+    if (pick.length < 3) {
+      const pop = Object.fromEntries(db.prepare("SELECT oi.item_id id, SUM(oi.qty) n FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.created_at > datetime('now','-30 days') AND o.status <> 'void' GROUP BY oi.item_id").all().map((r) => [r.id, r.n]));
+      pick = [...pick, ...items.filter((i) => !pick.includes(i)).sort((a, b) => (pop[b.id] || 0) - (pop[a.id] || 0)).slice(0, 6 - pick.length).map((i) => ({ ...i, deal: i.deal || 'Guest favourite' }))];
+    }
+    res.json({ seconds: 8, slides: pick.map((i) => ({ name: i.name, description: i.description || null, priceCents: i.price_cents, regularCents: i.regularCents || null, photo: i.photo || null, tag: i.special ? 'Today' : i.deal ? i.deal : null })) });
+  });
   app.post('/api/display/tip', publicLimiter, (req, res) => {
     const p = dispAuth(req);
     const b = parse(z.object({ pct: z.number().int().min(0).max(50).optional(), cents: z.number().int().min(0).max(100000).optional() }), req.body);

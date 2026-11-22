@@ -7,6 +7,7 @@ import { PadPay, PadTables } from './Table.jsx';
 import { devicePrint } from '../printing.js';
 import { printPart } from '../pro-ui.jsx';
 import { SeatHistory, TableCombos, JoinTable, MoveTable, PrepPars, PriorityPick, SeatMap, StationFire, StationHost, TopDishes, useSeatAllergies } from './Station.jsx';
+import { PrinterLight } from './Devices.jsx';
 
 /* ================= Server order pad (/pad) ================= */
 export function OrderPad() {
@@ -54,6 +55,7 @@ export function OrderPad() {
   return (
     <div className={`station ${host ? 'with-host' : ''}`}>
       <PageHead title="Server station" sub="Pick a table, tap a seat, add dishes, send. Fire the next course and run the waitlist from here.">
+        <PrinterLight kinds="receipt,ticket" />
         <button className="btn ghost" aria-pressed={help} onClick={() => setHelp(!help)} title="Keyboard shortcuts (?)">Keys</button>
         <button className="btn" aria-pressed={host} onClick={toggleHost}>{host ? 'Hide waitlist' : 'Waitlist'}</button>
       </PageHead>
