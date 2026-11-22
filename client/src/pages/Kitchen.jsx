@@ -9,6 +9,7 @@ import { StationPicker, stationOf } from './More.jsx';
 import { cookPlan, useCookTimes } from './Smart.jsx';
 import { AllDay, AreaScreens } from './Areas.jsx';
 import { RushPanel } from './Line.jsx';
+import { AreaLoad } from './Run.jsx';
 
 export default function Kitchen() {
   const { settings } = useCC();
@@ -58,6 +59,7 @@ export default function Kitchen() {
         <button className="btn" onClick={full}><Icon name="expand" size={17} />Full screen</button>
       </PageHead>
       <RushPanel />
+      <AreaLoad />
       {localStorage.getItem('bh_kitchen_allday') !== '0' && <AllDay orders={cooking} />}
       {cooking.length === 0 && <div className="panel empty"><b>All caught up</b><span>New orders from the register and pre-orders from called parties show up here.</span></div>}
       <div className="kds" ref={boardRef}>

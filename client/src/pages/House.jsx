@@ -29,7 +29,7 @@ export function LobbyScreen() {
       <header className="lobby-top">{d.business.logo ? <img src={d.business.logo} alt="" /> : <Puck state="buzzed" size={44} />}<b>{d.business.name}</b><span className="grow" /><span className="num">{clock.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></header>
       <div className={`lobby-grid ${showWait ? 'three' : ''}`}>
         <section><h2>Preparing</h2><div className="lobby-nums">{d.preparing.map((o) => <div key={o.number} className="ln"><b>{o.number}</b>{o.name && <small>{o.name}</small>}</div>)}{!d.preparing.length && <span className="dim">Nothing cooking right now</span>}</div></section>
-        <section className="ready"><h2>Ready</h2><div className="lobby-nums">{d.ready.map((o) => <div key={o.number} className="ln on"><b>{o.number}</b>{o.name && <small>{o.name}</small>}</div>)}{!d.ready.length && <span className="dim">We'll show your number here</span>}</div></section>
+        <section className="ready"><h2>Ready</h2><div className="lobby-nums">{d.ready.map((o) => <div key={o.number} className="ln on"><b>{o.number}</b>{o.name && <small>{o.name}</small>}{o.shelf && <small className="ln-shelf">Shelf {o.shelf}</small>}</div>)}{!d.ready.length && <span className="dim">We'll show your number here</span>}</div></section>
         {showWait && <section><h2>{d.business.unit}s</h2>
           {d.waitlist.ready.map((g, i) => <div key={i} className="lw on"><b>{g.name}</b><span>{g.table ? `${d.business.unit} ${g.table}` : 'Your table is ready'}</span></div>)}
           <p className="lobby-wait">{d.waitlist.count} waiting{d.waitlist.minutes ? `, about ${d.waitlist.minutes} min for a new party` : ''}</p>

@@ -57,7 +57,7 @@ export function KdsTimers({ d, call, flash }) {
   );
 }
 export function CookPicker({ d, cook, setCook }) {
-  if (!d.crew?.length || d.kind === 'pack' || d.kind === 'expo') return null;
+  if (!d.crew?.length || d.kind === 'pack' || d.kind === 'expo' || d.kind === 'runner') return null;
   return <select className="input" style={{ width: 160, height: 34 }} value={cook || ''} onChange={(e) => setCook(e.target.value)} aria-label="Who is cooking"><option value="">Who's cooking?</option>{d.crew.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>;
 }
 export function ShelfPicker({ d, order, onPick, onClose }) {

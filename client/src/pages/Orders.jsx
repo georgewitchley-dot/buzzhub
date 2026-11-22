@@ -6,6 +6,7 @@ import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { ScheduledList } from './More.jsx';
 import { PayModal } from './Register.jsx';
 import { HereChip } from './Pace.jsx';
+import { OrderMakeGood, TabsPanel } from './Run.jsx';
 
 const LABEL = { held: 'Waiting',  open: 'Open', sent: 'In progress', ready: 'Ready', paid: 'Paid', void: 'Voided' };
 
@@ -47,6 +48,7 @@ export default function Orders() {
           <button aria-pressed={scope === 'paid'} onClick={() => setScope('paid')}>Closed today</button>
         </div>
       </PageHead>
+      <TabsPanel />
       {scope === 'open' && <ScheduledList />}
       {orders && orders.length === 0 && <div className="panel empty"><b>No {scope === 'open' ? 'open' : 'closed'} orders</b><span>New sales from the register land here.</span></div>}
       <div className="board">
@@ -63,6 +65,7 @@ export default function Orders() {
               {o.source === 'online' && <span className="chip amber">Online {o.fulfillment}</span>}
               {o.source === 'table' && <span className="chip blue">Table QR</span>}
               <HereChip o={o} />
+              <OrderMakeGood o={o} />
               {o.prepaid ? <span className="chip teal">Paid {o.payment_method}</span> : null}
               <span className="dim" style={{ fontSize: 13 }}>{scope === 'open' ? `${minutesSince(o.created_at)} min ago` : timeOf(o.paid_at || o.created_at)}{o.staff_name ? `, by ${o.staff_name}` : ''}</span>
             </div>

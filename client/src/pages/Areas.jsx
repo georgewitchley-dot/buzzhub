@@ -5,6 +5,7 @@ import { useCC } from './CommandCenter.jsx';
 import { KdsCard, KdsEightySix, KdsRemake, KdsTemps, RushBar } from './Line.jsx';
 import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
+import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -25,7 +26,7 @@ export function KdsScreen() {
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
   const [card, setCard] = useState(null); const [eightySix, setEightySix] = useState(false); const [remake, setRemake] = useState(null); const [temps, setTemps] = useState(false); const [tempCount, setTempCount] = useState(0);
-  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null);
+  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false);
   const [cook, setCookState] = useState(() => localStorage.getItem('bh_kds_cook') || ''); const setCook = (v) => { setCookState(v); localStorage.setItem('bh_kds_cook', v); }; const [toPrint, setToPrint] = useState([]);
   const [printHere, setPrintHere] = useState(() => localStorage.getItem('bh_kds_print') === '1'); const printRef = useRef(printHere); printRef.current = printHere;
   const dRef = useRef(null);
@@ -56,12 +57,16 @@ export function KdsScreen() {
     call('/kds/complete', { orderId: o.id, ...(confirmed ? { allergyConfirmed: true } : {}) }, (r) => { setAllergy(null); flash(`#${o.number} complete${r.buzz ? ', customer buzzed' : ''}`); });
   };
   const pack = (o) => { if (dRef.current?.shelves?.length) setShelfFor(o); else call('/kds/packed', { orderId: o.id }, () => flash(`#${o.number} bagged`)); };
+  const served = (o) => call('/kds/served', { orderId: o.id }, () => flash(`#${o.number} taken to ${x0().unit} ${o.table_label}`));
+  const x0 = () => dRef.current || {};
+  const makeGood = (o, kind) => call('/kds/makegood', { orderId: o.id, kind }, (r) => flash(`#${o.number}: ${r.what}`));
   // the main button on a ticket (also what the bump bar's Enter does)
   const primary = (o) => {
     const x = dRef.current; if (!x) return;
     if (x.kind === 'station') bump(o, !struck[o.id]?.size);
     else if (x.kind === 'expo') { const done = Object.values(o.areas).every((a) => a.done >= a.total); if (done || confirm(`Some areas are still cooking #${o.number}. Complete it anyway?`)) complete(o); }
     else if (x.kind === 'all') { if (x.expo) bump(o, !struck[o.id]?.size); else complete(o); }
+    else if (x.kind === 'runner') served(o);
     else if (x.kind === 'pack') { const need = o.items.filter((i) => !i.held).length; if ((struck[o.id]?.size || 0) >= need) pack(o); else flash('Check each item first'); }
   };
   // Bump bars and keyboards: 1-9 pick a ticket, arrows move, Enter/Space bumps, R or Backspace recalls the last one.
@@ -89,7 +94,7 @@ export function KdsScreen() {
   const itemLine = (o, i, { tappable, showArea }) => (
     <li key={i.id} className={`${i.done || struck[o.id]?.has(i.id) ? 'done' : ''} ${i.held ? 'held' : ''} ${d.pacing && i.startIn > 0 && !i.done ? 'wait' : ''}`} onClick={tappable && !i.done && !i.held ? (e) => { e.stopPropagation(); tap(o, i); } : undefined} role={tappable ? 'button' : undefined}>
       <b className="num">{i.qty}</b>
-      <span>{i.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{i.seat}</span> : null}<button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>Held</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
+      <span>{i.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{i.seat}</span> : null}<button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>{i.fireIn !== null && i.fireIn !== undefined ? (i.fireIn <= 0 ? 'Firing now' : `Fires in ${i.fireIn}m`) : 'Held'}</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
     </li>
   );
   return (
@@ -105,10 +110,11 @@ export function KdsScreen() {
         <KdsMessages d={d} call={call} flash={flash} />
         {tempCount > 0 && <button className="btn sm" onClick={() => setTemps(true)}>Temps</button>}
         <button className="btn sm" onClick={() => setEightySix(true)}>86</button>
+        {d.kind !== 'runner' && d.kind !== 'pack' && <button className="btn sm" onClick={() => setPrep(true)}>Prep</button>}
         <button className="btn sm" aria-pressed={printHere} title="Print this area's new tickets on this device's printer" onClick={() => { const v = !printHere; setPrintHere(v); localStorage.setItem('bh_kds_print', v ? '1' : '0'); }}>{printHere ? 'Printing' : 'Print'}</button>
         {d.lists.length > 0 && <button className="btn sm" onClick={() => setLists(true)}>Lists {d.lists.reduce((a, l) => a + l.count, 0)}/{d.lists.reduce((a, l) => a + l.total, 0)}</button>}
         <button className="btn sm" aria-pressed={speak} title="Read new tickets out loud" onClick={() => { const v = !speak; setSpeak(v); localStorage.setItem('bh_kds_speak', v ? '1' : '0'); if (v && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Talking tickets on')); }}>{speak ? 'Talking' : 'Silent'}</button>
-        {d.kind !== 'pack' && <button className="btn sm" aria-pressed={showAll} onClick={() => { setShowAll(!showAll); localStorage.setItem('bh_kds_allday', showAll ? '0' : '1'); }}>All day</button>}
+        {d.kind !== 'pack' && d.kind !== 'runner' && <button className="btn sm" aria-pressed={showAll} onClick={() => { setShowAll(!showAll); localStorage.setItem('bh_kds_allday', showAll ? '0' : '1'); }}>All day</button>}
         {!d.device && <select className="input" style={{ width: 150, height: 34 }} value={d.area} onChange={(e) => { location.href = withLoc(`/kds?area=${encodeURIComponent(e.target.value)}`, new URLSearchParams(location.search).get('l')); }} aria-label="Area">{d.areas.map((a) => <option key={a}>{a}</option>)}</select>}
         <button className="btn sm" onClick={full} aria-label="Full screen"><Icon name="expand" size={16} /></button>
       </header>
@@ -117,9 +123,9 @@ export function KdsScreen() {
       {d.arrivals.length > 0 && <div className="kds-banner here">{d.arrivals.map((a) => <span key={a.id} className="row" style={{ gap: 8 }}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''} is here</b>{a.note && <span>{a.note}</span>}<span className="dim">{a.ready ? 'ready' : 'still cooking'}</span><button className="btn sm" onClick={() => call('/kds/handed', { orderId: a.id }, () => flash(`#${a.number} brought out`))}>Brought out</button></span>)}</div>}
       {d.enRoute?.length > 0 && <div className="kds-banner">{d.enRoute.map((a) => <span key={a.id}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''}</b> is about {a.etaMinutes} min away ({a.km} km){a.ready ? ', order ready' : ', still cooking'}</span>)}</div>}
       {d.events.length > 0 && <div className="kds-banner">{d.events.map((e) => <span key={e.id}><b>Event {t12k(e.start)}: {e.name}</b> ({e.room}, {e.guests} guests): {e.items.map((i) => `${i.qty} ${i.name}`).join(', ')}{e.fired ? ' · sent' : e.fireTime ? ` · fires ${t12k(e.fireTime)}` : ''}</span>)}</div>}
-      <div className={`kds-body ${showAll && d.kind !== 'pack' ? 'with-side' : ''}`}>
+      <div className={`kds-body ${showAll && d.kind !== 'pack' && d.kind !== 'runner' ? 'with-side' : ''}`}>
         <div className="kds-grid">
-          {d.orders.length === 0 && <div className="kds-empty"><b>All caught up</b><span className="dim">{d.kind === 'pack' ? 'To-go and delivery orders show up here to check and bag.' : 'New tickets for this area show up here with a chime.'}</span></div>}
+          {d.orders.length === 0 && <div className="kds-empty"><b>All caught up</b><span className="dim">{d.kind === 'runner' ? 'Finished plates for tables show up here with their seats.' : d.kind === 'pack' ? 'To-go and delivery orders show up here to check and bag.' : 'New tickets for this area show up here with a chime.'}</span></div>}
           {d.orders.map((o, idx) => {
             const areas = Object.entries(o.areas);
             const allDone = areas.every(([, a]) => a.done >= a.total);
@@ -136,9 +142,10 @@ export function KdsScreen() {
                 </div>
                 {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}</div>}
                 {o.passSince && d.kind !== 'station' && (() => { const m = Math.max(0, Math.round((Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`)) / 60000)); return <span className={`chip ${d.passMinutes && m >= d.passMinutes ? 'rose' : 'teal'}`}>At the pass {m}m</span>; })()}
+                {o.makegood && (d.kind === 'expo' || d.kind === 'all') && <MakeGoodButtons o={o} onPick={makeGood} />}
                 {o.arrived && <span className="chip rose">Customer is here{o.arrival_note ? `: ${o.arrival_note}` : ''}</span>}
                 {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
-                <ul>{(d.kind === 'station' ? o.mine : o.items).map((i) => itemLine(o, i, { tappable: d.kind === 'station' || d.kind === 'all' || d.kind === 'pack', showArea: d.kind === 'expo' || d.kind === 'all' }))}</ul>
+                {d.kind === 'runner' ? <RunnerTicket o={o} unit={d.unit} onServed={served} /> : <ul>{(d.kind === 'station' ? o.mine : o.items).map((i) => itemLine(o, i, { tappable: d.kind === 'station' || d.kind === 'all' || d.kind === 'pack', showArea: d.kind === 'expo' || d.kind === 'all' }))}</ul>}
                 {d.kind === 'station' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); bump(o, !struck[o.id]?.size); }}><Icon name="check" size={18} />{struck[o.id]?.size ? `Done: ${struck[o.id].size} item${struck[o.id].size === 1 ? '' : 's'}` : `${d.area} done`}</button>}
                 {d.kind === 'all' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{d.expo ? 'Done, send to expo' : 'Ready'}</button>}
                 {d.kind === 'expo' && <button className={`btn lg block ${allDone ? 'primary' : ''}`} disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{allDone ? 'Complete and buzz' : 'Waiting on areas'}</button>}
@@ -147,7 +154,7 @@ export function KdsScreen() {
             );
           })}
         </div>
-        {showAll && d.kind !== 'pack' && (
+        {showAll && d.kind !== 'pack' && d.kind !== 'runner' && (
           <aside className="kds-side">
             <h3>All day</h3>
             {d.allDay.length === 0 ? <span className="dim">Nothing waiting.</span> : d.allDay.map((c) => (
@@ -164,6 +171,7 @@ export function KdsScreen() {
           <button className="btn ghost block" onClick={() => setAllergy(null)}>Not yet</button>
         </Modal>
       )}
+      {prep && <KdsPrep hdr={hdr()} q={q} onClose={() => setPrep(false)} />}
       {shelfFor && <ShelfPicker d={d} order={shelfFor} onClose={() => setShelfFor(null)} onPick={(s) => { const o = shelfFor; setShelfFor(null); call('/kds/packed', { orderId: o.id, ...(s ? { shelf: s } : {}) }, () => flash(`#${o.number} bagged${s ? ` on shelf ${s}` : ''}`)); }} />}
       {card && <KdsCard itemId={card} hdr={hdr()} q={q} onClose={() => setCard(null)} />}
       {eightySix && <KdsEightySix hdr={hdr()} q={q} flash={flash} onClose={() => setEightySix(false)} />}
@@ -206,7 +214,7 @@ export function AreaScreens() {
             {d.stations.length < 8 && <button className="btn sm" onClick={() => { const n = prompt('New area name (like Grill, Fryer, Pastry, Bar)'); if (n?.trim()) saveList([...d.stations, n.trim().slice(0, 20)]); }}>Add an area</button>}
           </div>
           <table className="list"><tbody>
-            {[...d.stations.map((s) => [s, 'Makes its own items']), ['Expo', 'Sees every ticket and every area, and completes orders'], ['Packing', 'Checks and bags to-go and delivery orders'], ['All areas', 'One screen for a small kitchen']].map(([a, what]) => (
+            {[...d.stations.map((s) => [s, 'Makes its own items']), ['Expo', 'Sees every ticket and every area, and completes orders'], ['Packing', 'Checks and bags to-go and delivery orders'], ['Runner', 'Finished plates by table and seat, for food runners'], ['All areas', 'One screen for a small kitchen']].map(([a, what]) => (
               <tr key={a}><td><b>{a}</b><div className="dim" style={{ fontSize: 12 }}>{what}{d.speed.find((x) => x.area === a) ? `, ${d.speed.find((x) => x.area === a).minutes} min average today` : ''}</div></td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}><a className="btn sm ghost" href={`/kds?area=${encodeURIComponent(a)}`}>Open here</a><button className="btn sm" onClick={() => start(a)}>Make this device the {a} screen</button></td></tr>
             ))}

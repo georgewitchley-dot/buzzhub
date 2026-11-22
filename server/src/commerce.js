@@ -318,7 +318,7 @@ export function registerCommerce({ app, staff, io, h }) {
   function billOrders(bill) {
     // a table's bill always covers every unpaid order at that table
     if (bill.table_id && bill.status === 'open') {
-      for (const o of db.prepare("SELECT id FROM orders WHERE table_id = ? AND status IN ('open','sent','ready','held') AND prepaid = 0").all(bill.table_id)) db.prepare('INSERT OR IGNORE INTO bill_orders (bill_id, order_id) VALUES (?, ?)').run(bill.id, o.id);
+      for (const o of db.prepare("SELECT id FROM orders WHERE table_id = ? AND status IN ('open','sent','ready','held') AND prepaid = 0 AND tab_id IS NULL").all(bill.table_id)) db.prepare('INSERT OR IGNORE INTO bill_orders (bill_id, order_id) VALUES (?, ?)').run(bill.id, o.id);
     }
     return db.prepare('SELECT o.* FROM orders o JOIN bill_orders bo ON bo.order_id = o.id WHERE bo.bill_id = ? AND o.status <> \'void\' ORDER BY o.id').all(bill.id);
   }
@@ -534,7 +534,7 @@ export function registerCommerce({ app, staff, io, h }) {
       deliveryFeeCents: Number(s.delivery_fee_cents), deliveryMinCents: Number(s.delivery_min_cents), deliveryArea: s.delivery_area,
       readyInMinutes: h.slotQuote ? h.slotQuote() : h.quoteMinutes ? h.quoteMinutes().minutes : Number(s.online_prep_minutes) + Math.min(30, load * 2), payOnline: h.onlinePayEnabled(), payAtPickup: s.online_pay_later === '1' || !h.onlinePayEnabled(),
       taxRate: Number(s.tax_rate), currency: s.currency, tableOrdering: s.table_ordering === '1', schedule: s.online_schedule === '1', scheduleDays: Number(s.online_schedule_days || 7), prepMinutes: Number(s.online_prep_minutes),
-      business: { name: s.business_name, accent: s.accent, type: s.business_type, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
+      business: { name: s.business_name, accent: s.accent, type: s.business_type, unitLabel: s.unit_label, slug: currentSlug(), logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
     };
   }
   const cleanMenu = () => menuWithMods().map(({ stock, low_stock, guest_orderable, active, ...m }) => m);
@@ -607,15 +607,17 @@ export function registerCommerce({ app, staff, io, h }) {
     const t = tableByToken(req.params.token); if (!t) return res.status(404).json({ error: 'This table code is not valid.' });
     const info = onlineInfo();
     const open = db.prepare("SELECT o.number, o.status, o.created_at FROM orders o WHERE o.table_id = ? AND o.status IN ('sent','open','ready','held') ORDER BY o.id").all(t.id);
-    res.json({ ...info, table: t.label, items: info.tableOrdering ? cleanMenu() : [], rounds: open });
+    res.json({ ...info, table: t.label, items: info.tableOrdering ? cleanMenu() : [], rounds: open, tabs: getSettings().bar_tabs === '1' });
   });
   app.post('/api/t/:token/order', orderLimiter, (req, res) => {
     const t = tableByToken(req.params.token); if (!t) return res.status(404).json({ error: 'This table code is not valid.' });
     if (getSettings().table_ordering !== '1') return res.status(403).json({ error: 'Ordering from the table is off. Please ask your server.' });
-    const b = parse(z.object({ items: z.array(lineSchema).min(1).max(40), name: z.string().trim().max(30).optional() }), req.body);
+    const b = parse(z.object({ items: z.array(lineSchema).min(1).max(40), name: z.string().trim().max(30).optional(), tab: z.string().max(40).optional() }), req.body);
+    const tab = h.tabForOrder ? h.tabForOrder(b.tab, t.id) : null;
     const lines = priceLines(b.items);
     if (lines.reduce((a, l) => a + l.qty, 0) > 40) return res.status(400).json({ error: 'That is a big order. Please ask your server.' });
-    const o = insertOrder({ lines, status: 'sent', source: 'table', tableId: t.id, customerName: b.name || null });
+    const o = insertOrder({ lines, status: 'sent', source: 'table', tableId: t.id, customerName: tab ? tab.name : b.name || null });
+    if (tab) db.prepare('UPDATE orders SET tab_id = ? WHERE id = ?').run(tab.id, o.id);
     if (t.status === 'open' || t.status === 'reserved') db.prepare("UPDATE tables SET status='seated', seated_at=COALESCE(seated_at, ?) WHERE id=?").run(now(), t.id);
     audit(null, 'table.order', `${t.label}: #${o.number}`, clientIp(req));
     io.to('staff').emit('online:new', { number: o.number, name: `${getSettings().unit_label} ${t.label}`, fulfillment: 'table' });

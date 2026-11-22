@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { KdsIngredients } from './Run.jsx';
 
 /* ================= Area screen tools: recipe card, 86, remake, temps, rush ================= */
 export function KdsCard({ itemId, hdr, q, onClose }) {
@@ -28,6 +29,8 @@ export function KdsEightySix({ hdr, q, onClose, flash }) {
   return (
     <Modal title="86: sold out" onClose={onClose} width={520}>
       <p className="muted" style={{ margin: 0 }}>Sold-out dishes come off the register, online menu, kiosk and menu board right away. Everyone gets an alert.</p>
+      <KdsIngredients hdr={hdr} q={q} flash={(t) => { flash(t); load(); }} />
+      <b>Dishes</b>
       {!list ? null : <table className="list"><tbody>{list.map((i) => <tr key={i.id}><td><b>{i.name}</b><div className="dim" style={{ fontSize: 12 }}>{i.category}</div></td><td style={{ textAlign: 'right' }}>{i.out ? <button className="btn sm primary" onClick={() => set(i, false)}>Back on</button> : <button className="btn sm" onClick={() => set(i, true)}>86 it</button>}</td></tr>)}</tbody></table>}
     </Modal>
   );

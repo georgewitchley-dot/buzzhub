@@ -224,6 +224,19 @@ Server: `server/src/pass.js` plus hooks in `commerce.js` (seat on lines, slots),
 - **Rate each dish** (`dish_ratings`): `/api/f/:token` returns `dishes`; POST accepts `dishes [{name, liked}]` → `dish_ratings`; `/staff/dish-ratings` on Feedback.
 - **Schedules by area** (`schedule_by_area`, `area_sales_per_hour_cents`): `proposeSchedule` runs once per area team (`users.area`) on that area's item sales (`h.areaSalesByDow`), plus Front of house; shifts carry `area` into `schedule.role_note`.
 
+## 3q. Round 17 (2026-11-21)
+Server: `server/src/run.js` plus hooks in `kds.js` (Runner area, fireIn, makegood flag), `commerce.js` (tabs on table orders, table bills skip tab orders, `business.unitLabel`), `extras.js` (lobby shelf), `delivery.js` (`h.geocode`). Client: `client/src/pages/Run.jsx`.
+- **Server order pad** `/pad` (client only): table → seat chips → `GuestMenu` from `/api/o/menu` → `POST /staff/orders` with `seat`/`course`.
+- **Auto-fire courses** (`course_gap_minutes`): a 30-second job fires the next held course once every earlier-course item is done and the gap has passed; `h.fireIn` shows "Fires in Nm" on held items.
+- **Ingredient 86** (`ingredient_86`): ingredients at stock ≤ 0 86 every active dish in their recipes (`ingredient_86` table), released when restocked; area screens' 86 window has "Out of it / Back in" (`/api/kds/ingredients`, `/api/kds/ingredient-86`, `ingredients.manual_out`, `prev_stock` restores the count).
+- **Prep per area**: `/api/kds/prep` filters `prepList()` to the area's dishes and their ingredients; ticks are kept on the device for the day.
+- **Runner screen**: area "Runner" lists table orders that are finished (all items done, or ready in the last hour) and not served; items grouped by seat; `POST /api/kds/served` sets `orders.served_at`.
+- **Late-ticket make-good** (`makegood_minutes`, `makegood_item_id`, `makegood_pct`): late open orders flagged on expo/all screens and Orders; managers pushed once (`makegood_alerted`); `POST /api/kds/makegood` or `/staff/orders/:id/makegood {kind: item|discount}` adds a $0 dish or a % discount (totals recomputed), notes the order, `makegood_at`.
+- **Shelves on lobby screen**: `/api/screen` ready orders include `shelf`.
+- **Delivery batching** (`batch_radius_km`, `batch_window_minutes`): `/staff/delivery-batches` geocodes and groups unassigned deliveries (≤ 4, all within the radius, ready within the window); `/staff/delivery-batches/assign` sets one driver.
+- **Bar tabs** (`bar_tabs`): `tabs` table; `POST /api/t/:token/tab {name}`, `GET .../tab/:tab`, table orders with `tab` set `orders.tab_id`; closing makes a bill of the tab's unpaid orders (`/api/t/:token/tab/:tab/close`, `/staff/tabs/:id/close`); a sweep closes paid tabs. The client keeps the tab token per table in `localStorage`.
+- **Area staffing alerts** (`area_alerts`, `area_alert_high`, `area_alert_quiet_minutes`): `areaLoad()` = waiting items vs. on-clock cooks per area (`users.area`); `/staff/area-load` chips on Kitchen; 5-minute job pushes "needs help" / "is quiet" (once per 45 / 120 minutes, `area_alerts`).
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

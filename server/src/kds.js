@@ -32,9 +32,10 @@ export function stationFor(item, list = stationList(), map = pj(getSettings().st
 }
 const live = (i) => i.course <= 1 || i.fired_at; // held courses don't count until fired
 
+let H = {};
 function board() {
   const s = getSettings(); const list = stationList(); const map = pj(s.station_map, {});
-  const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, o.allergy_note, o.packed_at, o.expo_at, o.driver_id, o.arrived_at, o.arrival_note, o.handed_at,
+  const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, o.allergy_note, o.packed_at, o.expo_at, o.driver_id, o.arrived_at, o.arrival_note, o.handed_at, o.served_at, o.makegood_at, o.tab_id,
       t.label table_label, g.name guest_name, (SELECT c.tags FROM customers c WHERE c.id = COALESCE(o.customer_id, g.customer_id)) customer_tags, (SELECT name FROM users WHERE id = o.driver_id) driver_name
     FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
     WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-45 minutes'))
@@ -45,7 +46,7 @@ function board() {
   return orders.map((x) => {
     let tags = []; try { tags = JSON.parse(x.customer_tags || '[]'); } catch { /* none */ }
     const allergy = [x.allergy_note, ...tags.filter((t) => /allerg|free|vegan|celiac|dairy|lactose/i.test(t))].filter(Boolean).join(', ');
-    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at, seat: i.seat || null }));
+    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at, seat: i.seat || null, fireIn: !live(i) && H.fireIn ? H.fireIn(x.id, i.course) : null }));
     // pacing: the longest dish on the ticket starts now; shorter ones wait so everything finishes together
     if (pacing && ['open', 'sent'].includes(x.status)) {
       const open = its.filter((i) => !i.held && !i.done && i.cook);
@@ -55,7 +56,7 @@ function board() {
     const areas = {}; for (const i of its) if (!i.held) { const a = (areas[i.area] = areas[i.area] || { total: 0, done: 0 }); a.total += 1; if (i.done) a.done += 1; }
     const { customer_tags, ...rest } = x; // eslint-disable-line no-unused-vars
     const live2 = its.filter((i) => !i.held); const passSince = ['open', 'sent'].includes(x.status) && live2.length && live2.every((i) => i.done) ? live2.map((i) => i.doneAt).sort().pop() : null;
-    return { ...rest, allergy, items: its, areas, passSince, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
+    return { ...rest, allergy, items: its, areas, passSince, makegood: H.makegoodDue ? H.makegoodDue(x) : false, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
   });
 }
 /** How many of each item are still to make, for one area or all. */
@@ -70,10 +71,11 @@ export function allDay(orders, area) {
 }
 
 export function registerKds({ app, staff, h }) {
+  H = h;
   const { parse, clientIp, requireAuth, notifyStaff, wrap } = h;
   const mgr = requireAuth('manager');
   const secret = () => `${getJwtSecret()}:kds`;
-  const areaNames = () => [...stationList(), EXPO, PACK, ALL];
+  const areaNames = () => [...stationList(), EXPO, PACK, 'Runner', ALL];
 
   /** A screen token, or a signed-in staff member picking an area with ?area=. */
   const who = (req) => {
@@ -118,13 +120,15 @@ export function registerKds({ app, staff, h }) {
 
   app.get('/api/kds', (req, res) => {
     const w = who(req); const s = getSettings(); const all = board();
-    const expo = s.kds_expo === '1'; const kind = w.area === EXPO ? 'expo' : w.area === PACK ? 'pack' : w.area === ALL ? 'all' : 'station';
+    const expo = s.kds_expo === '1'; const kind = w.area === EXPO ? 'expo' : w.area === PACK ? 'pack' : w.area === 'Runner' ? 'runner' : w.area === ALL ? 'all' : 'station';
     let orders;
     if (kind === 'station') orders = all.filter((o) => o.cooking && o.items.some((i) => i.area === w.area && !i.held && !i.done)).map((o) => ({ ...o, mine: o.items.filter((i) => i.area === w.area) }));
     else if (kind === 'pack') orders = all.filter((o) => o.fulfillment === 'pickup' || o.fulfillment === 'delivery' || o.source === 'online' || o.source === 'kiosk').filter((o) => !o.packed_at && (o.cooking || ['ready', 'paid'].includes(o.status)));
+    else if (kind === 'runner') orders = h.runnerOrders ? h.runnerOrders(all) : [];
     else orders = all.filter((o) => o.cooking);
     const recent = (kind === 'station'
       ? all.filter((o) => o.items.some((i) => i.area === w.area && i.done && !i.held)).sort((a, b) => String(b.items.find((i) => i.area === w.area)?.doneAt).localeCompare(String(a.items.find((i) => i.area === w.area)?.doneAt)))
+      : kind === 'runner' ? all.filter((o) => o.served_at).sort((a, b) => String(b.served_at).localeCompare(String(a.served_at)))
       : kind === 'pack' ? all.filter((o) => o.packed_at).sort((a, b) => String(b.packed_at).localeCompare(String(a.packed_at)))
       : all.filter((o) => !o.cooking).sort((a, b) => String(b.ready_at).localeCompare(String(a.ready_at)))).slice(0, 8).map((o) => ({ id: o.id, number: o.number, table: o.table_label, name: o.customer_name || o.guest_name, status: o.status, items: o.items.filter((i) => !i.held && (kind !== 'station' || i.area === w.area)).map((i) => ({ id: i.id, name: i.name, qty: i.qty, area: i.area })) }));
     const today = localToday();

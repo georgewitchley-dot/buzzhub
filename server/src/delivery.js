@@ -48,7 +48,7 @@ export function deliveryView(orderId) {
 
 export function registerDelivery({ app, staff, io, h }) {
   const { wrap, parse, idParam, clientIp, requireAuth, notifyStaff, publicBase, publicLimiter, createGuest, pushGuest, findUserByPin } = h;
-  h.deliveryView = deliveryView;
+  h.deliveryView = deliveryView; h.geocode = geocode;
   const guestOf = (o) => (o.guest_id ? db.prepare('SELECT * FROM guests WHERE id = ?').get(o.guest_id) : null);
 
   /* ================= Drivers ================= */

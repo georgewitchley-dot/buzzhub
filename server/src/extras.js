@@ -65,11 +65,11 @@ export function registerExtras({ app, staff, io, h }) {
     const s = getSettings();
     const first = (n) => String(n || '').trim().split(/\s+/)[0]?.slice(0, 14) || '';
     const preparing = db.prepare("SELECT o.number, COALESCE(o.customer_name, g.name) name FROM orders o LEFT JOIN guests g ON g.id = o.guest_id WHERE o.status IN ('open','sent') AND o.created_at > datetime('now','-4 hours') AND (o.fulfillment IN ('pickup','delivery') OR o.table_id IS NULL) ORDER BY o.id LIMIT 24").all();
-    const ready = db.prepare("SELECT o.number, COALESCE(o.customer_name, g.name) name FROM orders o LEFT JOIN guests g ON g.id = o.guest_id WHERE o.ready_at > datetime('now','-12 minutes') AND o.status IN ('ready','paid') AND o.fulfillment <> 'delivery' AND (o.fulfillment = 'pickup' OR o.table_id IS NULL) ORDER BY o.ready_at DESC LIMIT 12").all();
+    const ready = db.prepare("SELECT o.number, o.shelf, COALESCE(o.customer_name, g.name) name FROM orders o LEFT JOIN guests g ON g.id = o.guest_id WHERE o.ready_at > datetime('now','-12 minutes') AND o.status IN ('ready','paid') AND o.fulfillment <> 'delivery' AND (o.fulfillment = 'pickup' OR o.table_id IS NULL) ORDER BY o.ready_at DESC LIMIT 12").all();
     const wait = db.prepare("SELECT name, party_size FROM guests WHERE kind = 'table' AND status IN ('waiting','buzzed','acknowledged') ORDER BY created_at").all();
     const buzzed = db.prepare("SELECT name, t.label FROM guests g LEFT JOIN tables t ON t.id = g.table_id WHERE g.kind = 'table' AND g.status IN ('buzzed','acknowledged') ORDER BY g.buzzed_at DESC LIMIT 6").all();
     res.json({ business: { name: s.business_name, accent: s.accent, logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null, unit: s.unit_label, type: s.business_type },
-      preparing: preparing.map((o) => ({ number: o.number, name: first(o.name) })), ready: ready.map((o) => ({ number: o.number, name: first(o.name) })),
+      preparing: preparing.map((o) => ({ number: o.number, name: first(o.name) })), ready: ready.map((o) => ({ number: o.number, name: first(o.name), shelf: o.shelf || null })),
       waitlist: { count: wait.length, next: wait.slice(0, 8).map((g) => ({ name: first(g.name), party: g.party_size })), ready: buzzed.map((g) => ({ name: first(g.name), table: g.label })), minutes: smartEstimate(wait.length + 1, 2) },
       specials: h.specialsLine?.() || [], message: s.screen_message || '', joinUrl: `${publicBase(req)}/join${currentSlug() === 'main' ? '' : `?l=${currentSlug()}`}` });
   });

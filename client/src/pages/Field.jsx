@@ -3,6 +3,7 @@ import { api, minutesSince, money, timeOf, useTick } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { forgetReaders } from '../pro-ui.jsx';
+import { DeliveryBatches } from './Run.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 
@@ -79,6 +80,7 @@ export function Deliveries() {
       <PageHead title="Deliveries" sub={d.canDispatch ? `${open.length} open. Assign a driver, and the customer sees them coming live on their phone.` : 'Your deliveries. Keep this page open while you drive so customers can see you coming.'}>
         {d.mine.some((o) => o.out_at) && <span className={`chip ${sharing === 'on' ? 'teal' : 'rose'}`}>{sharing === 'on' ? 'Sharing your location' : sharing === 'denied' ? 'Location blocked: allow it in your browser' : 'Finding your location…'}</span>}
       </PageHead>
+      <DeliveryBatches />
       {d.isDriver && d.mine.length > 0 && <><h3 style={{ margin: '0 0 10px' }}>My deliveries</h3><div className="dlv-grid" style={{ marginBottom: 22 }}>{d.mine.map((o) => card(o, true))}</div></>}
       {d.canDispatch && (
         <>

@@ -163,6 +163,18 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 17: front to back
+- **Order pad** for servers, by seat.
+- **Auto-fire courses.**
+- **Ingredient 86** across every dish that uses it.
+- **Prep lists per area.**
+- **Runner screen** by table and seat.
+- **Late-ticket make-goods.**
+- **Shelf numbers on the lobby screen.**
+- **Delivery batching.**
+- **Bar tabs** from the table QR code.
+- **Area staffing alerts.**
+
 ## Round 16: every seat, shelf and second
 - **Seat numbers** on tickets.
 - **Pass timer** for food waiting to go out.

@@ -8,6 +8,7 @@ import { WhenPicker } from './More.jsx';
 import { useReorder } from './Owner.jsx';
 import { LangSwitch, getLang, tr, useLang } from '../i18n.jsx';
 import { useDeliveryQuote } from './Desk.jsx';
+import { TabCard } from './Run.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
   return (
@@ -115,13 +116,14 @@ export function TableOrder() {
   const cart = useCart();
   const combos = useCombos(true);
   const [busy, setBusy] = useState(false);
+  const [tabToken, setTabToken] = useState(null);
   const load = () => api(`/t/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); document.title = `${x.business.name}, table ${x.table}`; }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   if (err && !d) return <div className="guest"><main className="guest-in"><h1>Table code not found</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   const send = async () => {
     setBusy(true); setErr('');
-    try { const r = await api(`/t/${token}/order`, { method: 'POST', body: { items: cart.payload } }); cart.clear(); setMsg(`Order #${r.number} is in. We'll bring it to your table.`); load(); }
+    try { const r = await api(`/t/${token}/order`, { method: 'POST', body: { items: cart.payload, ...(tabToken ? { tab: tabToken } : {}) } }); cart.clear(); setMsg(`Order #${r.number} is in. We'll bring it to your table.`); load(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const help = (kind) => api(`/t/${token}/call`, { method: 'POST', body: { kind } }).then(() => setMsg(tr(getLang(), kind === 'water' ? 'Water is on the way.' : kind === 'check' ? 'The check is on the way.' : 'Your server is on the way.'))).catch(() => api(`/t/${token}/help`, { method: 'POST', body: { reason: kind } }).then(() => setMsg(tr(getLang(), 'Your server is on the way.'))).catch((e) => setErr(e.message)));
@@ -132,6 +134,7 @@ export function TableOrder() {
       <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}><h1>{d.business.unitLabel} {d.table}</h1><p style={{ margin: '0 auto' }}>{d.tableOrdering ? 'Order from your phone. It goes straight to the kitchen.' : 'Your server will take your order.'}</p></div>
       {msg && <div className="card banner" role="status">{msg}</div>}
       {d.rounds.length > 0 && <div className="card"><b>On its way</b>{d.rounds.map((r) => <div key={r.number} className="row muted" style={{ fontSize: 14 }}><span className="grow">Order #{r.number}</span><span>{{ sent: 'Being made', open: 'Being made', ready: 'Ready', held: 'Waiting' }[r.status]}</span></div>)}</div>}
+      <TabCard token={token} info={d} onTab={setTabToken} nav={nav} />
       {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={getLang()} combos={combos} /></div>}
       {cart.count > 0 && (
         <div className="card">

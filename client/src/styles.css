@@ -759,3 +759,9 @@ li.held { opacity: .5; }
 .kds-banner.msg { background: color-mix(in srgb, #6aa5ff 22%, var(--bg, #111)); box-shadow: 0 10px 30px rgba(0,0,0,.4); font-size: 17px; }
 .ticket-card.pass-late { box-shadow: 0 0 0 3px var(--dirty, #e5534b); }
 .shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; }
+
+/* ---- round 17 ---- */
+.pad-cart { position: sticky; bottom: 0; display: flex; gap: 12px; align-items: flex-end; padding: 12px; margin-top: 12px; border-radius: 14px; background: var(--panel, #16171d); box-shadow: 0 -8px 24px rgba(0,0,0,.35); flex-wrap: wrap; }
+.runner-table { font-size: 28px; font-weight: 800; }
+.runner-seat { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.08); font-size: 16px; }
+.ln-shelf { color: var(--accent); font-weight: 700; }

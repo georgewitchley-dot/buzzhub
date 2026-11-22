@@ -34,6 +34,7 @@ import { OnClockChip } from './Clock.jsx';
 import { Rooms, TableTurns, UseFirst } from './Crew.jsx';
 import { KitchenSpeed } from './Pace.jsx';
 import { LaborByArea } from './Line.jsx';
+import { OrderPad } from './Run.jsx';
 import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
 
 const Ctx = createContext(null);
@@ -68,6 +69,7 @@ const NAV = [
   { to: '/register', icon: 'register', label: 'Register' },
   { to: '/orders', icon: 'ticket', label: 'Orders' },
   { to: '/kitchen', icon: 'flame', label: 'Kitchen', when: (s) => s?.business_type !== 'service' },
+  { to: '/pad', icon: 'register', label: 'Order pad', when: (s) => s?.business_type === 'restaurant' },
   { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/safe', icon: 'lock', label: 'Safe', min: 'manager', when: (s) => s?.safe_log_enabled === '1' },
@@ -253,6 +255,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="floor" element={<Floor />} />
                   <Route path="bookings" element={<Bookings />} />
                   <Route path="kitchen" element={<Kitchen />} />
+                  <Route path="pad" element={<OrderPad />} />
                   <Route path="cash" element={<Cash />} />
                   <Route path="shifts" element={<Shifts />} />
                   {can('manager') && <Route path="reports" element={<Reports />} />}
