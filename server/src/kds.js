@@ -40,13 +40,13 @@ function board() {
     FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
     WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-45 minutes'))
     ORDER BY o.priority DESC, COALESCE(o.sent_at, o.created_at)`).all();
-  const items = orders.length ? db.prepare(`SELECT oi.id, oi.order_id, oi.item_id, oi.name, oi.qty, oi.note, oi.mods, oi.course, oi.fired_at, oi.done_at, oi.done_station, oi.seat, oi.done_by, m.category, m.station, m.cook_minutes
+  const items = orders.length ? db.prepare(`SELECT oi.id, oi.order_id, oi.item_id, oi.name, oi.qty, oi.note, oi.mods, oi.course, oi.fired_at, oi.done_at, oi.done_station, oi.seat, oi.seat_name, oi.done_by, m.category, m.station, m.cook_minutes
     FROM order_items oi LEFT JOIN menu_items m ON m.id = oi.item_id WHERE oi.order_id IN (${orders.map((x) => x.id).join(',')})`).all() : [];
   const pacing = s.kds_pacing === '1';
   return orders.map((x) => {
     let tags = []; try { tags = JSON.parse(x.customer_tags || '[]'); } catch { /* none */ }
     const allergy = [x.allergy_note, ...tags.filter((t) => /allerg|free|vegan|celiac|dairy|lactose/i.test(t))].filter(Boolean).join(', ');
-    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at, seat: i.seat || null, fireIn: !live(i) && H.fireIn ? H.fireIn(x.id, i.course) : null }));
+    let its = items.filter((i) => i.order_id === x.id).map((i) => ({ id: i.id, itemId: i.item_id, name: i.name, qty: i.qty, note: i.note, mods: pj(i.mods || '[]', []).map((m) => m.name), course: i.course, held: !live(i), done: Boolean(i.done_at), doneAt: i.done_at, area: stationFor(i, list, map), cook: i.cook_minutes ?? null, firedAt: i.fired_at, seat: i.seat || null, seatName: i.seat_name || null, fireIn: !live(i) && H.fireIn ? H.fireIn(x.id, i.course) : null }));
     // pacing: the longest dish on the ticket starts now; shorter ones wait so everything finishes together
     if (pacing && ['open', 'sent'].includes(x.status)) {
       const open = its.filter((i) => !i.held && !i.done && i.cook);
@@ -176,8 +176,9 @@ export function registerKds({ app, staff, h }) {
     notifyStaff('orders'); res.json({ ok: true, buzz: r?.buzz || null });
   }));
   app.post('/api/kds/recall', (req, res) => {
-    const w = who(req); const { orderId } = parse(z.object({ orderId: z.number().int() }), req.body);
+    const w = who(req); const { orderId, reason } = parse(z.object({ orderId: z.number().int(), reason: z.enum(['missing', 'wrong', 'remake', 'cold', 'other']).optional() }), req.body);
     const o = order(orderId);
+    H.recallReason?.(o, reason, w.area, w.user ? w.user.name : `${w.area} screen`);
     if (w.area !== EXPO && w.area !== ALL && w.area !== PACK) {
       const list = stationList(); const q = db.prepare('UPDATE order_items SET done_at = NULL, done_station = NULL WHERE id = ?');
       for (const i of db.prepare('SELECT oi.*, m.category, m.station FROM order_items oi LEFT JOIN menu_items m ON m.id = oi.item_id WHERE oi.order_id = ?').all(o.id)) if (stationFor(i, list) === w.area) q.run(i.id);

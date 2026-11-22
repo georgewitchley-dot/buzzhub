@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
-import { PayExtras, SplitBySeat } from './Station.jsx';
+import { GuestScreenCheck, PayExtras, SplitBySeat } from './Station.jsx';
 
 /* ================= Pad: my tables + pay at the table ================= */
 export function PadTables({ tableId, onPick }) {
@@ -39,7 +39,8 @@ export function PadPay({ tableId, label, onClose }) {
         <div className="row"><b className="grow">Due</b><b className="num" style={{ fontSize: 22 }}>{money(b.remainingCents, cur)}</b></div>
         {b.remainingCents > 0 && <>
           <PayExtras bill={b} onChange={load} />
-          {splitting ? <SplitBySeat bill={b} onPaid={load} /> : <button className="btn sm" onClick={() => setSplitting(true)}>Split by seat</button>}
+          <div className="row wrap" style={{ gap: 6 }}>{!splitting && <button className="btn sm" onClick={() => setSplitting(true)}>Split by seat</button>}<GuestScreenCheck bill={b} label={`${settings.unit_label} ${label}`} /></div>
+          {splitting && <SplitBySeat bill={b} onPaid={load} />}
           <label className="field"><span>Tip (optional)</span><input className="input" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></label>
           <div className="row"><button className="btn primary lg grow" onClick={() => take('cash')}>Took cash</button><button className="btn lg grow" onClick={() => take('card')}>Paid on card reader</button></div>
           {qr ? <div className="pad-qr" dangerouslySetInnerHTML={{ __html: qr.svg }} /> : <button className="btn block" onClick={() => api(`/staff/bills/${b.id}/qr`).then(setQr)}>Guest pays on their phone (show QR)</button>}

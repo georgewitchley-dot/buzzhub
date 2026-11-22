@@ -278,6 +278,15 @@ New module `server/src/seat.js` (`registerSeat`, after `registerFlow`). `more.js
 - Auto-VIP uses `orders.vip_checked` so each order is checked once.
 - Pacing: `h.coursePace(tableId, course)`; median gaps cached 10 minutes.
 
+## 3v. Round 22 (2026-11-22)
+New module `server/src/serve.js` (`registerServe`, after `registerSeat`). Client changes in `Station.jsx` (seat names in `useSeatAllergies` → `[allergies, setAllergy, names, setName]`, recall reasons, signature tip, `GuestScreenCheck`), `Run.jsx`, `Areas.jsx` (allergy slip), `Table.jsx`, `Field.jsx`, `Plus.jsx` (display lines with qty 0 show no count).
+- Seat names share the `seat_allergies` row (allergy may be ''); allergies only apply where allergy <> ''.
+- Auto-join runs in `/staff/guests/:id/seat` (response `joined`), only over tables that are open with no unpaid orders.
+- `h.prepSplit` adds `split {hour, first, second}` to prep items (cached 30 minutes).
+- Leftover rollover writes tomorrow's `prep_counts` for items with `menu_items.shelf_days > 0`.
+- `/api/kds/recall` takes an optional `reason` (missing|wrong|remake|cold|other) → a `remakes` row with qty 0.
+- VIP arrival sweep every 20 s (`guests.vip_alerted`); fire reminders every 60 s (`fire_reminders` keys). Both emit socket `security` with type `vip`/`fire`.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

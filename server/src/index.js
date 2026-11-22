@@ -45,6 +45,7 @@ import { registerTable } from './table.js';
 import { registerStation } from './station.js';
 import { registerFlow } from './flow.js';
 import { registerSeat } from './seat.js';
+import { registerServe } from './serve.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -601,7 +602,7 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), ot_guard: z.enum(['0', '1']), punch_geofence: z.enum(['0', '1']), punch_radius_m: z.string().regex(/^\d{2,4}$/), biz_lat: z.string().regex(/^-?\d{1,2}(\.\d+)?$|^$/), biz_lng: z.string().regex(/^-?\d{1,3}(\.\d+)?$|^$/),
     punch_photo: z.enum(['0', '1']), handoff_notes: z.enum(['0', '1']), adp_company_code: z.string().trim().max(10), kds_expo: z.enum(['0', '1']), kds_pack: z.enum(['0', '1']),
     board_categories: z.string().max(2000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), board_title: z.string().trim().max(60), board_rotate_seconds: z.string().regex(/^\d{1,3}$/), board_cols: z.enum(['1', '2', '3', '4']), board_photos: z.enum(['0', '1']),
-    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), booking_preorder: z.enum(['0', '1']), preorder_reminder: z.enum(['0', '1']), booking_preorder_pay: z.enum(['0', '1']), auto_vip: z.enum(['0', '1']), auto_vip_members: z.enum(['0', '1']), auto_vip_spend_cents: z.coerce.number().int().min(0).max(100000000), pace_default_minutes: z.coerce.number().int().min(1).max(120), preorder_reminder_hour: z.coerce.number().int().min(0).max(23), delivery_signature_cents: z.coerce.number().int().min(0).max(10000000), photo_check: z.enum(['off', 'allergy', 'special', 'all']), course_gap_minutes: z.string().regex(/^\d{1,2}$/), ingredient_86: z.enum(['0', '1']), makegood_minutes: z.string().regex(/^\d{1,3}$/), makegood_item_id: z.string().regex(/^\d*$/), makegood_pct: z.string().regex(/^\d{1,3}$/), batch_radius_km: z.string().regex(/^\d{1,2}(\.\d)?$/), batch_window_minutes: z.string().regex(/^\d{1,3}$/), bar_tabs: z.enum(['0', '1']), area_alerts: z.enum(['0', '1']), area_alert_high: z.string().regex(/^\d{1,3}$/), area_alert_quiet_minutes: z.string().regex(/^\d{1,3}$/), pass_alert_minutes: z.string().regex(/^\d{1,2}$/), slot_capacity: z.string().regex(/^\d{1,3}$/), pickup_shelves: z.string().trim().max(200), kds_quick_messages: z.string().max(1000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), dish_ratings: z.enum(['0', '1']), schedule_by_area: z.enum(['0', '1']), area_sales_per_hour_cents: z.string().regex(/^\d{3,7}$/), smart_quotes: z.enum(['0', '1']), kitchen_parallel: z.string().regex(/^\d{1,2}$/), rush_mode: z.enum(['off', 'auto']), rush_busy_tickets: z.string().regex(/^\d{1,3}$/), rush_busy_late: z.string().regex(/^\d{1,3}$/), rush_pause_tickets: z.string().regex(/^\d{1,3}$/), rush_pause_late: z.string().regex(/^\d{1,3}$/), rush_extra_minutes: z.string().regex(/^\d{1,3}$/), shift_pulse: z.enum(['0', '1']), pulse_anonymous: z.enum(['0', '1']), tipout_at_clockout: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
+    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), booking_preorder: z.enum(['0', '1']), preorder_reminder: z.enum(['0', '1']), booking_preorder_pay: z.enum(['0', '1']), auto_join_tables: z.enum(['0', '1']), prep_split_hour: z.coerce.number().int().min(0).max(23), leftover_rollover: z.enum(['0', '1']), vip_arrival_alert: z.enum(['0', '1']), fire_reminders: z.enum(['0', '1']), auto_vip: z.enum(['0', '1']), auto_vip_members: z.enum(['0', '1']), auto_vip_spend_cents: z.coerce.number().int().min(0).max(100000000), pace_default_minutes: z.coerce.number().int().min(1).max(120), preorder_reminder_hour: z.coerce.number().int().min(0).max(23), delivery_signature_cents: z.coerce.number().int().min(0).max(10000000), photo_check: z.enum(['off', 'allergy', 'special', 'all']), course_gap_minutes: z.string().regex(/^\d{1,2}$/), ingredient_86: z.enum(['0', '1']), makegood_minutes: z.string().regex(/^\d{1,3}$/), makegood_item_id: z.string().regex(/^\d*$/), makegood_pct: z.string().regex(/^\d{1,3}$/), batch_radius_km: z.string().regex(/^\d{1,2}(\.\d)?$/), batch_window_minutes: z.string().regex(/^\d{1,3}$/), bar_tabs: z.enum(['0', '1']), area_alerts: z.enum(['0', '1']), area_alert_high: z.string().regex(/^\d{1,3}$/), area_alert_quiet_minutes: z.string().regex(/^\d{1,3}$/), pass_alert_minutes: z.string().regex(/^\d{1,2}$/), slot_capacity: z.string().regex(/^\d{1,3}$/), pickup_shelves: z.string().trim().max(200), kds_quick_messages: z.string().max(1000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), dish_ratings: z.enum(['0', '1']), schedule_by_area: z.enum(['0', '1']), area_sales_per_hour_cents: z.string().regex(/^\d{3,7}$/), smart_quotes: z.enum(['0', '1']), kitchen_parallel: z.string().regex(/^\d{1,2}$/), rush_mode: z.enum(['off', 'auto']), rush_busy_tickets: z.string().regex(/^\d{1,3}$/), rush_busy_late: z.string().regex(/^\d{1,3}$/), rush_pause_tickets: z.string().regex(/^\d{1,3}$/), rush_pause_late: z.string().regex(/^\d{1,3}$/), rush_extra_minutes: z.string().regex(/^\d{1,3}$/), shift_pulse: z.enum(['0', '1']), pulse_anonymous: z.enum(['0', '1']), tipout_at_clockout: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
     cash_balance_cents: z.coerce.number().int().min(-100_000_000).max(1_000_000_000), cash_balance_on: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), payroll_dow: z.coerce.number().int().min(0).max(6), payroll_every: z.enum(['weekly', 'biweekly']),
     show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
     pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
@@ -771,6 +772,7 @@ staff.post('/guests/:id/seat', (req, res) => {
   });
   tx();
   const fired = g.kind === 'table' ? fireHeldPreorder(id, tid) : null;
+  const joined = g.kind === 'table' && tid ? (G.autoJoinForParty?.(tid, g.party_size, req.user) || []) : [];
   if (g.kind === 'order' && g.order_id) db.prepare("UPDATE orders SET status='paid' WHERE id=? AND prepaid=1 AND status IN ('ready','sent','open')").run(g.order_id);
   Promise.resolve(G.countVisit?.(g.customer_id)).catch(() => {});
   G.scheduleFeedback?.(id);
@@ -778,7 +780,7 @@ staff.post('/guests/:id/seat', (req, res) => {
   audit(req.user, g.kind === 'order' ? 'guest.pickedup' : 'guest.seat', `${g.name}${tid ? ` → table ${tid}` : ''}`, clientIp(req));
   notifyStaff('guests'); notifyStaff('tables');
   pushGuest(id); pushAllWaiting();
-  res.json({ ok: true, preorderFired: fired });
+  res.json({ ok: true, preorderFired: fired, joined });
 });
 
 staff.post('/guests/:id/remove', (req, res) => {
@@ -874,7 +876,7 @@ staff.post('/orders', wrap(async (req, res) => {
   if (made.duplicate) return res.json({ id: made.id, number: made.number, duplicate: true });
   const orderId = made.id; const number = made.number;
   if (b.priority) db.prepare('UPDATE orders SET priority = ? WHERE id = ?').run(b.priority, orderId);
-  if (b.tableId) G.applySeatAllergies?.(orderId, b.tableId);
+  if (b.tableId) { G.applySeatAllergies?.(orderId, b.tableId); G.applySeatNames?.(orderId, b.tableId); }
   if (b.customerId || b.allergies?.length) db.prepare('UPDATE orders SET customer_id = ?, allergy_note = ? WHERE id = ?').run(b.customerId || null, b.allergies?.length ? b.allergies.join(', ') : null, orderId);
   let buzzer = null;
   if (b.attachBuzzer) {
@@ -1283,6 +1285,7 @@ G.requireCustomer = requireCustomer;
 registerStation({ app, staff, io, h: G });
 registerFlow({ app, staff, io, h: G });
 registerSeat({ app, staff, io, h: G });
+registerServe({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

@@ -100,7 +100,7 @@ export function registerDelivery({ app, staff, io, h }) {
     if (!mineOrMgr(req, o)) throw err('This delivery is assigned to someone else', 403);
     if (h.needsSignature?.(o)) throw Object.assign(err('Get the customer to sign first', 409), { needsSignature: true });
     const t = now();
-    if (o.prepaid || o.paid_at) db.prepare("UPDATE orders SET delivered_at = ?, status = 'paid' WHERE id = ?").run(t, o.id);
+    if (o.prepaid || o.paid_at) { db.prepare("UPDATE orders SET delivered_at = ?, status = 'paid' WHERE id = ?").run(t, o.id); h.doorTip?.(o, b.tipCents, req.user); }
     else {
       if (!b.method) throw err('How did they pay? Pick cash, card or other.');
       const total = o.subtotal_cents - o.discount_cents + o.tax_cents + (o.fee_cents || 0) + b.tipCents;

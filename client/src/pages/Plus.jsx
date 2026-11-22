@@ -207,7 +207,7 @@ export function CustomerDisplay() {
       {s.stage === 'paid' && <div className="lobby-msg"><h1 style={{ fontSize: '7vh' }}>Thank you!</h1><p style={{ fontSize: '3vh' }}>{s.message || 'See you again soon.'}</p></div>}
       {(s.stage === 'cart' || s.stage === 'tip') && (
         <div className="cdisp-grid">
-          <section className="cdisp-lines">{s.lines.map((l, i) => <div key={i} className="row"><span className="num" style={{ width: '3em' }}>{l.qty}</span><span className="grow">{l.name}</span><span className="num">{money(l.cents, cur)}</span></div>)}</section>
+          <section className="cdisp-lines">{s.lines.map((l, i) => <div key={i} className="row"><span className="num" style={{ width: '3em' }}>{l.qty || ''}</span><span className="grow">{l.name}</span><span className="num">{money(l.cents, cur)}</span></div>)}</section>
           <section className="cdisp-tot">
             {s.discountCents > 0 && <div className="row"><span className="grow">Discount</span><span className="num">−{money(s.discountCents, cur)}</span></div>}
             <div className="row"><span className="grow">Tax</span><span className="num">{money(s.taxCents, cur)}</span></div>

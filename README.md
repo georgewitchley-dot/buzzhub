@@ -163,6 +163,19 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 22: names, slips and nudges
+
+- **Seat names** on the seat map (`seat_allergies.name`, `PUT /api/staff/tables/:id/seat-name`, `order_items.seat_name`); shown on area screens, the runner screen and split checks.
+- **Allergy slip**: expo, runner and all-areas screens print a big allergy slip for tickets with an allergy (`printing-slip` print mode).
+- **Join tables for big parties** (`auto_join_tables`): seating a party bigger than the table joins the nearest empty tables in the same section.
+- **Check on the guest screen**: the check (by seat) goes to the paired customer display from the station.
+- **Prep by service** (`prep_split_hour`): the prep list shows before/after amounts from the last 8 same weekdays.
+- **Leftover rollover** (`leftover_rollover`): leftovers of dishes with a shelf life become tomorrow's on-hand instead of waste.
+- **Tip on the signature screen**: drivers' signature box offers 10/15/20%; tips on already-paid deliveries are added to the order.
+- **Recall reasons**: bringing a ticket back asks why; reasons show in the remakes report.
+- **VIP arrival alert** (`vip_arrival_alert`): members and top guests trigger a toast and push to the team when they arrive.
+- **Fire reminders** (`fire_reminders`): the table's server gets a push when the next course is due and hasn't been fired.
+
 ## Round 21: tables, seats and proof
 
 - **Join tables**: Join on the station moves another table's open checks onto this one; its seats continue the numbering (`tables.joined_to`, `POST /api/staff/tables/:id/join|unjoin`).

@@ -33,7 +33,7 @@ export function OrderPad() {
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
   const [help, setHelp] = useState(false);
-  const [allergies, setAllergy] = useSeatAllergies(tableId);
+  const [allergies, setAllergy, seatNames, setSeatName] = useSeatAllergies(tableId);
   if (!menu || !tables) return null;
   const t = tables.find((x) => String(x.id) === String(tableId));
   const joinedWith = t ? tables.filter((x) => x.joined_to === t.id) : [];
@@ -64,7 +64,7 @@ export function OrderPad() {
           {joinedTo ? <div className="panel empty"><b>{settings.unit_label} {t.label} is joined to {joinedTo.label}</b><span>Its orders go on {joinedTo.label}'s check.</span><button className="btn primary" onClick={() => pick(joinedTo.id)}>Open {settings.unit_label} {joinedTo.label}</button></div> : t ? <>
             <div className="station-bar">
               <b className="station-t">{settings.unit_label} {t.label}{joinedWith.length > 0 && <span className="dim" style={{ fontSize: 13, display: 'block' }}>with {joinedWith.map((x) => x.label).join(', ')}</span>}</b>
-              <SeatMap table={t} seat={seat} onSeat={setSeat} seats={seatsAll} allergies={allergies} onAllergy={setAllergy} />
+              <SeatMap table={t} seat={seat} onSeat={setSeat} seats={seatsAll} allergies={allergies} onAllergy={setAllergy} names={seatNames} onName={setSeatName} />
               <span className="grow" />
               <div className="row wrap" style={{ gap: 6 }}><StationFire tableId={t.id} /><button className="btn" onClick={() => setMoving(true)}>Move</button>{joinedWith.length ? <button className="btn" onClick={() => api(`/staff/tables/${t.id}/unjoin`, { method: 'POST' }).then(() => toast('Tables split back apart', 'ok')).catch((e) => toast(e.message, 'err'))}>Unjoin</button> : <button className="btn" onClick={() => setJoining(true)}>Join</button>}<button className="btn" onClick={() => setPaying(true)}>Check</button></div>
             </div>
@@ -105,7 +105,7 @@ export function KdsPrep({ hdr, q, onClose }) {
   const loadLog = () => api(`/kds/prep-log${q}`, { headers: hdr }).then((rows) => setDone(Object.fromEntries(rows.map((r) => [`${r.kind === 'item' ? 'i' : 'g'}${r.ref_id}`, r]))));
   useEffect(() => { api(`/kds/prep${q}`, { headers: hdr }).then(setD); loadLog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [left, setLeft] = useState(null);
-  const logLeft = () => api(`/kds/leftovers${q}`, { method: 'POST', headers: hdr, body: { lines: Object.entries(left).filter(([, v]) => Number(v) > 0).map(([k, v]) => ({ itemId: Number(k), qty: Math.round(Number(v)) })), by: localStorage.getItem('bh_kds_name') || undefined } }).then((r) => { setNote(r.logged ? `${r.logged} logged as waste` : 'Nothing new to log'); setLeft(null); reloadPrep(); }).catch((e) => setNote(e.message));
+  const logLeft = () => api(`/kds/leftovers${q}`, { method: 'POST', headers: hdr, body: { lines: Object.entries(left).filter(([, v]) => Number(v) > 0).map(([k, v]) => ({ itemId: Number(k), qty: Math.round(Number(v)) })), by: localStorage.getItem('bh_kds_name') || undefined } }).then((r) => { setNote(r.logged ? [r.rolled ? `${r.rolled} kept for tomorrow's on-hand` : '', r.wasted ? `${r.wasted} logged as waste` : ''].filter(Boolean).join(', ') : 'Nothing new to log'); setLeft(null); reloadPrep(); }).catch((e) => setNote(e.message));
   const reloadPrep = () => api(`/kds/prep${q}`, { headers: hdr }).then(setD);
   const count = (i, v) => { const qty = v === '' ? null : Math.max(0, Math.round(Number(v))); if (qty !== null && Number.isNaN(qty)) return; api(`/kds/prep-count${q}`, { method: 'POST', headers: hdr, body: { itemId: i.id, qty, by: localStorage.getItem('bh_kds_name') || undefined } }).then(reloadPrep).catch((e) => setNote(e.message)); };
   const tick = (k) => { const kind = k[0] === 'i' ? 'item' : 'ingredient'; const id = Number(k.slice(1)); const row = kind === 'item' ? d.items.find((x) => x.id === id) : d.ingredients.find((x) => x.id === id);
@@ -115,7 +115,7 @@ export function KdsPrep({ hdr, q, onClose }) {
       {d && <>
         <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra. Ticks show on every screen; prepped ingredients with a shelf life go into Use first.</span>
         {note && <span className="chip teal">{note}</span>}
-        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{(i.par || i.onHand !== null) && <span className="prep-recipe">{i.par ? `Par ${i.par} · forecast ${i.forecast} · ` : ''}On hand <input className="input prep-onhand" type="number" min={0} defaultValue={i.onHand ?? ''} onClick={(e) => e.preventDefault()} onBlur={(e) => count(i, e.target.value)} aria-label={`On hand ${i.name}`} /></span>}{!(i.par || i.onHand !== null) && <button type="button" className="linkish prep-recipe" onClick={(e) => { e.preventDefault(); const v = prompt(`How many ${i.name} are already made?`, ''); if (v !== null) count(i, v); }}>Count what's on hand</button>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
+        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{(i.par || i.onHand !== null || i.split) && <span className="prep-recipe">{i.split ? `Before ${i.split.hour > 12 ? i.split.hour - 12 : i.split.hour}${i.split.hour >= 12 ? ' pm' : ' am'}: ${i.split.first}, after: ${i.split.second} · ` : ''}{i.par ? `Par ${i.par} · forecast ${i.forecast} · ` : ''}On hand <input className="input prep-onhand" type="number" min={0} defaultValue={i.onHand ?? ''} onClick={(e) => e.preventDefault()} onBlur={(e) => count(i, e.target.value)} aria-label={`On hand ${i.name}`} /></span>}{!(i.par || i.onHand !== null || i.split) && <button type="button" className="linkish prep-recipe" onClick={(e) => { e.preventDefault(); const v = prompt(`How many ${i.name} are already made?`, ''); if (v !== null) count(i, v); }}>Count what's on hand</button>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
         {d.items.length > 0 && (left === null ? <button type="button" className="btn sm" onClick={() => setLeft({})}>Leftovers at close</button> : <div className="stack" style={{ gap: 4, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
           <b>Leftovers at close</b><span className="dim" style={{ fontSize: 12.5 }}>Count what's left of each prepped dish. It's logged as over-prep waste.</span>
           {d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 14 }}><span className="grow">{i.name}</span>{d.leftovers?.[i.id] !== undefined ? <span className="chip">logged {d.leftovers[i.id]}</span> : <input className="input prep-onhand" type="number" min={0} value={left[i.id] ?? ''} onChange={(e) => setLeft({ ...left, [i.id]: e.target.value })} aria-label={`Leftover ${i.name}`} />}</label>)}
@@ -131,7 +131,7 @@ export function RunnerTicket({ o, unit, onServed }) {
   return (
     <>
       <div className="runner-table">{unit} {o.table_label}</div>
-      {Object.entries(seats).map(([s, its]) => <div key={s} className="runner-seat"><b>{Number(s) ? `Seat ${s}` : 'Share'}</b>{its.map((i) => <div key={i.id}>{i.qty} {i.name}{i.mods.length ? <em className="dim"> ({i.mods.join(', ')})</em> : null}</div>)}</div>)}
+      {Object.entries(seats).map(([s, its]) => <div key={s} className="runner-seat"><b>{Number(s) ? `Seat ${s}${its[0]?.seatName ? ` · ${its[0].seatName}` : ''}` : 'Share'}</b>{its.map((i) => <div key={i.id}>{i.qty} {i.name}{i.mods.length ? <em className="dim"> ({i.mods.join(', ')})</em> : null}</div>)}</div>)}
       <button className="btn primary lg block" onClick={(e) => { e.stopPropagation(); onServed(o); }}>Taken to the table</button>
     </>
   );
@@ -223,6 +223,11 @@ export function RunPanel({ f, setF }) {
         {num('makegood_pct', 'Or % off')}</div>
       <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.auto_vip === '1'} onChange={flag('auto_vip')} />Send members' and top guests' tickets as VIP automatically</label>
       {f.auto_vip === '1' && <div className="row wrap"><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.auto_vip_members !== '0'} onChange={flag('auto_vip_members')} />Members</label>{num('auto_vip_spend_cents', 'and guests who spent this many cents in the last year (0 = off)', 120)}</div>}
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.fire_reminders === '1'} onChange={flag('fire_reminders')} />Remind the server on their phone when a table's next course is due</label>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.auto_join_tables === '1'} onChange={flag('auto_join_tables')} />When a party is bigger than the table, join the nearest empty tables in the same section</label>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.vip_arrival_alert !== '0'} onChange={flag('vip_arrival_alert')} />Tell the team when a member or top guest arrives</label>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.leftover_rollover !== '0'} onChange={flag('leftover_rollover')} />Leftovers of dishes with a shelf life count as tomorrow's on-hand instead of waste</label>
+      <label className="field"><span>Split the prep list at this hour (lunch / dinner)</span><select className="input" style={{ width: 130 }} value={f.prep_split_hour} onChange={(e) => setF({ ...f, prep_split_hour: e.target.value })}><option value="0">Don't split</option>{Array.from({ length: 13 }, (_, i) => i + 10).map((h) => <option key={h} value={h}>{h === 12 ? '12 pm' : h > 12 ? `${h - 12} pm` : `${h} am`}</option>)}</select></label>
       {num('pace_default_minutes', 'Course pacing: suggest the next course this many minutes after the last lands (used until there is enough history)')}
       {num('delivery_signature_cents', 'Ask for a customer signature on deliveries of this many cents or more (0 = never)', 120)}
       <PrepPars />

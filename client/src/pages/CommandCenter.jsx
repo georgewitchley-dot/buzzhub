@@ -194,7 +194,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('pay:claim', ({ text }) => { playChime(); toast(text, 'ok'); });
     s.on('chat:new', ({ name, body }) => { playChime(); toast(`${name}: ${body}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
-    s.on('security', ({ type, ip, detail }) => { if (type === 'curbside') { toast(detail, 'ok'); playChime?.(); } else if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
+    s.on('security', ({ type, ip, detail }) => { if (type === 'curbside' || type === 'vip' || type === 'fire') { toast(detail, 'ok'); playChime?.(); } else if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
     s.on('sync', ({ scope }) => { if (scope === 'guests') loadCount(); });
     setSocket(s);

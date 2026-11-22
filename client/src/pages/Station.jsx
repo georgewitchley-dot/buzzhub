@@ -29,7 +29,7 @@ export function StationHost({ tableId, tableLabel }) {
   const list = (d?.active || []).filter((g) => g.kind !== 'order' && ['waiting', 'buzzed', 'notified', 'confirmed'].includes(g.status));
   const add = (e) => { e.preventDefault(); api('/staff/guests', { method: 'POST', body: { name: f.name.trim(), phone: f.phone || undefined, partySize: Number(f.partySize) || 1 } }).then(() => { setF({ name: '', phone: '', partySize: 2 }); toast('Added to the list', 'ok'); reload?.(); }).catch((x) => toast(x.message, 'err')); };
   const buzz = (g) => api(`/staff/guests/${g.id}/buzz`, { method: 'POST', body: tableId ? { tableId: Number(tableId) } : {} }).then(() => { toast(`${g.name} buzzed`, 'ok'); reload?.(); }).catch((x) => toast(x.message, 'err'));
-  const seat = (g) => api(`/staff/guests/${g.id}/seat`, { method: 'POST', body: tableId ? { tableId: Number(tableId) } : {} }).then(() => { toast(`${g.name} seated${tableLabel ? ` at ${settings.unit_label} ${tableLabel}` : ''}`, 'ok'); reload?.(); }).catch((x) => toast(x.message, 'err'));
+  const seat = (g) => api(`/staff/guests/${g.id}/seat`, { method: 'POST', body: tableId ? { tableId: Number(tableId) } : {} }).then((r) => { toast(`${g.name} seated${tableLabel ? ` at ${settings.unit_label} ${tableLabel}` : ''}${r.joined?.length ? `, joined with ${r.joined.join(', ')}` : ''}`, 'ok'); reload?.(); }).catch((x) => toast(x.message, 'err'));
   return (
     <section className="station-box">
       <div className="row"><b className="grow">Waitlist</b><span className="dim" style={{ fontSize: 12 }}>{list.length} waiting</span></div>
@@ -189,7 +189,7 @@ export function BookingPreorder({ booking, onClose }) {
 }
 
 /* ================= Round 20: seat map ================= */
-export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy }) {
+export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy, names = {}, onName }) {
   const n = Math.max(1, Math.min(24, seats || table.seats || 4)); const round = table.shape === 'round';
   const W = 220; const H = 128; const cx = W / 2; const cy = H / 2;
   const pos = Array.from({ length: n }, (_, i) => {
@@ -204,12 +204,13 @@ export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy 
         <text x={cx} y={cy + 5} textAnchor="middle" className="seatmap-label">{table.label}</text>
         {pos.map(([x, y], i) => (
           <g key={i} className={`seatmap-seat ${seat === i + 1 ? 'on' : ''} ${allergies[i + 1] ? 'allergy' : ''}`} onClick={() => onSeat(i + 1)} role="button" tabIndex={0} aria-label={`Seat ${i + 1}`} aria-pressed={seat === i + 1} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeat(i + 1); } }}>
-            <circle cx={x} cy={y} r={12} /><text x={x} y={y + 4} textAnchor="middle">{i + 1}</text>{allergies[i + 1] && <title>{`Seat ${i + 1}: ${allergies[i + 1]}`}</title>}
+            <circle cx={x} cy={y} r={12} /><text x={x} y={y + 4} textAnchor="middle">{i + 1}</text>{(allergies[i + 1] || names[i + 1]) && <title>{`Seat ${i + 1}${names[i + 1] ? ` ${names[i + 1]}` : ''}${allergies[i + 1] ? `: ${allergies[i + 1]}` : ''}`}</title>}{names[i + 1] && <text x={x} y={y + (y < cy ? -16 : 26)} textAnchor="middle" className="seatmap-name">{names[i + 1].slice(0, 8)}</text>}
           </g>
         ))}
       </svg>
       <div className="stack" style={{ gap: 4 }}>
         <button type="button" className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => onSeat(0)}>Share</button>
+        {onName && seat > 0 && <button type="button" className="btn sm" onClick={() => { const v = prompt(`Name for seat ${seat} (leave empty to clear)`, names[seat] || ''); if (v !== null) onName(seat, v.trim()); }}>{names[seat] ? `S${seat}: ${names[seat]}` : `Name S${seat}`}</button>}
         {onAllergy && seat > 0 && <button type="button" className={`btn sm ${allergies[seat] ? 'danger' : ''}`} onClick={() => { const v = prompt(`Allergy for seat ${seat} (leave empty to clear)`, allergies[seat] || ''); if (v !== null) onAllergy(seat, v.trim()); }}>{allergies[seat] ? `S${seat}: ${allergies[seat]}` : `Allergy S${seat}`}</button>}
       </div>
     </div>
@@ -234,7 +235,7 @@ export function MoveTable({ table, onClose }) {
 }
 
 /* ================= Round 20: signature pad ================= */
-export function SignaturePad({ orderId, onSigned }) {
+export function SignaturePad({ orderId, onSigned, tipBaseCents = 0, tip, onTip }) {
   const ref = useRef(null); const drawing = useRef(false); const [has, setHas] = useState(false); const [name, setName] = useState(''); const [saved, setSaved] = useState(false); const toast = useToast();
   const pt = (e) => { const r = ref.current.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return [(p.clientX - r.left) * (ref.current.width / r.width), (p.clientY - r.top) * (ref.current.height / r.height)]; };
   const start = (e) => { e.preventDefault(); drawing.current = true; const c = ref.current.getContext('2d'); c.lineWidth = 3; c.lineCap = 'round'; c.strokeStyle = '#111'; const [x, y] = pt(e); c.beginPath(); c.moveTo(x, y); };
@@ -246,6 +247,7 @@ export function SignaturePad({ orderId, onSigned }) {
     <div className="stack" style={{ gap: 6 }}>
       <b>Customer signature</b>
       <canvas ref={ref} width={600} height={200} className="sigpad" onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end} onTouchStart={start} onTouchMove={move} onTouchEnd={end} aria-label="Sign here" />
+      {onTip && tipBaseCents > 0 && <div className="row wrap" style={{ gap: 6 }}><span className="dim" style={{ fontSize: 13 }}>Tip for the driver</span>{[0, 10, 15, 20].map((p) => { const c = Math.round((tipBaseCents * p) / 100); return <button key={p} type="button" className={`btn sm ${tip === c ? 'primary' : ''}`} onClick={() => onTip(c)}>{p ? `${p}% · $${(c / 100).toFixed(2)}` : 'No tip'}</button>; })}</div>}
       <div className="row" style={{ gap: 6 }}><input className="input grow" placeholder="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /><button type="button" className="btn" onClick={clear}>Clear</button><button type="button" className="btn primary" disabled={!has || saved} onClick={save}>{saved ? 'Signed' : 'Save signature'}</button></div>
     </div>
   );
@@ -280,11 +282,12 @@ export function JoinTable({ table, onClose }) {
 
 /* ================= Round 21: seat allergies ================= */
 export function useSeatAllergies(tableId) {
-  const [list, setList] = useState({});
-  const load = () => (tableId ? api(`/staff/tables/${tableId}/seat-allergies`).then((r) => setList(Object.fromEntries(r.map((x) => [x.seat, x.allergy])))).catch(() => setList({})) : setList({}));
+  const [list, setList] = useState({}); const [names, setNames] = useState({});
+  const load = () => (tableId ? api(`/staff/tables/${tableId}/seat-allergies`).then((r) => { setList(Object.fromEntries(r.filter((x) => x.allergy).map((x) => [x.seat, x.allergy]))); setNames(Object.fromEntries(r.filter((x) => x.name).map((x) => [x.seat, x.name]))); }).catch(() => { setList({}); setNames({}); }) : (setList({}), setNames({})));
   useEffect(() => { load(); }, [tableId]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (seat, allergy) => api(`/staff/tables/${tableId}/seat-allergies`, { method: 'PUT', body: { seat, allergy } }).then(load);
-  return [list, set];
+  const setName = (seat, name) => api(`/staff/tables/${tableId}/seat-name`, { method: 'PUT', body: { seat, name } }).then(load);
+  return [list, set, names, setName];
 }
 
 /* ================= Round 21: split the check by seat ================= */
@@ -298,7 +301,7 @@ export function SplitBySeat({ bill, onPaid }) {
   return (
     <div className="stack" style={{ gap: 6 }}>
       {d.seats.map((s) => (
-        <div key={s.seat} className="row seat-split"><span className="grow"><b>Seat {s.seat}</b> <span className="num">{money(s.cents, cur)}</span><div className="dim" style={{ fontSize: 12 }}>{s.items.join(', ')}</div></span>
+        <div key={s.seat} className="row seat-split"><span className="grow"><b>Seat {s.seat}{s.name ? ` · ${s.name}` : ''}</b> <span className="num">{money(s.cents, cur)}</span><div className="dim" style={{ fontSize: 12 }}>{s.items.join(', ')}</div></span>
           <button className="btn sm" onClick={() => pay(s, 'cash')}>Cash</button><button className="btn sm" onClick={() => pay(s, 'card')}>Card</button></div>
       ))}
       {d.sharedCents > 0 && <span className="dim" style={{ fontSize: 12.5 }}>Shared dishes ({money(d.sharedCents, cur)}: {d.sharedItems.map((i) => i.name).join(', ')}) stay on the check for whoever pays last.</span>}
@@ -325,17 +328,35 @@ export function TopDishes({ items, onAdd, currency }) {
 export function RecallList({ hdr, q, call, flash, onClose }) {
   const [list, setList] = useState(null);
   useEffect(() => { api(`/kds/done-list${q}`, { headers: hdr }).then(setList).catch(() => setList([])); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const back = (o) => call('/kds/recall', { orderId: o.id }, () => { flash(`#${o.number} is back on the screen`); onClose(); });
+  const [asking, setAsking] = useState(null);
+  const back = (o, reason) => call('/kds/recall', { orderId: o.id, ...(reason ? { reason } : {}) }, () => { flash(`#${o.number} is back on the screen`); onClose(); });
   return (
     <Modal title="Finished tickets" onClose={onClose} width={480}>
       {!list ? null : list.length === 0 ? <span className="muted">Nothing finished here in the last 16 hours.</span> : (
         <div className="stack" style={{ gap: 4, maxHeight: 440, overflow: 'auto' }}>{list.map((o) => (
           <div key={o.id} className="row" style={{ borderTop: '1px solid var(--line)', paddingTop: 6 }}>
             <span className="grow"><b>#{o.number}</b> {o.table_label ? `Table ${o.table_label}` : o.customer_name || ''}<div className="dim" style={{ fontSize: 12 }}>{o.items ? `${o.items} · ` : ''}{new Date(`${String(o.done_at).replace(' ', 'T')}Z`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div></span>
-            <button className="btn sm" onClick={() => back(o)}>Bring back</button>
+            {asking === o.id ? <div className="row wrap" style={{ gap: 4, justifyContent: 'flex-end' }}>{[['missing', 'Missing item'], ['wrong', 'Wrong dish'], ['remake', 'Remake'], ['cold', 'Cold'], ['other', 'Other']].map(([k, l]) => <button key={k} className="btn sm" onClick={() => back(o, k)}>{l}</button>)}</div> : <button className="btn sm" onClick={() => setAsking(o.id)}>Bring back</button>}
           </div>
         ))}</div>
       )}
     </Modal>
   );
+}
+
+/* ================= Round 22: show the check on the guest screen ================= */
+export function GuestScreenCheck({ bill, label }) {
+  const toast = useToast(); const code = localStorage.getItem('bh_display');
+  if (!code) return null;
+  const push = async () => {
+    try {
+      const seats = await api(`/staff/bills/${bill.id}/seats`).catch(() => null);
+      const lines = seats?.seats?.length
+        ? [...seats.seats.flatMap((s) => [{ name: `Seat ${s.seat}${s.name ? ` · ${s.name}` : ''}`, qty: 0, cents: s.cents }]), ...(seats.sharedCents ? [{ name: 'Shared', qty: 0, cents: seats.sharedCents }] : [])]
+        : bill.items.map((i) => ({ name: i.name, qty: i.qty, cents: i.shareCents ?? i.price_cents * i.qty }));
+      await api('/staff/display/push', { method: 'POST', body: { code, stage: 'cart', lines: lines.slice(0, 60), totalCents: bill.remainingCents, subtotalCents: bill.remainingCents, message: `Your check, ${label}` } });
+      toast('On the guest screen', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  return <button className="btn sm" onClick={push}>Show on guest screen</button>;
 }

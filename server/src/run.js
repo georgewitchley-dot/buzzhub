@@ -111,7 +111,8 @@ export function registerRun({ app, staff, io, h }) {
     const w = who(req); const list = stationList(); const p = prepList(localToday()); const all = ['All areas', 'Expo', 'Packing', 'Runner'].includes(w.area);
     const meta = Object.fromEntries(db.prepare('SELECT id, category, station FROM menu_items').all().map((m) => [m.id, m]));
     const keep = (i) => all || stationFor(meta[i.id] || i, list) === w.area;
-    const items = h.applyPars ? h.applyPars(p.items.filter(keep), keep) : p.items.filter(keep);
+    const items0 = h.applyPars ? h.applyPars(p.items.filter(keep), keep) : p.items.filter(keep);
+    const items = h.prepSplit ? h.prepSplit(items0) : items0;
     const ingIds = new Set(db.prepare(`SELECT ingredient_id FROM item_recipes WHERE item_id IN (${items.map((i) => i.id).join(',') || 0})`).all().map((r) => r.ingredient_id));
     res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, leftovers: h.prepLeftoversToday ? h.prepLeftoversToday() : {}, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
   });

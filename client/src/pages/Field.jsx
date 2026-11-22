@@ -32,7 +32,8 @@ function DeliveredModal({ o, currency, onClose }) {
   const [tip, setTip] = useState('');
   const { settings } = useCC(); const sigMin = Number(settings.delivery_signature_cents || 0);
   const [needSig, setNeedSig] = useState(() => sigMin > 0 && (o.total_cents || o.totalCents || o.dueCents || 0) >= sigMin);
-  const done = async () => { try { await api(`/staff/orders/${o.id}/delivered`, { method: 'POST', body: o.dueCents ? { method, tipCents: dollars(tip) } : {} }); toast(`#${o.number} delivered`, 'ok'); onClose(); } catch (e) { if (e.data?.needsSignature) { setNeedSig(true); toast('This order needs the customer to sign first', 'err'); } else toast(e.message, 'err'); } };
+  const [doorTip, setDoorTip] = useState(0);
+  const done = async () => { try { await api(`/staff/orders/${o.id}/delivered`, { method: 'POST', body: o.dueCents ? { method, tipCents: dollars(tip) || doorTip } : { tipCents: doorTip } }); toast(`#${o.number} delivered`, 'ok'); onClose(); } catch (e) { if (e.data?.needsSignature) { setNeedSig(true); toast('This order needs the customer to sign first', 'err'); } else toast(e.message, 'err'); } };
   return (
     <Modal title={`Deliver #${o.number}`} onClose={onClose} width={420}>
       {o.dueCents > 0 ? (
@@ -43,7 +44,7 @@ function DeliveredModal({ o, currency, onClose }) {
         </>
       ) : <p className="muted" style={{ margin: 0 }}>Already paid. Just hand it over.</p>}
       <DropPhoto orderId={o.id} />
-      {needSig && <SignaturePad orderId={o.id} />}
+      {needSig && <SignaturePad orderId={o.id} tipBaseCents={o.total_cents || o.totalCents || o.dueCents || 0} tip={doorTip} onTip={setDoorTip} />}
       <button className="btn primary lg block" onClick={done}>Mark delivered</button>
     </Modal>
   );

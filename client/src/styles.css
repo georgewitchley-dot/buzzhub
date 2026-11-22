@@ -863,3 +863,18 @@ kbd { display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid 
 .receipt-proof { display: grid; gap: 8px; margin-top: 12px; }
 .receipt-proof img { width: 100%; border-radius: 8px; }
 .receipt-proof img.sig { background: #fff; max-height: 120px; object-fit: contain; }
+
+/* ===== Round 22 ===== */
+.seatmap-seat text.seatmap-name, .seatmap-seat.on text.seatmap-name, .seatmap-seat.allergy text.seatmap-name { fill: var(--muted); font-size: 10px; font-weight: 600; pointer-events: none; }
+.slip-btn { margin-left: 8px; background: rgba(255,255,255,.15); border: 0; color: inherit; font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+.print-slip { display: none; }
+@media print {
+  body.printing-slip * { visibility: hidden !important; }
+  body.printing-slip .print-slip { display: block; position: fixed; inset: 0 auto auto 0; width: 80mm; padding: 4mm; }
+  body.printing-slip .print-slip, body.printing-slip .print-slip * { visibility: visible !important; color: #000; }
+  .print-slip .slip-head { font: 900 34px/1 sans-serif; text-align: center; border: 4px solid #000; padding: 6px; margin-bottom: 6px; }
+  .print-slip .slip-where { font: 700 18px/1.3 sans-serif; text-align: center; }
+  .print-slip .slip-what { font: 900 24px/1.2 sans-serif; text-align: center; margin: 8px 0; text-transform: uppercase; }
+  .print-slip .slip-dish { font: 600 15px/1.4 sans-serif; }
+  .print-slip .slip-foot { font: 12px/1.4 sans-serif; margin-top: 10px; }
+}

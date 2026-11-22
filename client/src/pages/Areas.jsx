@@ -30,7 +30,7 @@ export function KdsScreen() {
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
   const [card, setCard] = useState(null); const [eightySix, setEightySix] = useState(false); const [remake, setRemake] = useState(null); const [temps, setTemps] = useState(false); const [tempCount, setTempCount] = useState(0);
-  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false); const [recall, setRecall] = useState(false);
+  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false); const [recall, setRecall] = useState(false); const [slip, setSlip] = useState(null);
   const [cook, setCookState] = useState(() => localStorage.getItem('bh_kds_cook') || ''); const setCook = (v) => { setCookState(v); localStorage.setItem('bh_kds_cook', v); }; const [toPrint, setToPrint] = useState([]);
   const [printHere, setPrintHere] = useState(() => localStorage.getItem('bh_kds_print') === '1'); const printRef = useRef(printHere); printRef.current = printHere;
   const dRef = useRef(null);
@@ -112,7 +112,7 @@ export function KdsScreen() {
   const itemLine = (o, i, { tappable, showArea }) => (
     <li key={i.id} className={`${i.done || struck[o.id]?.has(i.id) ? 'done' : ''} ${i.held ? 'held' : ''} ${d.pacing && i.startIn > 0 && !i.done ? 'wait' : ''}`} onClick={tappable && !i.done && !i.held ? (e) => { e.stopPropagation(); tap(o, i); } : undefined} role={tappable ? 'button' : undefined}>
       <b className="num">{i.qty}</b>
-      <span>{i.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{i.seat}</span> : null}<button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>{i.fireIn !== null && i.fireIn !== undefined ? (i.fireIn <= 0 ? 'Firing now' : `Fires in ${i.fireIn}m`) : 'Held'}</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
+      <span>{i.seat ? <span className="chip" style={{ marginRight: 6, fontSize: 11 }}>S{i.seat}{i.seatName ? ` ${i.seatName}` : ''}</span> : null}<button type="button" className="kds-info" aria-label={`Recipe for ${i.name}`} onClick={(e) => { e.stopPropagation(); if (i.itemId) setCard(i.itemId); }}>i</button>{d.pacing && i.startIn !== null && i.startIn !== undefined && !i.done && o.items.some((x) => x.startIn > 0) && <span className={`chip ${i.startIn <= 0 ? 'amber' : ''}`} style={{ marginRight: 6, fontSize: 11 }}>{i.startIn <= 0 ? 'Start now' : `Wait ${i.startIn}m`}</span>}{i.name}{showArea && <span className="chip" style={{ marginLeft: 6, fontSize: 11 }}>{i.area}</span>}{i.held && <span className="chip amber" style={{ marginLeft: 6, fontSize: 11 }}>{i.fireIn !== null && i.fireIn !== undefined ? (i.fireIn <= 0 ? 'Firing now' : `Fires in ${i.fireIn}m`) : 'Held'}</span>}{i.mods.length > 0 && <em>{i.mods.join(', ')}</em>}{i.note && <em>{i.note}</em>}{i.done && <Icon name="check" size={14} />}</span>
     </li>
   );
   return (
@@ -163,7 +163,7 @@ export function KdsScreen() {
                   {d.kind !== 'station' && areas.length > 1 && areas.map(([n, a]) => <span key={n} className={`chip ${a.done >= a.total ? 'teal' : ''}`}>{n} {a.done}/{a.total}</span>)}
                   {d.kind === 'station' && areas.filter(([n]) => n !== d.area).map(([n, a]) => <span key={n} className={`chip ${a.done >= a.total ? 'teal' : ''}`} title="Other areas on this ticket">{n} {a.done >= a.total ? 'done' : 'cooking'}</span>)}
                 </div>
-                {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}</div>}
+                {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}{['expo', 'all', 'runner'].includes(d.kind) && <button type="button" className="slip-btn" onClick={(e) => { e.stopPropagation(); setSlip(o); setTimeout(() => printPart('printing-slip'), 80); }}>Print slip</button>}</div>}
                 {o.passSince && d.kind !== 'station' && (() => { const m = Math.max(0, Math.round((Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`)) / 60000)); return <span className={`chip ${d.passMinutes && m >= d.passMinutes ? 'rose' : 'teal'}`}>At the pass {m}m</span>; })()}
                 {o.makegood && (d.kind === 'expo' || d.kind === 'all') && <MakeGoodButtons o={o} onPick={makeGood} />}
                 {o.arrived && <span className="chip rose">Customer is here{o.arrival_note ? `: ${o.arrival_note}` : ''}</span>}
@@ -195,6 +195,7 @@ export function KdsScreen() {
         </Modal>
       )}
       {prep && <KdsPrep hdr={hdr()} q={q} onClose={() => setPrep(false)} />}
+      {slip && <div className="print-slip" aria-hidden="true"><div className="slip-head">ALLERGY</div><div className="slip-where">#{slip.number}{slip.table_label ? ` · ${x0().unit} ${slip.table_label}` : ''}</div><div className="slip-what">{slip.allergy}</div>{slip.items.filter((i) => /^ALLERGY/.test(i.note || '')).map((i) => <div key={i.id} className="slip-dish">{i.seat ? `Seat ${i.seat}${i.seatName ? ` (${i.seatName})` : ''}: ` : ''}{i.qty} {i.name}</div>)}<div className="slip-foot">Hand this dish to the right guest. Checked by: ________</div></div>}
       {recall && <RecallList hdr={hdr()} q={q} call={call} flash={flash} onClose={() => setRecall(false)} />}
       {photoFor && <PlatePhoto order={photoFor} hdr={hdr()} onClose={() => setPhotoFor(null)} onDone={() => { const o = photoFor; setPhotoFor(null); complete(o, Boolean(o.allergy && d.allergyCheck)); }} />}
       {shelfFor && <ShelfPicker d={d} order={shelfFor} onClose={() => setShelfFor(null)} onPick={(s) => { const o = shelfFor; setShelfFor(null); call('/kds/packed', { orderId: o.id, ...(s ? { shelf: s } : {}) }, () => flash(`#${o.number} bagged${s ? ` on shelf ${s}` : ''}`)); }} />}

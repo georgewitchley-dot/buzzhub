@@ -54,18 +54,19 @@ export function registerSeat({ app, staff, h }) {
   h.joinedWith = (id) => db.prepare('SELECT label FROM tables WHERE joined_to = ? ORDER BY label').all(id).map((r) => r.label);
 
   /* ===== 2. seat allergies ===== */
-  staff.get('/tables/:id/seat-allergies', (req, res) => res.json(db.prepare('SELECT seat, allergy FROM seat_allergies WHERE table_id = ? ORDER BY seat').all(Number(req.params.id))));
+  staff.get('/tables/:id/seat-allergies', (req, res) => res.json(db.prepare('SELECT seat, allergy, name FROM seat_allergies WHERE table_id = ? ORDER BY seat').all(Number(req.params.id))));
   staff.put('/tables/:id/seat-allergies', (req, res) => {
     const { seat, allergy } = parse(z.object({ seat: z.number().int().min(1).max(40), allergy: z.string().trim().max(80) }), req.body);
     const tid = Number(req.params.id); const t = db.prepare('SELECT label FROM tables WHERE id = ?').get(tid); if (!t) throw err('Not found', 404);
-    if (allergy) db.prepare('INSERT OR REPLACE INTO seat_allergies (table_id, seat, allergy) VALUES (?, ?, ?)').run(tid, seat, allergy);
+    const cur = db.prepare('SELECT name FROM seat_allergies WHERE table_id = ? AND seat = ?').get(tid, seat);
+    if (allergy || cur?.name) db.prepare('INSERT OR REPLACE INTO seat_allergies (table_id, seat, allergy, name) VALUES (?, ?, ?, ?)').run(tid, seat, allergy || '', cur?.name || null);
     else db.prepare('DELETE FROM seat_allergies WHERE table_id = ? AND seat = ?').run(tid, seat);
     audit(req.user, 'seat.allergy', `${unit()} ${t.label} seat ${seat}: ${allergy || 'cleared'}`, clientIp(req)); res.json({ ok: true });
   });
   /** Called after a table order is created: tags each seat's dishes and the order's allergy note. */
   h.applySeatAllergies = (orderId, tableId) => {
     if (!tableId) return;
-    const al = Object.fromEntries(db.prepare('SELECT seat, allergy FROM seat_allergies WHERE table_id = ?').all(tableId).map((r) => [r.seat, r.allergy])); if (!Object.keys(al).length) return;
+    const al = Object.fromEntries(db.prepare("SELECT seat, allergy FROM seat_allergies WHERE table_id = ? AND allergy <> ''").all(tableId).map((r) => [r.seat, r.allergy])); if (!Object.keys(al).length) return;
     const found = new Set();
     for (const i of db.prepare('SELECT id, seat, note FROM order_items WHERE order_id = ? AND seat > 0').all(orderId)) {
       const a = al[i.seat]; if (!a) continue; found.add(`Seat ${i.seat}: ${a}`);
@@ -87,7 +88,7 @@ export function registerSeat({ app, staff, h }) {
     // shared dishes are spread across the seats as an even split of their value, shown but paid by whoever pays last
     const sharedCents = shared.reduce((a, i) => a + i.shareCents, 0);
     res.json({ billId: bill.id, remainingCents: sum.remainingCents, sharedCents, sharedItems: shared.map((i) => ({ id: i.id, name: i.name, qty: i.qty, cents: i.shareCents })),
-      seats: keys.map((s) => ({ seat: s, itemIds: seats[s].map((i) => i.id), items: seats[s].map((i) => `${i.qty} ${i.name}`), cents: seats[s].reduce((a, i) => a + i.shareCents, 0), sharedPartCents: keys.length ? Math.round(sharedCents / keys.length) : 0 })) });
+      seats: keys.map((s) => ({ seat: s, name: (h.seatNames ? h.seatNames(bill.table_id) : {})[s] || null, itemIds: seats[s].map((i) => i.id), items: seats[s].map((i) => `${i.qty} ${i.name}`), cents: seats[s].reduce((a, i) => a + i.shareCents, 0), sharedPartCents: keys.length ? Math.round(sharedCents / keys.length) : 0 })) });
   });
 
   /* ===== 4. my top dishes ===== */
@@ -96,15 +97,15 @@ export function registerSeat({ app, staff, h }) {
 
   /* ===== 5. prep leftovers at close ===== */
   h.prepLeftovers = (lines, by, user) => {
-    const date = localToday(); let costCents = 0; let n = 0;
+    const date = localToday(); let costCents = 0; let n = 0; let rolled = 0;
     for (const l of lines) {
       if (!l.qty) continue;
       if (db.prepare('SELECT 1 FROM prep_leftovers WHERE date = ? AND item_id = ?').get(date, l.itemId)) continue; // already logged today
-      costCents += h.logWaste({ itemId: l.itemId, qty: l.qty, reason: 'over-prepped', note: `Leftover at close${by ? ` (${by})` : ''}` }, user) || 0;
+      if (h.leftoverKeeps?.(l.itemId)) { h.rollLeftover(l.itemId, l.qty, by); rolled++; } else costCents += h.logWaste({ itemId: l.itemId, qty: l.qty, reason: 'over-prepped', note: `Leftover at close${by ? ` (${by})` : ''}` }, user) || 0;
       db.prepare('INSERT INTO prep_leftovers (date, item_id, qty, by_label) VALUES (?, ?, ?, ?)').run(date, l.itemId, l.qty, by || null); n++;
     }
     if (n) { audit(user || null, 'prep.leftovers', `${n} dish${n === 1 ? '' : 'es'}, $${(costCents / 100).toFixed(2)}`, null); notifyStaff('waste'); }
-    return { logged: n, costCents };
+    return { logged: n, rolled, wasted: n - rolled, costCents };
   };
   h.prepLeftoversToday = () => Object.fromEntries(db.prepare('SELECT item_id, qty FROM prep_leftovers WHERE date = ?').all(localToday()).map((r) => [r.item_id, r.qty]));
 
