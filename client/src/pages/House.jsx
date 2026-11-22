@@ -5,6 +5,7 @@ import { api, applyAccent, money, timeOf } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { LangSwitch, useLang } from '../i18n.jsx';
+import { printPage } from '../printing.js';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 const whenLocal = (sl) => { const [d, t] = sl.split(' '); return `${new Date(`${d}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${new Date(`2000-01-01T${t}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; };
@@ -380,7 +381,7 @@ export function Prep() {
     <>
       <PageHead title={`Prep list for ${d.weekday}`} sub={d.weeksOfData ? `Based on the last ${d.weeksOfData} ${d.weekday}s, plus ${d.bufferPct}% extra.` : `Not enough ${d.weekday}s yet. After a few weeks of sales this fills in on its own.`}>
         <input className="input" type="date" style={{ width: 160 }} value={date || d.date} onChange={(e) => setDate(e.target.value)} aria-label="Day" />
-        <button className="btn" onClick={() => window.print()}><Icon name="print" size={16} />Print</button>
+        <button className="btn" onClick={() => printPage('Report')}><Icon name="print" size={16} />Print</button>
       </PageHead>
       <div className="grid-2">
         <section className="panel"><div className="panel-h"><h3>Make</h3></div>

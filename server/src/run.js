@@ -65,6 +65,7 @@ export function registerRun({ app, staff, io, h }) {
       db.prepare("UPDATE order_items SET fired_at = datetime('now') WHERE order_id = ? AND course = ? AND fired_at IS NULL").run(r.order_id, r.course);
       const o = db.prepare('SELECT number FROM orders WHERE id = ?').get(r.order_id);
       audit(null, 'course.autofire', `#${o.number} course ${r.course}`, null); notifyStaff('orders');
+      try { h.printTickets?.(r.order_id, false, r.course); } catch { /* best-effort */ }
     }
   }
 
@@ -112,9 +113,11 @@ export function registerRun({ app, staff, io, h }) {
     const meta = Object.fromEntries(db.prepare('SELECT id, category, station FROM menu_items').all().map((m) => [m.id, m]));
     const keep = (i) => all || stationFor(meta[i.id] || i, list) === w.area;
     const items0 = h.applyPars ? h.applyPars(p.items.filter(keep), keep) : p.items.filter(keep);
-    const items = h.prepSplit ? h.prepSplit(items0) : items0;
+    const items1 = h.wasteAdjust ? h.wasteAdjust(items0) : items0;
+    const shelf = Object.fromEntries(db.prepare('SELECT id, shelf_days FROM menu_items').all().map((m) => [m.id, m.shelf_days]));
+    const items = (h.prepSplit ? h.prepSplit(items1) : items1).map((i) => ({ ...i, shelfDays: shelf[i.id] ?? null }));
     const ingIds = new Set(db.prepare(`SELECT ingredient_id FROM item_recipes WHERE item_id IN (${items.map((i) => i.id).join(',') || 0})`).all().map((r) => r.ingredient_id));
-    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, leftovers: h.prepLeftoversToday ? h.prepLeftoversToday() : {}, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
+    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, prepLabels: getSettings().prep_labels === '1', business: getSettings().business_name, leftovers: h.prepLeftoversToday ? h.prepLeftoversToday() : {}, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
   });
 
   app.get('/api/kds/done-list', (req, res) => {
@@ -124,6 +127,10 @@ export function registerRun({ app, staff, io, h }) {
   app.post('/api/kds/leftovers', (req, res) => {
     const w = who(req); const b = parse(z.object({ lines: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(0).max(9999) })).max(200), by: z.string().trim().max(30).optional() }), req.body);
     res.json(h.prepLeftovers(b.lines, w.user ? w.user.name : b.by || label(w), w.user));
+  });
+  app.post('/api/kds/allergy-handoff', (req, res) => {
+    const w = who(req); const { orderId, by } = parse(z.object({ orderId: z.number().int(), by: z.string().trim().max(30).optional() }), req.body);
+    h.allergyHandoff(orderId, w.user ? w.user.name : by || label(w)); res.json({ ok: true });
   });
   app.post('/api/kds/prep-count', (req, res) => {
     const w = who(req); const b = parse(z.object({ itemId: z.number().int(), qty: z.number().int().min(0).max(9999).nullable(), by: z.string().trim().max(30).optional() }), req.body);

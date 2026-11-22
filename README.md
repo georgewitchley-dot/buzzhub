@@ -163,6 +163,20 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 23: printers, devices and the guest at the table
+
+**Printers and devices** (new `Devices` page, managers):
+- **Print helpers** pass jobs from the cloud server to printers at the business. Two kinds, both free:
+  - **Chrome page** (`/print-agent`, paired by link): USB printers via Web Serial, **Bluetooth LE** thermal printers via Web Bluetooth, or the computer's normal print dialog (`--kiosk-printing` for silent printing). Works in Chrome/Edge on Windows, Mac, Linux, ChromeOS and Android. iPhone/iPad browsers can't reach USB/Bluetooth printers.
+  - **Helper program** (`tools/print-agent.mjs`, Node 18+, no packages; download from Devices): **Wi-Fi/Ethernet** ESC/POS printers on port 9100, and USB or paired classic-Bluetooth printers by device path (`/dev/usb/lp0`, `/dev/rfcomm0`, `\\.\COM3`). Good on a Raspberry Pi.
+- **Printers** are set per helper with paper width (58/80 mm), copies, auto-cut, cash-drawer kick, and which jobs they take: kitchen tickets (per area), receipts, allergy slips, labels, checkouts, reports.
+- Kitchen tickets print **automatically** on each area's printer when an order goes in or a course fires (`print_tickets_auto`), with table, seat names, allergies, rush/VIP.
+- Every print button tries a connected printer first and falls back to the browser print box: receipts (cash receipts open the drawer), allergy slips, prep labels, server/driver checkouts, reports and label sheets.
+- Jobs are queued (`print_jobs`) with retries; failures alert staff; Devices shows helper status, printer status, recent prints and "Try again". The page also lists every other paired screen type.
+- API: `POST /api/print`, `GET /api/print/routes`, `/api/staff/printers*`, `/api/staff/print-agents*`, helper side `/api/print/agent`, `/api/print/jobs?wait=1`, `/api/print/jobs/:id/result` (header `X-Print`).
+
+**The 10 ideas**: seat history on the station; allergy hand-off on the runner screen (`/staff/allergy-handoffs` log); saved table combos (Settings) that join when a booked party is seated; ask for a tip on the guest screen and charge the card reader from the check; prep labels with use-by dates (`prep_labels`); prep forecast lowered for dishes that keep getting thrown out (`prep_learn`); driver checkout on My shifts; remake alerts (`remake_alerts`, `remake_alert_count`); VIP arrival banner with a profile card; course pacing that learns by party size.
+
 ## Round 22: names, slips and nudges
 
 - **Seat names** on the seat map (`seat_allergies.name`, `PUT /api/staff/tables/:id/seat-name`, `order_items.seat_name`); shown on area screens, the runner screen and split checks.

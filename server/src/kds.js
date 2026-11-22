@@ -35,7 +35,7 @@ const live = (i) => i.course <= 1 || i.fired_at; // held courses don't count unt
 let H = {};
 function board() {
   const s = getSettings(); const list = stationList(); const map = pj(s.station_map, {});
-  const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, o.allergy_note, o.packed_at, o.expo_at, o.driver_id, o.arrived_at, o.arrival_note, o.handed_at, o.served_at, o.makegood_at, o.tab_id, o.priority,
+  const orders = db.prepare(`SELECT o.id, o.number, o.status, o.source, o.customer_name, o.sent_at, o.ready_at, o.created_at, o.fulfillment, o.delivery_address, o.order_notes, o.prepaid, o.allergy_note, o.packed_at, o.expo_at, o.driver_id, o.arrived_at, o.arrival_note, o.handed_at, o.served_at, o.makegood_at, o.tab_id, o.allergy_handed_by, o.priority,
       t.label table_label, g.name guest_name, (SELECT c.tags FROM customers c WHERE c.id = COALESCE(o.customer_id, g.customer_id)) customer_tags, (SELECT name FROM users WHERE id = o.driver_id) driver_name
     FROM orders o LEFT JOIN tables t ON t.id = o.table_id LEFT JOIN guests g ON g.id = o.guest_id
     WHERE o.status IN ('open','sent') OR (o.status IN ('ready','paid') AND o.ready_at > datetime('now','-45 minutes'))

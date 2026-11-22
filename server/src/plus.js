@@ -335,6 +335,7 @@ export function registerPlus({ app, staff, io, h }) {
     if (!r.changes) throw err('Nothing is waiting to be fired', 409);
     if (o.status === 'ready') db.prepare("UPDATE orders SET status = 'sent', ready_at = NULL WHERE id = ?").run(o.id);
     audit(req.user, 'order.fire', `#${o.number}${b.course ? ` course ${b.course}` : ''}`, clientIp(req)); notifyStaff('orders');
+    try { h.printTickets?.(o.id, false, b.course || 2); } catch { /* best-effort */ }
     io.to('staff').emit('security', { type: 'fire', detail: `Fire: order #${o.number}${o.table_id ? ` (table ${db.prepare('SELECT label FROM tables WHERE id = ?').get(o.table_id)?.label || ''})` : ''}` });
     res.json({ fired: r.changes });
   });

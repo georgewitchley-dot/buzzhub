@@ -6,6 +6,7 @@ import { CateringOrder } from './pages/Smart.jsx';
 import { TimeClockScreen } from './pages/Clock.jsx';
 import { PublicAllergens, RateCatering } from './pages/Desk.jsx';
 import { KdsScreen, MenuBoard } from './pages/Areas.jsx';
+import { PrintAgentPage } from './pages/Devices.jsx';
 import { PublicRooms, RoomBooking } from './pages/Crew.jsx';
 import PayPage from './pages/PayPage.jsx';
 import Receipt from './pages/Receipt.jsx';
@@ -50,6 +51,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/allergens" element={<PublicAllergens />} />
           <Route path="/rate/:token" element={<RateCatering />} />
           <Route path="/kds" element={<KdsScreen />} />
+          <Route path="/print-agent" element={<PrintAgentPage />} />
           <Route path="/menuboard" element={<MenuBoard />} />
           <Route path="/event-rooms" element={<PublicRooms />} />
           <Route path="/event-room/:token" element={<RoomBooking />} />

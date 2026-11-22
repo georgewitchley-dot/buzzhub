@@ -118,7 +118,7 @@ export function registerServe({ app, staff, io, h }) {
         const label = vipLabel(g.customer_id); if (!label) continue;
         const body = `${g.cname} (${label}, party of ${g.party_size}${g.visits ? `, visit ${g.visits + 1}` : ''}) just arrived.${g.cnotes ? ` Notes: ${g.cnotes}` : ''}`;
         audit(null, 'guest.vip_arrived', body, null);
-        io.to('staff').emit('security', { type: 'vip', detail: body });
+        io.to('staff').emit('security', { type: 'vip', detail: body, customerId: g.customer_id });
         await pushToUsers(['staff', 'manager', 'owner'], { title: `${s.business_name}: VIP arrived`, body, tag: `vip-${g.id}`, url: '/waitlist' }).catch(() => {});
       }
     } catch (e) { if (!/no such/.test(e.message)) console.error('vip arrival', e.message); }

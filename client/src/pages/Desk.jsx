@@ -6,6 +6,7 @@ import Aurora from '../bits/Aurora.jsx';
 import { api, applyAccent, money } from '../lib.js';
 import { Icon, Modal, Puck, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { printPage } from '../printing.js';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -32,7 +33,7 @@ export function AllergenChart() {
     <>
       <PageHead title="Allergen chart" sub={`Every dish against every allergen. Updated ${d.updated}.${d.untagged ? ` ${d.untagged} dish${d.untagged === 1 ? ' has' : 'es have'} no allergens marked yet; set them in Menu details.` : ''}`}>
         <button className="btn" onClick={() => { navigator.clipboard?.writeText(link); toast('Customer link copied', 'ok'); }}>Copy customer link</button>
-        <button className="btn primary" onClick={() => window.print()}><Icon name="print" size={16} />Print</button>
+        <button className="btn primary" onClick={() => printPage('Report')}><Icon name="print" size={16} />Print</button>
       </PageHead>
       <section className="panel print-area"><div className="print-only"><h2>{d.business}: allergen chart</h2><p>Updated {d.updated}. Ask staff about cross-contact.</p></div><ChartTable d={d} /></section>
       <p className="dim" style={{ fontSize: 12.5 }}>This chart shows what you've marked in Menu details. Kitchens share equipment, so tell guests with serious allergies to speak with a manager.</p>

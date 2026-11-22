@@ -203,7 +203,8 @@ export function registerSeat({ app, staff, h }) {
   };
   h.coursePace = (tableId, course) => {
     const prev = db.prepare("SELECT MAX(oi.done_at) d, SUM(oi.done_at IS NULL) waiting FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.table_id = ? AND o.status IN ('open','sent','ready') AND oi.course = ? AND oi.fired_at IS NOT NULL").get(tableId, course - 1);
-    const typical = typicalGap(course) ?? Number(getSettings().pace_default_minutes || 15);
+    const party = h.partySizeAt ? h.partySizeAt(tableId) : null;
+    const typical = (h.partyGap ? h.partyGap(course, party) : null) ?? typicalGap(course) ?? Number(getSettings().pace_default_minutes || 15);
     if (!prev?.d) return { typical, since: null, hint: prev?.waiting ? `Course ${course - 1} is still cooking` : null, due: false };
     if (prev.waiting) return { typical, since: null, hint: `Course ${course - 1} is still cooking`, due: false };
     const since = Math.max(0, Math.round((Date.now() - ms(prev.d)) / 60000));

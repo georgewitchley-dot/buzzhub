@@ -37,6 +37,8 @@ import { LaborByArea } from './Line.jsx';
 import { OrderPad } from './Run.jsx';
 import { Coaching } from './Table.jsx';
 import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
+import { DevicesPage } from './Devices.jsx';
+import { VipCard } from './Station.jsx';
 
 const Ctx = createContext(null);
 export const useCC = () => useContext(Ctx);
@@ -116,6 +118,7 @@ const NAV = [
   { to: '/delivery-zones', icon: 'pin', label: 'Delivery zones', min: 'manager', when: (s) => s?.online_delivery === '1' },
   { to: '/staff', icon: 'staff', label: 'Staff', min: 'manager' },
   { to: '/security', icon: 'shield', label: 'Security', min: 'manager' },
+  { to: '/devices', icon: 'print', label: 'Devices', min: 'manager' },
   { to: '/settings', icon: 'gear', label: 'Settings', min: 'manager' },
 ];
 const RANK = { staff: 1, manager: 2, owner: 3 };
@@ -153,6 +156,7 @@ export default function CommandCenter() {
 }
 
 function Shell({ user, business, onLock, reloadBusiness }) {
+  const [vip, setVip] = useState(null); const [vipOpen, setVipOpen] = useState(null);
   const toast = useToast();
   const [socket, setSocket] = useState(null);
   const [online, setOnline] = useState(true);
@@ -194,7 +198,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
     s.on('pay:claim', ({ text }) => { playChime(); toast(text, 'ok'); });
     s.on('chat:new', ({ name, body }) => { playChime(); toast(`${name}: ${body}`, 'ok'); });
     s.on('booking:arrived', ({ name, time }) => { playChime(); toast(`${name} checked in for their ${time} booking`, 'ok'); });
-    s.on('security', ({ type, ip, detail }) => { if (type === 'curbside' || type === 'vip' || type === 'fire') { toast(detail, 'ok'); playChime?.(); } else if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
+    s.on('security', ({ type, ip, detail, customerId }) => { if (type === 'vip' && customerId) setVip({ detail, customerId }); if (type === 'curbside' || type === 'vip' || type === 'fire' || type === 'printer') { toast(detail, 'ok'); playChime?.(); } else if (type === 'bad_pin') toast(`Wrong PIN entered from ${ip}`, 'err'); else if (detail) toast(detail, 'err'); });
     s.on('settings', (st) => { setSettings((p) => ({ ...p, ...st })); applyAccent(st.accent); reloadBusiness(); });
     s.on('sync', ({ scope }) => { if (scope === 'guests') loadCount(); });
     setSocket(s);
@@ -250,6 +254,8 @@ function Shell({ user, business, onLock, reloadBusiness }) {
               {settings && socket && <PaymentClaims />}
               {settings && socket && <TableCalls />}
               {settings && socket && <LogBanner />}
+              {vip && <div className="vip-banner" role="status"><span className="chip violet">VIP</span><span className="grow">{vip.detail}</span><button className="btn sm primary" onClick={() => { setVipOpen(vip.customerId); setVip(null); }}>Open profile</button><button className="btn sm ghost" onClick={() => setVip(null)}>Dismiss</button></div>}
+              {vipOpen && <VipCard id={vipOpen} onClose={() => setVipOpen(null)} />}
               {settings && socket && (
                 <Routes>
                   <Route index element={<Dashboard />} />
@@ -284,6 +290,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   {can('owner') && <Route path="labor-areas" element={<LaborByArea />} />}
                   {can('manager') && <Route path="rooms" element={<Rooms />} />}
                   <Route path="allergens-chart" element={<AllergenChart />} />
+                  <Route path="devices" element={<DevicesPage />} />
                   {can('owner') && <Route path="cash-flow" element={<CashFlow />} />}
                   {can('owner') && <Route path="sales-tax" element={<SalesTax />} />}
                   {can('manager') && <Route path="delivery-zones" element={<DeliveryZones />} />}

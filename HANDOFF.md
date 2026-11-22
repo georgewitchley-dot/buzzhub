@@ -287,6 +287,15 @@ New module `server/src/serve.js` (`registerServe`, after `registerSeat`). Client
 - `/api/kds/recall` takes an optional `reason` (missing|wrong|remake|cold|other) → a `remakes` row with qty 0.
 - VIP arrival sweep every 20 s (`guests.vip_alerted`); fire reminders every 60 s (`fire_reminders` keys). Both emit socket `security` with type `vip`/`fire`.
 
+## 3w. Round 23 (2026-11-22)
+New modules `server/src/care.js` (`registerCare`) and `server/src/print.js` (`registerPrint`), both registered after `registerServe`; `tools/print-agent.mjs`; client `src/printing.js`, `pages/Devices.jsx` (DevicesPage at `/devices`, PrintAgentPage at `/print-agent`), more in `Station.jsx`.
+- Printing: helper JWT `X-Print` (secret `jwt+':print'`, `print_version`, `agent` id), trusted for rate limits. Tables `print_agents`, `printers` (jobs JSON, area for tickets, connection network|usb|bluetooth|browser|device), `print_jobs` (queued → sent → done/failed, 3 tries, re-queued if not answered in 2 min, failed after 30 min unclaimed, purged after 3 days). Long-poll wakes via an EventEmitter keyed `slug:agentId`.
+- Jobs are plain `lines` ({text, bold, big, center, right, invert}) or `html`; helpers turn lines into ESC/POS (`escpos()` in both printing.js and print-agent.mjs; keep them in step). Browser printers print the HTML/lines with the `printing-agent` print mode.
+- Auto kitchen tickets: `orderHooks.inserted` (status sent) and `h.printTickets(orderId, reprint, course)` from station/plus/run fire paths. Area screens skip their own browser printing when a printer covers their area.
+- Client `devicePrint(kind, job, fallback, headers)` posts to `/api/print` and falls back when nothing is routed. `printPage(title)` sends the page HTML as a `report`.
+- care.js: seat history `/staff/tables/:id/seat/:seat/history`; allergy hand-off (`orders.allergy_handed_by/at`, `/api/kds/allergy-handoff`); `table_combos` + `bookings.combo_id` (joined in the seat route before auto-join); `h.wasteAdjust` (over-prepped waste on the same weekday over 4 weeks, cut ≤ 30%); driver checkout; remake alerts (2-minute sweep); `/staff/customers/:id/vip-card` (not `/card`, which crm.js owns); `h.partyGap` (median gap by course and party bucket, used before the general gap).
+- Bug caught in testing: VIP banner state must live in `Shell`, not the boot component.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

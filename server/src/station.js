@@ -42,6 +42,7 @@ export function registerStation({ app, staff, h }) {
     for (const o of orders) {
       db.prepare("UPDATE order_items SET fired_at = datetime('now') WHERE order_id = ? AND fired_at IS NULL AND course = ?").run(o.id, c);
       if (o.status === 'ready') db.prepare("UPDATE orders SET status = 'sent', ready_at = NULL WHERE id = ?").run(o.id);
+      try { h.printTickets?.(o.id, false, c); } catch { /* printing is best-effort */ }
     }
     const t = db.prepare('SELECT label FROM tables WHERE id = ?').get(tid);
     audit(req.user, 'order.fire', `${getSettings().unit_label} ${t?.label} course ${c} (${orders.map((o) => `#${o.number}`).join(' ')})`, clientIp(req)); notifyStaff('orders');

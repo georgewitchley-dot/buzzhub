@@ -103,7 +103,7 @@ export function ReceiptModal({ order, onClose }) {
         <div className="stack">
           <span className="muted" style={{ fontSize: 14 }}>Let them scan for a copy on their phone:</span>
           <div className="qr" dangerouslySetInnerHTML={{ __html: r.svg }} />
-          <button className="btn" onClick={() => printPart('printing-receipt')}><Icon name="print" size={16} />Print</button>
+          <button className="btn" onClick={() => api(`/staff/orders/${order.id}/print-receipt`, { method: 'POST' }).then((x) => { if (x.queued) toast('Sent to the receipt printer', 'ok'); else printPart('printing-receipt'); }).catch(() => printPart('printing-receipt'))}><Icon name="print" size={16} />Print</button>
           {r.emailEnabled && <div className="row"><input className="input grow" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Email receipt to" /><button className="btn" disabled={!/^\S+@\S+\.\S+$/.test(email)} onClick={send}>Send</button></div>}
         </div>
       </div>

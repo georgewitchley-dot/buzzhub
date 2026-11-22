@@ -3,6 +3,7 @@ import { api, money } from '../lib.js';
 import { Icon } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { AccountingExport } from './Reach.jsx';
+import { printPage } from '../printing.js';
 
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const nice = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -27,7 +28,7 @@ export default function Reports() {
           <input className="input" type="date" value={r.date} onChange={(e) => setDate(e.target.value)} style={{ width: 160, height: 34 }} aria-label="Report date" />
           <button className="btn sm" onClick={() => setDate(addDays(r.date, 1))} aria-label="Next day">Next</button>
           <a className="btn sm" href={`/api/staff/reports/day.csv?date=${r.date}`} download>Export CSV</a>
-          <button className="btn sm primary" onClick={() => window.print()}><Icon name="print" size={16} />Print</button>
+          <button className="btn sm primary" onClick={() => printPage('Report')}><Icon name="print" size={16} />Print</button>
         </div>
       </PageHead>
 

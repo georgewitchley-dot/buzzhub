@@ -15,6 +15,7 @@ export default function Bookings() {
   const [from, setFrom] = useState('');
   const [tab, setTab] = useState('bookings');
   const [data] = useLive(['bookings', 'guests'], () => api(`/staff/bookings${from ? `?from=${from}` : ''}`), [from]);
+  const [combos] = useLive(['bookings'], () => api('/staff/table-combos').catch(() => []));
   const [customers] = useLive([], () => (tab === 'customers' && can('manager') ? api('/staff/customers') : Promise.resolve(null)), [tab]);
   const act = async (path, body, msg) => { try { await api(path, { method: 'POST', body }); toast(msg, 'ok'); } catch (e) { toast(e.message, 'err'); } };
 
@@ -56,7 +57,7 @@ export default function Bookings() {
                     return (
                       <tr key={b.id} style={{ opacity: ['cancelled', 'noshow'].includes(b.status) ? 0.55 : 1 }}>
                         <td className="num" style={{ width: 90 }}><b>{fmtSlot(b.start_local).time}</b></td>
-                        <td><button className="linkish" onClick={() => openCustomer(b.customer_id)}><b>{b.name}</b></button>{b.deposit_cents > 0 && <span className={`chip ${b.deposit_status === 'paid' || b.deposit_status === 'applied' ? 'teal' : b.deposit_status === 'pending' ? 'amber' : ''}`} style={{ marginLeft: 6 }}>Deposit {b.deposit_status}</span>}<div className="muted" style={{ fontSize: 13 }}>{b.service_name || `Party of ${b.party_size}`}{b.notes ? `. ${b.notes}` : ''}</div>{b.preorderText && <div style={{ fontSize: 13 }}><span className="chip teal" style={{ fontSize: 10, marginRight: 4 }}>Pre-order</span>{b.preorderText}</div>}</td>
+                        <td><button className="linkish" onClick={() => openCustomer(b.customer_id)}><b>{b.name}</b></button>{b.deposit_cents > 0 && <span className={`chip ${b.deposit_status === 'paid' || b.deposit_status === 'applied' ? 'teal' : b.deposit_status === 'pending' ? 'amber' : ''}`} style={{ marginLeft: 6 }}>Deposit {b.deposit_status}</span>}<div className="muted" style={{ fontSize: 13 }}>{b.service_name || `Party of ${b.party_size}`}{b.notes ? `. ${b.notes}` : ''}</div>{b.preorderText && <div style={{ fontSize: 13 }}><span className="chip teal" style={{ fontSize: 10, marginRight: 4 }}>Pre-order</span>{b.preorderText}</div>}{combos?.length > 0 && b.status === 'booked' && (b.party_size > 4 || b.combo_id) && <select className="input" style={{ height: 30, width: 'auto', fontSize: 12.5, marginTop: 4 }} value={b.combo_id || ''} onChange={(e) => api(`/staff/bookings/${b.id}/combo`, { method: 'PUT', body: { comboId: e.target.value ? Number(e.target.value) : null } }).then(() => toast('Tables set for this booking', 'ok')).catch((x) => toast(x.message, 'err'))} aria-label="Table combo"><option value="">Tables: none set</option>{combos.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.seats} seats)</option>)}</select>}</td>
                         <td className="muted" style={{ fontSize: 13 }}>{b.phone || b.email}</td>
                         <td><span className={`chip ${tone}`}>{label}</span>{b.late_minutes && b.status === 'booked' ? <span className="chip amber" style={{ marginLeft: 4 }}>{b.late_minutes} min late</span> : null}</td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>

@@ -3,6 +3,7 @@ import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { GuestScreenCheck, PayExtras, SplitBySeat } from './Station.jsx';
+import { ReaderCharge } from '../pro-ui.jsx';
 
 /* ================= Pad: my tables + pay at the table ================= */
 export function PadTables({ tableId, onPick }) {
@@ -29,6 +30,8 @@ export function PadTables({ tableId, onPick }) {
 export function PadPay({ tableId, label, onClose }) {
   const { settings } = useCC(); const cur = settings.currency; const toast = useToast();
   const [b, setB] = useState(null); const [qr, setQr] = useState(null); const [tip, setTip] = useState(''); const [splitting, setSplitting] = useState(false);
+  const { socket } = useCC();
+  useEffect(() => { if (!socket) return undefined; const code = localStorage.getItem('bh_display'); const on = (x) => { if (x.code !== code || !b) return; const cents = x.cents ?? Math.round((b.remainingCents * (x.pct || 0)) / 100); setTip((cents / 100).toFixed(2)); toast(`Guest picked a ${money(cents, cur)} tip`, 'ok'); }; socket.on('display:tip', on); return () => socket.off('display:tip', on); }, [socket, b?.id, b?.remainingCents]); // eslint-disable-line react-hooks/exhaustive-deps
   const load = () => api('/staff/bills', { method: 'POST', body: { tableId: Number(tableId) } }).then(setB).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const take = (method) => api(`/staff/bills/${b.id}/payments`, { method: 'POST', body: { split: 'full', method, tipCents: Math.round(Number(tip || 0) * 100) } }).then((r) => { setB({ ...b, ...r }); toast(`${method === 'cash' ? 'Cash' : 'Card'} payment recorded`, 'ok'); if (r.remainingCents <= 0) onClose(true); }).catch((e) => toast(e.message, 'err'));
@@ -42,6 +45,7 @@ export function PadPay({ tableId, label, onClose }) {
           <div className="row wrap" style={{ gap: 6 }}>{!splitting && <button className="btn sm" onClick={() => setSplitting(true)}>Split by seat</button>}<GuestScreenCheck bill={b} label={`${settings.unit_label} ${label}`} /></div>
           {splitting && <SplitBySeat bill={b} onPaid={load} />}
           <label className="field"><span>Tip (optional)</span><input className="input" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></label>
+          <ReaderCharge body={{ billId: b.id, split: 'full', tipCents: Math.round(Number(tip || 0) * 100) }} label={`Charge ${money(b.remainingCents + Math.round(Number(tip || 0) * 100), cur)} on the reader`} currency={cur} onPaid={() => { toast('Paid on the reader', 'ok'); load(); }} />
           <div className="row"><button className="btn primary lg grow" onClick={() => take('cash')}>Took cash</button><button className="btn lg grow" onClick={() => take('card')}>Paid on card reader</button></div>
           {qr ? <div className="pad-qr" dangerouslySetInnerHTML={{ __html: qr.svg }} /> : <button className="btn block" onClick={() => api(`/staff/bills/${b.id}/qr`).then(setQr)}>Guest pays on their phone (show QR)</button>}
           {qr && <span className="dim" style={{ fontSize: 12.5, textAlign: 'center' }}>They can split it, tip and pay. This updates when they pay.</span>}

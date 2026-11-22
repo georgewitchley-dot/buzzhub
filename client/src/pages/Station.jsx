@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { useCC, useLive } from './CommandCenter.jsx';
+import { devicePrint } from '../printing.js';
+import { ReaderCharge } from '../pro-ui.jsx';
 
 /* ================= Server station: fire the next course ================= */
 export function StationFire({ tableId }) {
@@ -118,7 +120,7 @@ export function MyCheckout() {
         <span><span className="dim">{c.dueToHouseCents >= 0 ? 'Cash to hand in' : 'House owes you'}</span> <b className="num">{money(Math.abs(c.dueToHouseCents), settings.currency)}</b></span>
         <span><span className="dim">Your tips</span> <b className="num">{money(c.takeHomeTipsCents, settings.currency)}</b></span>
       </div>
-      {open && <Modal title="Server checkout" onClose={() => setOpen(false)} width={440}><div id="print-checkout"><CheckoutCard data={c} cur={settings.currency} /></div><button className="btn" onClick={() => window.print()}>Print</button></Modal>}
+      {open && <Modal title="Server checkout" onClose={() => setOpen(false)} width={440}><div id="print-checkout"><CheckoutCard data={c} cur={settings.currency} /></div><button className="btn" onClick={() => devicePrint('checkout', { title: 'Server checkout', lines: [{ text: 'Server checkout', big: true, center: true }, { text: `${c.user?.name} · ${c.date}`, center: true }, { text: 'Checks', right: String(c.checks) }, { text: 'Sales', right: money(c.salesCents, settings.currency) }, { text: 'Cash collected', right: money(c.cashCollectedCents, settings.currency) }, { text: 'Card tips', right: money(c.cardTipsCents, settings.currency) }, { text: 'Cash tips', right: money(c.cashTipsCents, settings.currency) }, ...c.tipouts.map((t) => ({ text: `Tip-out to ${t.to}`, right: `-${money(t.cents, settings.currency)}` })), { text: c.dueToHouseCents >= 0 ? 'Cash to hand in' : 'House owes you', right: money(Math.abs(c.dueToHouseCents), settings.currency), bold: true }, { text: 'Your tips', right: money(c.takeHomeTipsCents, settings.currency), bold: true }] }, () => window.print())}>Print</button></Modal>}
     </section>
   );
 }
@@ -189,7 +191,7 @@ export function BookingPreorder({ booking, onClose }) {
 }
 
 /* ================= Round 20: seat map ================= */
-export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy, names = {}, onName }) {
+export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy, names = {}, onName, onHistory }) {
   const n = Math.max(1, Math.min(24, seats || table.seats || 4)); const round = table.shape === 'round';
   const W = 220; const H = 128; const cx = W / 2; const cy = H / 2;
   const pos = Array.from({ length: n }, (_, i) => {
@@ -210,6 +212,7 @@ export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy,
       </svg>
       <div className="stack" style={{ gap: 4 }}>
         <button type="button" className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => onSeat(0)}>Share</button>
+        {onHistory && seat > 0 && <button type="button" className="btn sm ghost" onClick={() => onHistory(seat)}>S{seat} so far</button>}
         {onName && seat > 0 && <button type="button" className="btn sm" onClick={() => { const v = prompt(`Name for seat ${seat} (leave empty to clear)`, names[seat] || ''); if (v !== null) onName(seat, v.trim()); }}>{names[seat] ? `S${seat}: ${names[seat]}` : `Name S${seat}`}</button>}
         {onAllergy && seat > 0 && <button type="button" className={`btn sm ${allergies[seat] ? 'danger' : ''}`} onClick={() => { const v = prompt(`Allergy for seat ${seat} (leave empty to clear)`, allergies[seat] || ''); if (v !== null) onAllergy(seat, v.trim()); }}>{allergies[seat] ? `S${seat}: ${allergies[seat]}` : `Allergy S${seat}`}</button>}
       </div>
@@ -269,13 +272,15 @@ export function PrepPars() {
 /* ================= Round 21: join tables ================= */
 export function JoinTable({ table, onClose }) {
   const { settings } = useCC(); const toast = useToast(); const [tables, setTables] = useState([]); const [pick, setPick] = useState('');
-  useEffect(() => { api('/staff/tables').then((t) => setTables(t.filter((x) => x.id !== table.id && !x.joined_to))); }, [table.id]);
+  const [combos, setCombos] = useState([]);
+  useEffect(() => { api('/staff/tables').then((t) => setTables(t.filter((x) => x.id !== table.id && !x.joined_to))); api('/staff/table-combos').then((c) => setCombos(c.filter((x) => x.tableIds[0] === table.id))).catch(() => {}); }, [table.id]);
   const go = () => api(`/staff/tables/${table.id}/join`, { method: 'POST', body: { withTableId: Number(pick) } }).then((r) => { toast(`Joined. ${r.seats} seats on one check.`, 'ok'); onClose(true); }).catch((e) => toast(e.message, 'err'));
   return (
     <Modal title={`Join a ${settings.unit_label.toLowerCase()} to ${table.label}`} onClose={() => onClose(false)} width={400}>
       <span className="muted" style={{ fontSize: 14 }}>The other {settings.unit_label.toLowerCase()}'s open checks move onto {table.label}, and its seats carry on the numbering.</span>
       <select className="input" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Table to join"><option value="">Pick a {settings.unit_label.toLowerCase()}</option>{tables.map((t) => <option key={t.id} value={t.id}>{settings.unit_label} {t.label} ({t.seats} seats{t.status === 'seated' ? ', seated' : ''})</option>)}</select>
       <button className="btn primary lg block" disabled={!pick} onClick={go}>Join</button>
+      {combos.length > 0 && <><b>Or use a saved combo</b>{combos.map((c) => <button key={c.id} className="btn" onClick={() => api(`/staff/table-combos/${c.id}/join`, { method: 'POST' }).then((r) => { toast(r.joined.length ? `Joined ${r.joined.join(', ')}` : 'Those tables are busy', r.joined.length ? 'ok' : 'err'); onClose(true); })}>{c.name}: {c.labels.join(' + ')}</button>)}</>}
     </Modal>
   );
 }
@@ -358,5 +363,79 @@ export function GuestScreenCheck({ bill, label }) {
       toast('On the guest screen', 'ok');
     } catch (e) { toast(e.message, 'err'); }
   };
-  return <button className="btn sm" onClick={push}>Show on guest screen</button>;
+  const askTip = () => api('/staff/display/push', { method: 'POST', body: { code, stage: 'tip', lines: [], totalCents: bill.remainingCents, subtotalCents: bill.remainingCents, tipBaseCents: bill.remainingCents, message: `Add a tip? ${label}` } }).then(() => toast('Guest is choosing a tip on the screen', 'ok')).catch((e) => toast(e.message, 'err'));
+  return <><button className="btn sm" onClick={push}>Show on guest screen</button><button className="btn sm" onClick={askTip}>Ask for a tip on the screen</button></>;
+}
+
+/* ================= Round 23: seat history ================= */
+export function SeatHistory({ tableId, seat, onClose }) {
+  const { settings } = useCC(); const cur = settings.currency; const [d, setD] = useState(null);
+  useEffect(() => { api(`/staff/tables/${tableId}/seat/${seat}/history`).then(setD).catch(() => setD({ items: [], totalCents: 0 })); }, [tableId, seat]);
+  const label = { held: 'Waiting', cooking: 'Cooking', served: 'Served', paid: 'Paid' };
+  return (
+    <Modal title={`Seat ${seat}${d?.name ? ` · ${d.name}` : ''}`} onClose={onClose} width={440}>
+      {!d ? null : d.items.length === 0 ? <span className="muted">Nothing for this seat yet.</span> : <>
+        <div className="stack" style={{ gap: 4 }}>{d.items.map((i, k) => <div key={k} className="row" style={{ fontSize: 14 }}><span className="grow">{i.qty} {i.name}{i.mods.length ? <span className="dim"> ({i.mods.join(', ')})</span> : null}{i.note ? <div className="dim" style={{ fontSize: 12 }}>{i.note}</div> : null}</span><span className={`chip ${i.state === 'cooking' ? 'amber' : i.state === 'held' ? '' : 'teal'}`} style={{ fontSize: 10 }}>{label[i.state]}</span><span className="num">{money(i.cents, cur)}</span></div>)}</div>
+        <div className="row"><b className="grow">Seat total</b><b className="num">{money(d.totalCents, cur)}</b></div>
+      </>}
+    </Modal>
+  );
+}
+
+/* ================= Round 23: saved table combos ================= */
+export function TableCombos() {
+  const toast = useToast(); const [list, setList] = useState([]); const [tables, setTables] = useState([]); const [name, setName] = useState(''); const [pick, setPick] = useState([]);
+  const load = () => api('/staff/table-combos').then(setList).catch(() => {});
+  useEffect(() => { load(); api('/staff/tables').then(setTables).catch(() => {}); }, []);
+  const save = () => api('/staff/table-combos', { method: 'POST', body: { name: name.trim(), tableIds: pick } }).then(() => { setName(''); setPick([]); load(); toast('Combo saved', 'ok'); }).catch((e) => toast(e.message, 'err'));
+  return (
+    <details className="stack"><summary style={{ cursor: 'pointer', fontSize: 14 }}><b>Table combos</b> <span className="dim">Tables you often push together. Pick one for a big booking and they join when the party is seated.</span></summary>
+      {list.map((c) => <div key={c.id} className="row" style={{ fontSize: 14 }}><span className="grow"><b>{c.name}</b> <span className="dim">{c.labels.join(' + ')} · {c.seats} seats</span></span><button className="btn sm ghost danger" onClick={() => api(`/staff/table-combos/${c.id}`, { method: 'DELETE' }).then(load)}>Remove</button></div>)}
+      <div className="row wrap" style={{ gap: 6 }}><input className="input" style={{ width: 160 }} placeholder="Name (Patio long table)" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+        {tables.map((t) => <label key={t.id} className="row" style={{ fontSize: 13 }}><input type="checkbox" checked={pick.includes(t.id)} onChange={(e) => setPick(e.target.checked ? [...pick, t.id] : pick.filter((x) => x !== t.id))} />{t.label}</label>)}
+        <button className="btn sm primary" disabled={!name.trim() || pick.length < 2} onClick={save}>Save combo</button></div>
+      <span className="dim" style={{ fontSize: 12 }}>The first table you tick is the main one; the check goes there.</span>
+    </details>
+  );
+}
+
+/* ================= Round 23: driver checkout ================= */
+export function DriverCheckoutCard({ c, cur }) {
+  return (
+    <div className="checkout-card">
+      <div className="row"><b className="grow" style={{ fontSize: 17 }}>{c.user?.name}</b><span className="dim">{c.date} · {c.deliveries} deliveries{c.avgMinutes ? ` · ${c.avgMinutes} min average` : ''}</span></div>
+      <table className="list"><tbody>
+        <tr><td>Cash collected</td><td className="num" style={{ textAlign: 'right' }}>{money(c.cashCollectedCents, cur)}</td></tr>
+        <tr><td>Tips (all)</td><td className="num" style={{ textAlign: 'right' }}>{money(c.tipsCents, cur)}</td></tr>
+        {c.doorTipsCents > 0 && <tr><td className="dim">of which tipped at the door</td><td className="num dim" style={{ textAlign: 'right' }}>{money(c.doorTipsCents, cur)}</td></tr>}
+        <tr><td><b>Cash to hand in</b></td><td className="num" style={{ textAlign: 'right' }}><b>{money(c.cashToHandInCents, cur)}</b></td></tr>
+      </tbody></table>
+      <span className="dim" style={{ fontSize: 12 }}>Cash to hand in is the cash you collected less the cash tips you keep.</span>
+    </div>
+  );
+}
+export function MyDriverCheckout() {
+  const { settings } = useCC(); const [c, setC] = useState(null);
+  useEffect(() => { api('/staff/me/driver-checkout').then(setC).catch(() => {}); }, []);
+  if (!c?.deliveries) return null;
+  const lines = [{ text: 'Driver checkout', big: true, center: true }, { text: `${c.user.name} · ${c.date}`, center: true }, { text: `Deliveries`, right: String(c.deliveries) }, { text: 'Cash collected', right: money(c.cashCollectedCents, settings.currency) }, { text: 'Tips', right: money(c.tipsCents, settings.currency) }, { text: 'Cash to hand in', right: money(c.cashToHandInCents, settings.currency), bold: true }];
+  return <section className="panel" style={{ marginBottom: 12 }}><div className="panel-h"><h3 className="grow">Driver checkout</h3><button className="btn sm" onClick={() => devicePrint('checkout', { title: 'Driver checkout', lines }, () => window.print())}>Print</button></div><div className="panel-b"><DriverCheckoutCard c={c} cur={settings.currency} /></div></section>;
+}
+
+/* ================= Round 23: VIP profile card ================= */
+export function VipCard({ id, onClose }) {
+  const { settings } = useCC(); const [c, setC] = useState(null);
+  useEffect(() => { api(`/staff/customers/${id}/vip-card`).then(setC).catch(() => setC(false)); }, [id]);
+  return (
+    <Modal title={c ? c.name : 'Guest'} onClose={onClose} width={420}>
+      {c === false ? <span className="muted">Couldn't load this guest.</span> : !c ? null : <>
+        <div className="row wrap" style={{ gap: 6 }}>{c.plan && <span className="chip violet">{c.plan} member</span>}<span className="chip">{c.visits || 0} visits</span><span className="chip">{money(c.yearSpendCents, settings.currency)} this year</span>{c.birthday && <span className="chip">Birthday {c.birthday}</span>}</div>
+        {c.allergies.length > 0 && <div className="ticket-allergy">ALLERGY: {c.allergies.join(', ')}</div>}
+        {c.notes && <div><b>Notes</b><div className="muted">{c.notes}</div></div>}
+        {c.favourites.length > 0 && <div><b>Usually has</b><div className="muted">{c.favourites.join(', ')}</div></div>}
+        {c.last && <div><b>Last visit</b><div className="muted">#{c.last.number} · {money(c.last.cents, settings.currency)}{c.last.items.length ? ` · ${c.last.items.join(', ')}` : ''}</div></div>}
+        {c.tags.length > 0 && <div className="row wrap" style={{ gap: 4 }}>{c.tags.map((t) => <span key={t} className="chip" style={{ fontSize: 11 }}>{t}</span>)}</div>}
+      </>}
+    </Modal>
+  );
 }

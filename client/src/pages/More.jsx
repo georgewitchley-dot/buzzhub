@@ -3,6 +3,7 @@ import { api, money } from '../lib.js';
 import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { CustomerPicker } from './Club.jsx';
+import { printPage } from '../printing.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
@@ -349,7 +350,7 @@ export function Labels() {
       <PageHead title="Labels" sub="Print labels for grab-and-go items with price, allergens, the day it was made and its use-by date.">
         <input className="input" type="date" style={{ width: 160 }} value={made} onChange={(e) => setMade(e.target.value)} aria-label="Made on" />
         <select className="input" style={{ width: 150 }} value={size} onChange={(e) => setSize(e.target.value)} aria-label="Label size"><option value="2x1">2 × 1 in labels</option><option value="4x2">4 × 2 in labels</option><option value="sheet">Letter sheet (30)</option></select>
-        <button className="btn primary" disabled={!labels.length} onClick={() => window.print()}><Icon name="print" size={16} />Print {labels.length || ''}</button>
+        <button className="btn primary" disabled={!labels.length} onClick={() => printPage('Labels')}><Icon name="print" size={16} />Print {labels.length || ''}</button>
       </PageHead>
       <label className="row no-print" style={{ fontSize: 14, marginBottom: 10 }}><input type="checkbox" checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} />Show price</label>
       <section className="panel no-print"><table className="list"><thead><tr><th>Item</th><th>Keeps (days)</th><th>Use by</th><th>How many</th></tr></thead><tbody>{menu.filter((m) => m.active).map((m) => (

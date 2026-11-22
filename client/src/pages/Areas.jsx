@@ -8,6 +8,7 @@ import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
 import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.jsx';
 import { PlatePhoto, TimelineStrip, kdsOffline } from './Table.jsx';
 import { PriorityChip, RecallList } from './Station.jsx';
+import { devicePrint, printRoutes } from '../printing.js';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -30,7 +31,8 @@ export function KdsScreen() {
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
   const [card, setCard] = useState(null); const [eightySix, setEightySix] = useState(false); const [remake, setRemake] = useState(null); const [temps, setTemps] = useState(false); const [tempCount, setTempCount] = useState(0);
-  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false); const [recall, setRecall] = useState(false); const [slip, setSlip] = useState(null);
+  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false); const [recall, setRecall] = useState(false); const [slip, setSlip] = useState(null); const routesRef = useRef([]); const [routes, setRoutes] = useState([]);
+  useEffect(() => { printRoutes(hdr()).then((r) => { routesRef.current = r.ticket || []; setRoutes(r.ticket || []); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [cook, setCookState] = useState(() => localStorage.getItem('bh_kds_cook') || ''); const setCook = (v) => { setCookState(v); localStorage.setItem('bh_kds_cook', v); }; const [toPrint, setToPrint] = useState([]);
   const [printHere, setPrintHere] = useState(() => localStorage.getItem('bh_kds_print') === '1'); const printRef = useRef(printHere); printRef.current = printHere;
   const dRef = useRef(null);
@@ -46,7 +48,7 @@ export function KdsScreen() {
     setD(x); setErr(''); applyAccent(x.business.accent);
     const ids = new Set(x.orders.map((o) => o.id));
     const fresh = seen.current ? x.orders.filter((o) => !seen.current.has(o.id)) : [];
-    if (fresh.length) { playChime(); if (speakRef.current && window.speechSynthesis) for (const o of fresh) say(o, x); if (printRef.current) { setToPrint(fresh.map((o) => ({ ...o, allergy_note: o.allergy, items: (x.kind === 'station' ? o.mine : o.items).filter((i) => !i.held) }))); setTimeout(() => printPart('printing-ticket'), 150); } }
+    if (fresh.length) { playChime(); if (speakRef.current && window.speechSynthesis) for (const o of fresh) say(o, x); if (printRef.current && !routesRef.current.some((p) => !p.area || p.area === 'All areas' || p.area === x.area)) { setToPrint(fresh.map((o) => ({ ...o, allergy_note: o.allergy, items: (x.kind === 'station' ? o.mine : o.items).filter((i) => !i.held) }))); setTimeout(() => printPart('printing-ticket'), 150); } }
     seen.current = ids; dRef.current = x;
   }).catch((e) => { if (!e.status) { setOffline(true); if (!dRef.current) { const c = kdsOffline.load(cacheKey); if (c) { setD(c.data); dRef.current = c.data; } } } else setErr(e.message); });
   useEffect(() => { api(`/kds/remake-reasons${q}`, { headers: hdr() }).then(setReasons).catch(() => {}); const lt = () => api(`/kds/temps${q}`, { headers: hdr() }).then((t) => setTempCount(t.length)).catch(() => {}); lt(); const c = setInterval(lt, 120000); return () => clearInterval(c); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -130,6 +132,7 @@ export function KdsScreen() {
         <button className="btn sm" onClick={() => setEightySix(true)}>86</button>
         {d.kind !== 'runner' && d.kind !== 'pack' && <button className="btn sm" onClick={() => setPrep(true)}>Prep</button>}
         <button className="btn sm" title="Bring back a finished ticket" onClick={() => setRecall(true)}>Recent</button>
+        {routes.some((p) => !p.area || p.area === 'All areas' || p.area === d.area) && <span className="chip teal" title="New tickets print automatically on this printer">Printer: {routes.filter((p) => !p.area || p.area === 'All areas' || p.area === d.area).map((p) => p.name).join(', ')}</span>}
         <button className="btn sm" aria-pressed={printHere} title="Print this area's new tickets on this device's printer" onClick={() => { const v = !printHere; setPrintHere(v); localStorage.setItem('bh_kds_print', v ? '1' : '0'); }}>{printHere ? 'Printing' : 'Print'}</button>
         {d.lists.length > 0 && <button className="btn sm" onClick={() => setLists(true)}>Lists {d.lists.reduce((a, l) => a + l.count, 0)}/{d.lists.reduce((a, l) => a + l.total, 0)}</button>}
         <button className="btn sm" aria-pressed={speak} title="Read new tickets out loud" onClick={() => { const v = !speak; setSpeak(v); localStorage.setItem('bh_kds_speak', v ? '1' : '0'); if (v && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Talking tickets on')); }}>{speak ? 'Talking' : 'Silent'}</button>
@@ -163,12 +166,12 @@ export function KdsScreen() {
                   {d.kind !== 'station' && areas.length > 1 && areas.map(([n, a]) => <span key={n} className={`chip ${a.done >= a.total ? 'teal' : ''}`}>{n} {a.done}/{a.total}</span>)}
                   {d.kind === 'station' && areas.filter(([n]) => n !== d.area).map(([n, a]) => <span key={n} className={`chip ${a.done >= a.total ? 'teal' : ''}`} title="Other areas on this ticket">{n} {a.done >= a.total ? 'done' : 'cooking'}</span>)}
                 </div>
-                {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}{['expo', 'all', 'runner'].includes(d.kind) && <button type="button" className="slip-btn" onClick={(e) => { e.stopPropagation(); setSlip(o); setTimeout(() => printPart('printing-slip'), 80); }}>Print slip</button>}</div>}
+                {o.allergy && <div className="ticket-allergy">ALLERGY: {o.allergy}{o.allergy_checked_by ? ` (checked by ${o.allergy_checked_by})` : ''}{['expo', 'all', 'runner'].includes(d.kind) && <button type="button" className="slip-btn" onClick={(e) => { e.stopPropagation(); const items = o.items.filter((i) => /^ALLERGY/.test(i.note || '')); devicePrint('allergy', { title: `Allergy slip #${o.number}`, lines: [{ text: 'ALLERGY', big: true, center: true, invert: true }, { text: `#${o.number}${o.table_label ? ` · ${x0().unit} ${o.table_label}` : ''}`, bold: true, center: true }, { text: o.allergy.toUpperCase(), big: true, center: true }, { text: '' }, ...items.map((i) => ({ text: `${i.seat ? `Seat ${i.seat}${i.seatName ? ` (${i.seatName})` : ''}: ` : ''}${i.qty} ${i.name}` })), { text: '' }, { text: 'Hand this dish to the right guest.' }, { text: 'Checked by: ____________' }] }, () => { setSlip(o); setTimeout(() => printPart('printing-slip'), 80); }, hdr()); }}>Print slip</button>}</div>}
                 {o.passSince && d.kind !== 'station' && (() => { const m = Math.max(0, Math.round((Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`)) / 60000)); return <span className={`chip ${d.passMinutes && m >= d.passMinutes ? 'rose' : 'teal'}`}>At the pass {m}m</span>; })()}
                 {o.makegood && (d.kind === 'expo' || d.kind === 'all') && <MakeGoodButtons o={o} onPick={makeGood} />}
                 {o.arrived && <span className="chip rose">Customer is here{o.arrival_note ? `: ${o.arrival_note}` : ''}</span>}
                 {o.order_notes && <div style={{ color: 'var(--accent)', fontSize: 14 }}>{o.order_notes}</div>}
-                {d.kind === 'runner' ? <RunnerTicket o={o} unit={d.unit} onServed={served} /> : <ul>{(d.kind === 'station' ? o.mine : o.items).map((i) => itemLine(o, i, { tappable: d.kind === 'station' || d.kind === 'all' || d.kind === 'pack', showArea: d.kind === 'expo' || d.kind === 'all' }))}</ul>}
+                {d.kind === 'runner' ? <RunnerTicket o={o} unit={d.unit} onServed={served} onHandoff={(x) => call('/kds/allergy-handoff', { orderId: x.id, by: localStorage.getItem('bh_kds_name') || undefined }, () => flash(`#${x.number}: allergy hand-off logged`))} /> : <ul>{(d.kind === 'station' ? o.mine : o.items).map((i) => itemLine(o, i, { tappable: d.kind === 'station' || d.kind === 'all' || d.kind === 'pack', showArea: d.kind === 'expo' || d.kind === 'all' }))}</ul>}
                 {d.kind === 'station' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); bump(o, !struck[o.id]?.size); }}><Icon name="check" size={18} />{struck[o.id]?.size ? `Done: ${struck[o.id].size} item${struck[o.id].size === 1 ? '' : 's'}` : `${d.area} done`}</button>}
                 {d.kind === 'all' && <button className="btn primary lg block" disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{d.expo ? 'Done, send to expo' : 'Ready'}</button>}
                 {d.kind === 'expo' && <button className={`btn lg block ${allDone ? 'primary' : ''}`} disabled={busy > 0} onClick={(e) => { e.stopPropagation(); primary(o); }}><Icon name="check" size={18} />{allDone ? 'Complete and buzz' : 'Waiting on areas'}</button>}

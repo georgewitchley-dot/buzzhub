@@ -10,6 +10,7 @@ import { cookPlan, useCookTimes } from './Smart.jsx';
 import { AllDay, AreaScreens } from './Areas.jsx';
 import { RushPanel } from './Line.jsx';
 import { AreaLoad } from './Run.jsx';
+import { printRoutes } from '../printing.js';
 
 export default function Kitchen() {
   const { settings } = useCC();
@@ -22,6 +23,7 @@ export default function Kitchen() {
   const [station, setStation] = useState(() => localStorage.getItem('bh_print_station') === '1');
   const [toPrint, setToPrint] = useState([]);
   const stationRef = useRef(station); stationRef.current = station;
+  const ticketPrinters = useRef(0); useEffect(() => { printRoutes().then((r) => { ticketPrinters.current = (r.ticket || []).length; }); }, []);
   const boardRef = useRef(null);
   useTick(15000);
 
@@ -33,7 +35,7 @@ export default function Kitchen() {
       const fresh = [...ids].filter((id) => !seen.current.has(id));
       if (fresh.length) {
         playChime();
-        if (stationRef.current) { setToPrint(data.orders.filter((o) => fresh.includes(o.id))); setTimeout(() => printPart('printing-ticket'), 120); }
+        if (stationRef.current && !ticketPrinters.current) { setToPrint(data.orders.filter((o) => fresh.includes(o.id))); setTimeout(() => printPart('printing-ticket'), 120); }
         requestAnimationFrame(() => fresh.forEach((id) => { const el = boardRef.current?.querySelector(`[data-id="${id}"]`); if (el) gsap.fromTo(el, { boxShadow: '0 0 0 4px rgba(var(--accent-rgb), .9)' }, { boxShadow: '0 0 0 0px rgba(var(--accent-rgb), 0)', duration: 1.6 }); }));
       }
     }
