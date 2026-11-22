@@ -269,6 +269,15 @@ New module `server/src/flow.js` (`registerFlow`, after `registerStation`). Clien
 - Pre-order reminder job every 10 minutes; manager trigger `POST /staff/preorder-reminders/run`. Settings `preorder_reminder`, `preorder_reminder_hour`, `delivery_signature_cents`.
 - Fixed `pj()` in station.js: `JSON.parse(null)` returns null, which broke `/staff/bookings`.
 
+## 3u. Round 21 (2026-11-22)
+New module `server/src/seat.js` (`registerSeat`, after `registerFlow`). `more.js` waste logging is now `h.logWaste(body, user)`. Client: more components in `pages/Station.jsx` (JoinTable, useSeatAllergies, SplitBySeat, TopDishes, RecallList), wiring in `Run.jsx`, `Table.jsx`, `Areas.jsx`, `Account.jsx`, `Receipt.jsx` / `pro-ui.jsx` ReceiptBody.
+- Join moves unpaid orders (seat numbers + main table's seat count) and voids the other table's unpaid open bill; the other table keeps `joined_to` and shows "joined to" on the station. Unjoin releases joined tables as dirty.
+- Seat allergies are applied in `POST /staff/orders` via `G.applySeatAllergies(orderId, tableId)`.
+- Pre-order prepay: `payments.kind='preorder'`, `h.payHooks.preorder` adds to `bookings.preorder_paid_cents`; `h.preorderCredit` (called from the station.js check-in hook) adds it to the held order's `gift_cents`. The payment itself is not counted as sales; the order is, when it's paid.
+- Receipts: `receiptData` adds `proof` via `proofHook.fn` (pro.js); delivery.js calls `h.afterDelivered(order, req)`.
+- Auto-VIP uses `orders.vip_checked` so each order is checked once.
+- Pacing: `h.coursePace(tableId, course)`; median gaps cached 10 minutes.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

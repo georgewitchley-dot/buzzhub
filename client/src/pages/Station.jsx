@@ -11,9 +11,12 @@ export function StationFire({ tableId }) {
   const fire = (course) => api(`/staff/tables/${tableId}/fire-course`, { method: 'POST', body: { course } }).then((r) => { toast(`Course ${r.course} fired`, 'ok'); reload?.(); }).catch((e) => toast(e.message, 'err'));
   return (
     <div className="station-fire">{held.map((c) => (
-      <button key={c.course} className="btn primary" onClick={() => fire(c.course)} title={c.items}>
-        Fire course {c.course}<span className="dim" style={{ fontSize: 12, marginLeft: 6 }}>{c.n} dish{c.n === 1 ? '' : 'es'}</span>
-      </button>
+      <span key={c.course} className="fire-wrap">
+        <button className={`btn ${c.pace?.due ? 'primary fire-due' : c.pace?.since === null && c.pace?.hint ? '' : 'primary'}`} onClick={() => fire(c.course)} title={c.items}>
+          Fire course {c.course}<span className="dim" style={{ fontSize: 12, marginLeft: 6 }}>{c.n} dish{c.n === 1 ? '' : 'es'}</span>
+        </button>
+        {c.pace?.hint && <span className={`pace-hint ${c.pace.due ? 'due' : ''}`}>{c.pace.hint}</span>}
+      </span>
     ))}</div>
   );
 }
@@ -186,8 +189,8 @@ export function BookingPreorder({ booking, onClose }) {
 }
 
 /* ================= Round 20: seat map ================= */
-export function SeatMap({ table, seat, onSeat }) {
-  const n = Math.max(1, Math.min(20, table.seats || 4)); const round = table.shape === 'round';
+export function SeatMap({ table, seat, onSeat, seats, allergies = {}, onAllergy }) {
+  const n = Math.max(1, Math.min(24, seats || table.seats || 4)); const round = table.shape === 'round';
   const W = 220; const H = 128; const cx = W / 2; const cy = H / 2;
   const pos = Array.from({ length: n }, (_, i) => {
     if (round) { const a = (-Math.PI / 2) + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * 88, cy + Math.sin(a) * 50]; }
@@ -200,12 +203,15 @@ export function SeatMap({ table, seat, onSeat }) {
         {round ? <ellipse cx={cx} cy={cy} rx={64} ry={32} className="seatmap-table" /> : <rect x={cx - 78} y={cy - 30} width={156} height={60} rx={10} className="seatmap-table" />}
         <text x={cx} y={cy + 5} textAnchor="middle" className="seatmap-label">{table.label}</text>
         {pos.map(([x, y], i) => (
-          <g key={i} className={`seatmap-seat ${seat === i + 1 ? 'on' : ''}`} onClick={() => onSeat(i + 1)} role="button" tabIndex={0} aria-label={`Seat ${i + 1}`} aria-pressed={seat === i + 1} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeat(i + 1); } }}>
-            <circle cx={x} cy={y} r={12} /><text x={x} y={y + 4} textAnchor="middle">{i + 1}</text>
+          <g key={i} className={`seatmap-seat ${seat === i + 1 ? 'on' : ''} ${allergies[i + 1] ? 'allergy' : ''}`} onClick={() => onSeat(i + 1)} role="button" tabIndex={0} aria-label={`Seat ${i + 1}`} aria-pressed={seat === i + 1} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeat(i + 1); } }}>
+            <circle cx={x} cy={y} r={12} /><text x={x} y={y + 4} textAnchor="middle">{i + 1}</text>{allergies[i + 1] && <title>{`Seat ${i + 1}: ${allergies[i + 1]}`}</title>}
           </g>
         ))}
       </svg>
-      <button type="button" className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => onSeat(0)}>Share</button>
+      <div className="stack" style={{ gap: 4 }}>
+        <button type="button" className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => onSeat(0)}>Share</button>
+        {onAllergy && seat > 0 && <button type="button" className={`btn sm ${allergies[seat] ? 'danger' : ''}`} onClick={() => { const v = prompt(`Allergy for seat ${seat} (leave empty to clear)`, allergies[seat] || ''); if (v !== null) onAllergy(seat, v.trim()); }}>{allergies[seat] ? `S${seat}: ${allergies[seat]}` : `Allergy S${seat}`}</button>}
+      </div>
     </div>
   );
 }
@@ -255,5 +261,81 @@ export function PrepPars() {
     <details className="stack"><summary style={{ cursor: 'pointer', fontSize: 14 }}><b>Prep par levels</b> <span className="dim">How many of each to have ready. The prep list asks for the bigger of the par and the forecast, minus what's on hand.</span></summary>
       <div className="par-grid">{items.map((i) => <label key={i.id} className="row" style={{ fontSize: 14, gap: 6 }}><span className="grow">{i.name}</span><input className="input" style={{ width: 72 }} type="number" min={0} max={999} defaultValue={i.prep_par ?? ''} onBlur={(e) => { if (String(e.target.value) !== String(i.prep_par ?? '')) { save(i, e.target.value); i.prep_par = e.target.value === '' ? null : Number(e.target.value); } }} aria-label={`Par for ${i.name}`} /></label>)}</div>
     </details>
+  );
+}
+
+/* ================= Round 21: join tables ================= */
+export function JoinTable({ table, onClose }) {
+  const { settings } = useCC(); const toast = useToast(); const [tables, setTables] = useState([]); const [pick, setPick] = useState('');
+  useEffect(() => { api('/staff/tables').then((t) => setTables(t.filter((x) => x.id !== table.id && !x.joined_to))); }, [table.id]);
+  const go = () => api(`/staff/tables/${table.id}/join`, { method: 'POST', body: { withTableId: Number(pick) } }).then((r) => { toast(`Joined. ${r.seats} seats on one check.`, 'ok'); onClose(true); }).catch((e) => toast(e.message, 'err'));
+  return (
+    <Modal title={`Join a ${settings.unit_label.toLowerCase()} to ${table.label}`} onClose={() => onClose(false)} width={400}>
+      <span className="muted" style={{ fontSize: 14 }}>The other {settings.unit_label.toLowerCase()}'s open checks move onto {table.label}, and its seats carry on the numbering.</span>
+      <select className="input" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Table to join"><option value="">Pick a {settings.unit_label.toLowerCase()}</option>{tables.map((t) => <option key={t.id} value={t.id}>{settings.unit_label} {t.label} ({t.seats} seats{t.status === 'seated' ? ', seated' : ''})</option>)}</select>
+      <button className="btn primary lg block" disabled={!pick} onClick={go}>Join</button>
+    </Modal>
+  );
+}
+
+/* ================= Round 21: seat allergies ================= */
+export function useSeatAllergies(tableId) {
+  const [list, setList] = useState({});
+  const load = () => (tableId ? api(`/staff/tables/${tableId}/seat-allergies`).then((r) => setList(Object.fromEntries(r.map((x) => [x.seat, x.allergy])))).catch(() => setList({})) : setList({}));
+  useEffect(() => { load(); }, [tableId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (seat, allergy) => api(`/staff/tables/${tableId}/seat-allergies`, { method: 'PUT', body: { seat, allergy } }).then(load);
+  return [list, set];
+}
+
+/* ================= Round 21: split the check by seat ================= */
+export function SplitBySeat({ bill, onPaid }) {
+  const { settings } = useCC(); const cur = settings.currency; const toast = useToast(); const [d, setD] = useState(null);
+  const load = () => api(`/staff/bills/${bill.id}/seats`).then(setD).catch((e) => toast(e.message, 'err'));
+  useEffect(() => { load(); }, [bill.id, bill.remainingCents]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!d) return null;
+  if (!d.seats.length) return <span className="dim" style={{ fontSize: 13 }}>No dishes have seat numbers, so there's nothing to split by seat.</span>;
+  const pay = (s, method) => api(`/staff/bills/${bill.id}/payments`, { method: 'POST', body: { split: 'items', itemIds: s.itemIds, method } }).then(() => { toast(`Seat ${s.seat} paid ${method === 'cash' ? 'cash' : 'card'}`, 'ok'); load(); onPaid(); }).catch((e) => toast(e.message, 'err'));
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      {d.seats.map((s) => (
+        <div key={s.seat} className="row seat-split"><span className="grow"><b>Seat {s.seat}</b> <span className="num">{money(s.cents, cur)}</span><div className="dim" style={{ fontSize: 12 }}>{s.items.join(', ')}</div></span>
+          <button className="btn sm" onClick={() => pay(s, 'cash')}>Cash</button><button className="btn sm" onClick={() => pay(s, 'card')}>Card</button></div>
+      ))}
+      {d.sharedCents > 0 && <span className="dim" style={{ fontSize: 12.5 }}>Shared dishes ({money(d.sharedCents, cur)}: {d.sharedItems.map((i) => i.name).join(', ')}) stay on the check for whoever pays last.</span>}
+    </div>
+  );
+}
+
+/* ================= Round 21: my most-rung dishes ================= */
+export function TopDishes({ items, onAdd, currency }) {
+  const [top, setTop] = useState([]);
+  useEffect(() => { api('/staff/me/top-items').then(setTop).catch(() => {}); }, []);
+  const byId = Object.fromEntries((items || []).map((i) => [i.id, i]));
+  const list = top.map((t) => byId[t.id]).filter((i) => i && !i.soldOut && !(i.groups || []).some((g) => g.min > 0 || g.required));
+  if (!list.length) return null;
+  return (
+    <div className="top-dishes" aria-label="Your most-rung dishes">
+      <span className="dim" style={{ fontSize: 12 }}>Your usual</span>
+      {list.map((i) => <button key={i.id} type="button" className="btn sm" onClick={() => onAdd({ itemId: i.id, qty: 1, mods: [], name: i.name, modNames: [], unitCents: i.price_cents })}>{i.name} <span className="dim">{money(i.price_cents, currency)}</span></button>)}
+    </div>
+  );
+}
+
+/* ================= Round 21: ticket recall list ================= */
+export function RecallList({ hdr, q, call, flash, onClose }) {
+  const [list, setList] = useState(null);
+  useEffect(() => { api(`/kds/done-list${q}`, { headers: hdr }).then(setList).catch(() => setList([])); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const back = (o) => call('/kds/recall', { orderId: o.id }, () => { flash(`#${o.number} is back on the screen`); onClose(); });
+  return (
+    <Modal title="Finished tickets" onClose={onClose} width={480}>
+      {!list ? null : list.length === 0 ? <span className="muted">Nothing finished here in the last 16 hours.</span> : (
+        <div className="stack" style={{ gap: 4, maxHeight: 440, overflow: 'auto' }}>{list.map((o) => (
+          <div key={o.id} className="row" style={{ borderTop: '1px solid var(--line)', paddingTop: 6 }}>
+            <span className="grow"><b>#{o.number}</b> {o.table_label ? `Table ${o.table_label}` : o.customer_name || ''}<div className="dim" style={{ fontSize: 12 }}>{o.items ? `${o.items} · ` : ''}{new Date(`${String(o.done_at).replace(' ', 'T')}Z`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div></span>
+            <button className="btn sm" onClick={() => back(o)}>Bring back</button>
+          </div>
+        ))}</div>
+      )}
+    </Modal>
   );
 }

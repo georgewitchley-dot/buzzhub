@@ -109,6 +109,7 @@ export function registerDelivery({ app, staff, io, h }) {
     const g = guestOf(o);
     if (g) { db.prepare("UPDATE guests SET status = 'done', closed_at = ? WHERE id = ? AND status IN ('waiting','buzzed','acknowledged')").run(t, g.id); pushGuest(g.id); }
     audit(req.user, 'delivery.done', `#${o.number}${b.method ? ` collected ${b.method}` : ''}`, clientIp(req));
+    h.afterDelivered?.(db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id), req);
     notifyStaff('orders'); notifyStaff('guests'); res.json({ ok: true });
   });
   const lastPush = new Map();

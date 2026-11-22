@@ -63,7 +63,8 @@ export function registerTable({ app, staff, h }) {
   staff.get('/pad/tables', (req, res) => {
     const rows = db.prepare('SELECT t.id, t.label, t.seats, t.zone, t.status, t.server_id, t.seated_at, g.name guest_name, g.party_size, u.name server_name FROM tables t LEFT JOIN guests g ON g.id = t.guest_id LEFT JOIN users u ON u.id = t.server_id ORDER BY t.zone, t.id').all();
     const open = Object.fromEntries(db.prepare("SELECT table_id, COUNT(*) n, SUM(total_cents) c, MAX(status = 'ready') ready FROM orders WHERE table_id IS NOT NULL AND status IN ('open','sent','ready','held') AND paid_at IS NULL AND tab_id IS NULL GROUP BY table_id").all().map((r) => [r.table_id, r]));
-    res.json({ me: req.user.id, tables: rows.map((t) => ({ ...t, mine: t.server_id === req.user.id, openChecks: open[t.id]?.n || 0, openCents: open[t.id]?.c || 0, foodReady: Boolean(open[t.id]?.ready), seatedMinutes: t.seated_at ? Math.round((Date.now() - ms(t.seated_at)) / 60000) : null })) });
+    const jt = h.joinedTo ? h.joinedTo() : {};
+    res.json({ me: req.user.id, tables: rows.map((t) => ({ ...t, joinedTo: jt[t.id] || null, joinedWith: h.joinedWith ? h.joinedWith(t.id) : [], seatsAll: h.joinedSeats ? h.joinedSeats(t) : t.seats, mine: t.server_id === req.user.id, openChecks: open[t.id]?.n || 0, openCents: open[t.id]?.c || 0, foodReady: Boolean(open[t.id]?.ready), seatedMinutes: t.seated_at ? Math.round((Date.now() - ms(t.seated_at)) / 60000) : null })) });
   });
 
   /* ===== table timeline (expo + floor) ===== */

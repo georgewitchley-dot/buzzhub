@@ -4,7 +4,7 @@ import { Modal, useToast } from '../ui.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PadPay, PadTables } from './Table.jsx';
-import { MoveTable, PrepPars, PriorityPick, SeatMap, StationFire, StationHost } from './Station.jsx';
+import { JoinTable, MoveTable, PrepPars, PriorityPick, SeatMap, StationFire, StationHost, TopDishes, useSeatAllergies } from './Station.jsx';
 
 /* ================= Server order pad (/pad) ================= */
 export function OrderPad() {
@@ -12,7 +12,7 @@ export function OrderPad() {
   const [menu, setMenu] = useState(null); const [tables] = useLive(['tables'], () => api('/staff/tables'));
   const [tableId, setTableId] = useState(() => localStorage.getItem('bh_pad_table') || '');
   const [seat, setSeat] = useState(1); const [hold, setHold] = useState(false); const [paying, setPaying] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
-  const [priority, setPriority] = useState(0); const [host, setHost] = useState(() => localStorage.getItem('bh_station_host') !== '0'); const [moving, setMoving] = useState(false);
+  const [priority, setPriority] = useState(0); const [host, setHost] = useState(() => localStorage.getItem('bh_station_host') !== '0'); const [moving, setMoving] = useState(false); const [joining, setJoining] = useState(false);
   const cart = useCart();
   const keys = useRef({});
   useEffect(() => { api('/o/menu').then(setMenu).catch(() => api('/staff/menu').then((m) => setMenu({ items: Array.isArray(m) ? m : m.items }))); }, []);
@@ -20,7 +20,7 @@ export function OrderPad() {
     const onKey = (e) => {
       const el = e.target; if (e.ctrlKey || e.metaKey || e.altKey || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable || document.querySelector('.modal')) return;
       const k = keys.current;
-      if (/^[0-9]$/.test(e.key) && k.t) { const n = Number(e.key); if (n === 0) k.setSeat(0); else if (n <= (k.t.seats || 4)) k.setSeat(n); e.preventDefault(); }
+      if (/^[0-9]$/.test(e.key) && k.t) { const n = Number(e.key); if (n === 0) k.setSeat(0); else if (n <= (k.seatsAll || 4)) k.setSeat(n); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'f' && k.t) { const b = document.querySelector('.station-fire button'); if (b) { b.click(); e.preventDefault(); } }
       else if (e.key.toLowerCase() === 'h' && k.t) { k.setHold((v) => !v); e.preventDefault(); }
       else if (e.key.toLowerCase() === 'r') { k.setPriority((v) => (v === 1 ? 0 : 1)); e.preventDefault(); }
@@ -33,8 +33,12 @@ export function OrderPad() {
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
   const [help, setHelp] = useState(false);
+  const [allergies, setAllergy] = useSeatAllergies(tableId);
   if (!menu || !tables) return null;
   const t = tables.find((x) => String(x.id) === String(tableId));
+  const joinedWith = t ? tables.filter((x) => x.joined_to === t.id) : [];
+  const seatsAll = t ? (t.seats || 4) + joinedWith.reduce((a, x) => a + (x.seats || 4), 0) : 0;
+  const joinedTo = t?.joined_to ? tables.find((x) => x.id === t.joined_to) : null;
   const pick = (id) => { setTableId(String(id)); localStorage.setItem('bh_pad_table', String(id)); setSeat(1); };
   const add = (l) => cart.add({ ...l, seat: seat || undefined, course: hold ? 2 : 1, note: note || l.note });
   const send = async () => {
@@ -43,7 +47,7 @@ export function OrderPad() {
     catch (e) { toast(e.message, 'err'); }
     setBusy(false);
   };
-  keys.current = { t, setSeat, setHold, setPriority, setPaying, setHelp, send, count: cart.count, busy, clear: cart.clear };
+  keys.current = { t, seatsAll, setSeat, setHold, setPriority, setPaying, setHelp, send, count: cart.count, busy, clear: cart.clear };
   const toggleHost = () => { setHost(!host); localStorage.setItem('bh_station_host', host ? '0' : '1'); };
   return (
     <div className={`station ${host ? 'with-host' : ''}`}>
@@ -57,14 +61,15 @@ export function OrderPad() {
           {host && <StationHost tableId={tableId} tableLabel={t?.label} />}
         </aside>
         <main className="station-col station-menu">
-          {t ? <>
+          {joinedTo ? <div className="panel empty"><b>{settings.unit_label} {t.label} is joined to {joinedTo.label}</b><span>Its orders go on {joinedTo.label}'s check.</span><button className="btn primary" onClick={() => pick(joinedTo.id)}>Open {settings.unit_label} {joinedTo.label}</button></div> : t ? <>
             <div className="station-bar">
-              <b className="station-t">{settings.unit_label} {t.label}</b>
-              <SeatMap table={t} seat={seat} onSeat={setSeat} />
+              <b className="station-t">{settings.unit_label} {t.label}{joinedWith.length > 0 && <span className="dim" style={{ fontSize: 13, display: 'block' }}>with {joinedWith.map((x) => x.label).join(', ')}</span>}</b>
+              <SeatMap table={t} seat={seat} onSeat={setSeat} seats={seatsAll} allergies={allergies} onAllergy={setAllergy} />
               <span className="grow" />
-              <div className="row wrap" style={{ gap: 6 }}><StationFire tableId={t.id} /><button className="btn" onClick={() => setMoving(true)}>Move</button><button className="btn" onClick={() => setPaying(true)}>Check</button></div>
+              <div className="row wrap" style={{ gap: 6 }}><StationFire tableId={t.id} /><button className="btn" onClick={() => setMoving(true)}>Move</button>{joinedWith.length ? <button className="btn" onClick={() => api(`/staff/tables/${t.id}/unjoin`, { method: 'POST' }).then(() => toast('Tables split back apart', 'ok')).catch((e) => toast(e.message, 'err'))}>Unjoin</button> : <button className="btn" onClick={() => setJoining(true)}>Join</button>}<button className="btn" onClick={() => setPaying(true)}>Check</button></div>
             </div>
             <div className="row wrap" style={{ gap: 8 }}><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />Hold as the next course</label><input className="input grow" style={{ minWidth: 160 }} placeholder="Note for the next dish (no onions…)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></div>
+            <TopDishes items={menu.items} onAdd={add} currency={cur} />
             <div className="card"><GuestMenu items={menu.items} currency={cur} onAdd={add} /></div>
           </> : <div className="panel empty"><b>Pick a {settings.unit_label.toLowerCase()}</b><span>Tap one on the left, then a seat, then add each guest's dishes.</span></div>}
         </main>
@@ -79,6 +84,7 @@ export function OrderPad() {
         </aside>
       </div>
       {paying && t && <PadPay tableId={t.id} label={t.label} onClose={() => setPaying(false)} />}
+      {joining && t && <JoinTable table={t} onClose={() => setJoining(false)} />}
       {moving && t && <MoveTable table={t} onClose={(to) => { setMoving(false); if (to) pick(to); }} />}
       {help && <div className="station-keys" role="note"><b>Keyboard</b><span><kbd>1</kbd>–<kbd>9</kbd> seat · <kbd>0</kbd> share · <kbd>H</kbd> hold next course · <kbd>F</kbd> fire course · <kbd>R</kbd> rush · <kbd>V</kbd> VIP · <kbd>Enter</kbd> send · <kbd>Esc</kbd> clear · <kbd>C</kbd> check · <kbd>?</kbd> this help</span></div>}
     </div>
@@ -98,6 +104,8 @@ export function KdsPrep({ hdr, q, onClose }) {
   const [d, setD] = useState(null); const [done, setDone] = useState({}); const [note, setNote] = useState('');
   const loadLog = () => api(`/kds/prep-log${q}`, { headers: hdr }).then((rows) => setDone(Object.fromEntries(rows.map((r) => [`${r.kind === 'item' ? 'i' : 'g'}${r.ref_id}`, r]))));
   useEffect(() => { api(`/kds/prep${q}`, { headers: hdr }).then(setD); loadLog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [left, setLeft] = useState(null);
+  const logLeft = () => api(`/kds/leftovers${q}`, { method: 'POST', headers: hdr, body: { lines: Object.entries(left).filter(([, v]) => Number(v) > 0).map(([k, v]) => ({ itemId: Number(k), qty: Math.round(Number(v)) })), by: localStorage.getItem('bh_kds_name') || undefined } }).then((r) => { setNote(r.logged ? `${r.logged} logged as waste` : 'Nothing new to log'); setLeft(null); reloadPrep(); }).catch((e) => setNote(e.message));
   const reloadPrep = () => api(`/kds/prep${q}`, { headers: hdr }).then(setD);
   const count = (i, v) => { const qty = v === '' ? null : Math.max(0, Math.round(Number(v))); if (qty !== null && Number.isNaN(qty)) return; api(`/kds/prep-count${q}`, { method: 'POST', headers: hdr, body: { itemId: i.id, qty, by: localStorage.getItem('bh_kds_name') || undefined } }).then(reloadPrep).catch((e) => setNote(e.message)); };
   const tick = (k) => { const kind = k[0] === 'i' ? 'item' : 'ingredient'; const id = Number(k.slice(1)); const row = kind === 'item' ? d.items.find((x) => x.id === id) : d.ingredients.find((x) => x.id === id);
@@ -108,6 +116,11 @@ export function KdsPrep({ hdr, q, onClose }) {
         <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra. Ticks show on every screen; prepped ingredients with a shelf life go into Use first.</span>
         {note && <span className="chip teal">{note}</span>}
         {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{(i.par || i.onHand !== null) && <span className="prep-recipe">{i.par ? `Par ${i.par} · forecast ${i.forecast} · ` : ''}On hand <input className="input prep-onhand" type="number" min={0} defaultValue={i.onHand ?? ''} onClick={(e) => e.preventDefault()} onBlur={(e) => count(i, e.target.value)} aria-label={`On hand ${i.name}`} /></span>}{!(i.par || i.onHand !== null) && <button type="button" className="linkish prep-recipe" onClick={(e) => { e.preventDefault(); const v = prompt(`How many ${i.name} are already made?`, ''); if (v !== null) count(i, v); }}>Count what's on hand</button>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
+        {d.items.length > 0 && (left === null ? <button type="button" className="btn sm" onClick={() => setLeft({})}>Leftovers at close</button> : <div className="stack" style={{ gap: 4, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+          <b>Leftovers at close</b><span className="dim" style={{ fontSize: 12.5 }}>Count what's left of each prepped dish. It's logged as over-prep waste.</span>
+          {d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 14 }}><span className="grow">{i.name}</span>{d.leftovers?.[i.id] !== undefined ? <span className="chip">logged {d.leftovers[i.id]}</span> : <input className="input prep-onhand" type="number" min={0} value={left[i.id] ?? ''} onChange={(e) => setLeft({ ...left, [i.id]: e.target.value })} aria-label={`Leftover ${i.name}`} />}</label>)}
+          <button type="button" className="btn primary" onClick={logLeft}>Log leftovers</button>
+        </div>)}
         {d.ingredients.length > 0 && <><b>Ingredients</b>{d.ingredients.map((g) => <label key={g.id} className="row" style={{ fontSize: 15 }}><input type="checkbox" checked={Boolean(done[`g${g.id}`])} onChange={() => tick(`g${g.id}`)} /><span className="grow">{g.name}</span><span className="num">{g.need} {g.unit}</span>{g.short > 0 && <span className="chip rose">short {g.short}</span>}</label>)}</>}
       </>}
     </Modal>
@@ -208,6 +221,9 @@ export function RunPanel({ f, setF }) {
       <div className="row wrap">{num('makegood_minutes', 'Late-ticket make-good after (minutes, 0 = off)')}
         <label className="field"><span>Dish to send "on us"</span><select className="input" value={f.makegood_item_id} onChange={(e) => setF({ ...f, makegood_item_id: e.target.value })}><option value="">Pick a dish</option>{items.filter((i) => i.active).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
         {num('makegood_pct', 'Or % off')}</div>
+      <label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.auto_vip === '1'} onChange={flag('auto_vip')} />Send members' and top guests' tickets as VIP automatically</label>
+      {f.auto_vip === '1' && <div className="row wrap"><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={f.auto_vip_members !== '0'} onChange={flag('auto_vip_members')} />Members</label>{num('auto_vip_spend_cents', 'and guests who spent this many cents in the last year (0 = off)', 120)}</div>}
+      {num('pace_default_minutes', 'Course pacing: suggest the next course this many minutes after the last lands (used until there is enough history)')}
       {num('delivery_signature_cents', 'Ask for a customer signature on deliveries of this many cents or more (0 = never)', 120)}
       <PrepPars />
       <div className="row wrap">{num('batch_radius_km', 'Group deliveries within (km)')}{num('batch_window_minutes', 'and ready within (minutes)')}</div>

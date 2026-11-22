@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
-import { PayExtras } from './Station.jsx';
+import { PayExtras, SplitBySeat } from './Station.jsx';
 
 /* ================= Pad: my tables + pay at the table ================= */
 export function PadTables({ tableId, onPick }) {
@@ -20,6 +20,7 @@ export function PadTables({ tableId, onPick }) {
           <span>{t.seatedMinutes !== null ? (t.seatedMinutes >= 60 ? `${Math.floor(t.seatedMinutes / 60)}h ${t.seatedMinutes % 60}m` : `${t.seatedMinutes}m`) : t.status === 'open' ? 'Open' : t.status}</span>
           {t.openCents > 0 && <span className="num">{money(t.openCents, cur)}</span>}
           {t.foodReady && <span className="chip teal" style={{ fontSize: 10 }}>Food ready</span>}
+          {t.joinedTo && <span className="dim" style={{ fontSize: 11 }}>with {t.joinedTo}</span>}{t.joinedWith?.length > 0 && <span className="dim" style={{ fontSize: 11 }}>+ {t.joinedWith.join(', ')}</span>}
         </button>
       ))}</div>
     </div>
@@ -27,7 +28,7 @@ export function PadTables({ tableId, onPick }) {
 }
 export function PadPay({ tableId, label, onClose }) {
   const { settings } = useCC(); const cur = settings.currency; const toast = useToast();
-  const [b, setB] = useState(null); const [qr, setQr] = useState(null); const [tip, setTip] = useState('');
+  const [b, setB] = useState(null); const [qr, setQr] = useState(null); const [tip, setTip] = useState(''); const [splitting, setSplitting] = useState(false);
   const load = () => api('/staff/bills', { method: 'POST', body: { tableId: Number(tableId) } }).then(setB).catch((e) => toast(e.message, 'err'));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const take = (method) => api(`/staff/bills/${b.id}/payments`, { method: 'POST', body: { split: 'full', method, tipCents: Math.round(Number(tip || 0) * 100) } }).then((r) => { setB({ ...b, ...r }); toast(`${method === 'cash' ? 'Cash' : 'Card'} payment recorded`, 'ok'); if (r.remainingCents <= 0) onClose(true); }).catch((e) => toast(e.message, 'err'));
@@ -38,6 +39,7 @@ export function PadPay({ tableId, label, onClose }) {
         <div className="row"><b className="grow">Due</b><b className="num" style={{ fontSize: 22 }}>{money(b.remainingCents, cur)}</b></div>
         {b.remainingCents > 0 && <>
           <PayExtras bill={b} onChange={load} />
+          {splitting ? <SplitBySeat bill={b} onPaid={load} /> : <button className="btn sm" onClick={() => setSplitting(true)}>Split by seat</button>}
           <label className="field"><span>Tip (optional)</span><input className="input" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></label>
           <div className="row"><button className="btn primary lg grow" onClick={() => take('cash')}>Took cash</button><button className="btn lg grow" onClick={() => take('card')}>Paid on card reader</button></div>
           {qr ? <div className="pad-qr" dangerouslySetInnerHTML={{ __html: qr.svg }} /> : <button className="btn block" onClick={() => api(`/staff/bills/${b.id}/qr`).then(setQr)}>Guest pays on their phone (show QR)</button>}

@@ -163,6 +163,19 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 21: tables, seats and proof
+
+- **Join tables**: Join on the station moves another table's open checks onto this one; its seats continue the numbering (`tables.joined_to`, `POST /api/staff/tables/:id/join|unjoin`).
+- **Seat allergies**: mark an allergy on a seat; that seat's dishes get `ALLERGY …` on the ticket and the order's allergy note, so the allergy check applies (`seat_allergies`, cleared when the table is no longer seated).
+- **Split by seat** on the check: each seat pays its own dishes (cash or card); shared dishes stay for the last payer (`GET /api/staff/bills/:id/seats`).
+- **Your usual**: the station shows each server's 8 most-rung dishes for one-tap adding (`GET /api/staff/me/top-items`).
+- **Leftovers at close** on the Prep list log what's left as over-prep waste, once per dish per day (`prep_leftovers`, `POST /api/kds/leftovers`, shared `h.logWaste`).
+- **Pay ahead for a pre-order** (`booking_preorder_pay`): pay kind `preorder`; the paid amount is credited on the held order at check-in.
+- **Proof on receipts**: delivery photo and signature show on the receipt page (`/api/r/:token/proof/photo|signature`), and the receipt is emailed after delivery when there's proof and an email.
+- **Recent** on area screens lists the last 20 finished tickets (16 hours) to bring one back (`GET /api/kds/done-list`).
+- **Auto-VIP** (`auto_vip`, `auto_vip_members`, `auto_vip_spend_cents`): a 15-second sweep marks members' and top guests' open tickets VIP.
+- **Course pacing hints**: the Fire button shows how long ago the last course landed against the usual gap (median of the last 30 days, else `pace_default_minutes`) and lights up when it's time.
+
 ## Round 20: station speed, kitchen visibility
 
 - **Seat map** on the server station: tap seats on a drawing of the table (round or rectangular, from the floor plan).

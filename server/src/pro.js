@@ -45,17 +45,19 @@ export function receiptData(o) {
     items, subtotalCents: o.subtotal_cents, discountCents: o.discount_cents, promo: o.promo_code, taxCents: o.tax_cents, feeCents: o.fee_cents || 0,
     giftCents: o.gift_cents || 0, tipCents: o.tip_cents, totalCents: o.total_cents, method: o.payment_method, paid: Boolean(o.paid_at), status: o.status,
     payments: pays.map((p) => ({ method: p.method, label: p.label, cents: p.amount_cents + p.tip_cents })),
+    proof: o.fulfillment === 'delivery' && proofHook.fn ? proofHook.fn(o.id) : null,
     currency: s.currency, taxRate: Number(s.tax_rate),
   };
 }
 
+export const proofHook = { fn: null };
 export async function emailReceipt(o, to, base) {
   if (!emailEnabled() || !to) return false;
   const s = getSettings(); const r = receiptData(o);
   const lines = r.items.map((i) => `${i.qty} × ${i.name}${i.mods.length ? ` (${i.mods.join(', ')})` : ''}  ${fmt(i.cents)}`).join('\n');
   const tot = [`Subtotal ${fmt(r.subtotalCents)}`, r.discountCents ? `Discount −${fmt(r.discountCents)}` : '', `Tax ${fmt(r.taxCents)}`, r.feeCents ? `Delivery ${fmt(r.feeCents)}` : '', r.tipCents ? `Tip ${fmt(r.tipCents)}` : '', `Total ${fmt(r.totalCents)}`].filter(Boolean).join('\n');
   const tok = receiptToken(o.id);
-  const res = await emailGuest(to, { businessName: s.business_name, subject: `Receipt for order #${o.number}`, message: `Thanks for visiting!\n\n${lines}\n\n${tot}`, link: `${base}/r/${tok}`, accent: s.accent, button: 'View receipt' }).catch(() => ({ ok: false }));
+  const res = await emailGuest(to, { businessName: s.business_name, subject: `Receipt for order #${o.number}`, message: `Thanks for visiting!\n\n${lines}\n\n${tot}${r.proof ? `\n\nYour delivery ${r.proof.photo && r.proof.signature ? 'photo and signature are' : r.proof.photo ? 'photo is' : 'signature is'} on the receipt.` : ''}`, link: `${base}/r/${tok}`, accent: s.accent, button: 'View receipt' }).catch(() => ({ ok: false }));
   return res.ok;
 }
 
@@ -190,6 +192,7 @@ export function registerPro({ app, staff, io, h }) {
 
   /* ================= Receipts ================= */
   const orderByReceipt = (t) => (/^[A-Za-z0-9_-]{16,30}$/.test(t || '') ? db.prepare('SELECT * FROM orders WHERE receipt_token = ?').get(t) : null);
+  h.orderByReceipt = orderByReceipt;
   app.get('/api/r/:token', publicLimiter, (req, res) => {
     const o = orderByReceipt(req.params.token);
     if (!o || o.status === 'void') return res.status(404).json({ error: 'This receipt link is not valid.' });

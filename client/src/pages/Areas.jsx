@@ -7,7 +7,7 @@ import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
 import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.jsx';
 import { PlatePhoto, TimelineStrip, kdsOffline } from './Table.jsx';
-import { PriorityChip } from './Station.jsx';
+import { PriorityChip, RecallList } from './Station.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -30,7 +30,7 @@ export function KdsScreen() {
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
   const [card, setCard] = useState(null); const [eightySix, setEightySix] = useState(false); const [remake, setRemake] = useState(null); const [temps, setTemps] = useState(false); const [tempCount, setTempCount] = useState(0);
-  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false);
+  const [reasons, setReasons] = useState([]); const [shelfFor, setShelfFor] = useState(null); const [prep, setPrep] = useState(false); const [recall, setRecall] = useState(false);
   const [cook, setCookState] = useState(() => localStorage.getItem('bh_kds_cook') || ''); const setCook = (v) => { setCookState(v); localStorage.setItem('bh_kds_cook', v); }; const [toPrint, setToPrint] = useState([]);
   const [printHere, setPrintHere] = useState(() => localStorage.getItem('bh_kds_print') === '1'); const printRef = useRef(printHere); printRef.current = printHere;
   const dRef = useRef(null);
@@ -129,6 +129,7 @@ export function KdsScreen() {
         {tempCount > 0 && <button className="btn sm" onClick={() => setTemps(true)}>Temps</button>}
         <button className="btn sm" onClick={() => setEightySix(true)}>86</button>
         {d.kind !== 'runner' && d.kind !== 'pack' && <button className="btn sm" onClick={() => setPrep(true)}>Prep</button>}
+        <button className="btn sm" title="Bring back a finished ticket" onClick={() => setRecall(true)}>Recent</button>
         <button className="btn sm" aria-pressed={printHere} title="Print this area's new tickets on this device's printer" onClick={() => { const v = !printHere; setPrintHere(v); localStorage.setItem('bh_kds_print', v ? '1' : '0'); }}>{printHere ? 'Printing' : 'Print'}</button>
         {d.lists.length > 0 && <button className="btn sm" onClick={() => setLists(true)}>Lists {d.lists.reduce((a, l) => a + l.count, 0)}/{d.lists.reduce((a, l) => a + l.total, 0)}</button>}
         <button className="btn sm" aria-pressed={speak} title="Read new tickets out loud" onClick={() => { const v = !speak; setSpeak(v); localStorage.setItem('bh_kds_speak', v ? '1' : '0'); if (v && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Talking tickets on')); }}>{speak ? 'Talking' : 'Silent'}</button>
@@ -194,6 +195,7 @@ export function KdsScreen() {
         </Modal>
       )}
       {prep && <KdsPrep hdr={hdr()} q={q} onClose={() => setPrep(false)} />}
+      {recall && <RecallList hdr={hdr()} q={q} call={call} flash={flash} onClose={() => setRecall(false)} />}
       {photoFor && <PlatePhoto order={photoFor} hdr={hdr()} onClose={() => setPhotoFor(null)} onDone={() => { const o = photoFor; setPhotoFor(null); complete(o, Boolean(o.allergy && d.allergyCheck)); }} />}
       {shelfFor && <ShelfPicker d={d} order={shelfFor} onClose={() => setShelfFor(null)} onPick={(s) => { const o = shelfFor; setShelfFor(null); call('/kds/packed', { orderId: o.id, ...(s ? { shelf: s } : {}) }, () => flash(`#${o.number} bagged${s ? ` on shelf ${s}` : ''}`)); }} />}
       {card && <KdsCard itemId={card} hdr={hdr()} q={q} onClose={() => setCard(null)} />}

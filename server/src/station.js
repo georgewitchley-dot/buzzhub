@@ -33,7 +33,7 @@ export function registerStation({ app, staff, h }) {
 
   /* ===== fire a table's next course from the workstation ===== */
   const heldFor = (tableId) => db.prepare("SELECT oi.course, COUNT(*) n, GROUP_CONCAT(oi.qty || ' ' || oi.name, ', ') items FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.table_id = ? AND o.status IN ('open','sent','ready') AND oi.fired_at IS NULL AND oi.course > 1 GROUP BY oi.course ORDER BY oi.course").all(tableId);
-  staff.get('/tables/:id/held', (req, res) => res.json(heldFor(Number(req.params.id)).map((c) => ({ ...c, fireIn: null }))));
+  staff.get('/tables/:id/held', (req, res) => res.json(heldFor(Number(req.params.id)).map((c) => ({ ...c, fireIn: null, pace: h.coursePace ? h.coursePace(Number(req.params.id), c.course) : null }))));
   staff.post('/tables/:id/fire-course', (req, res) => {
     const tid = Number(req.params.id); const held = heldFor(tid); if (!held.length) throw err('Nothing is waiting to be fired', 409);
     const { course } = parse(z.object({ course: z.number().int().min(2).max(3).optional() }), req.body || {});
@@ -97,6 +97,7 @@ export function registerStation({ app, staff, h }) {
     try {
       const o = insertOrder({ lines: priceLines(lines), status: 'held', source: 'guest', guestId: fresh.guest_id, customerName: customer.name, notes: 'Booking pre-order' });
       db.prepare('UPDATE orders SET customer_id = ? WHERE id = ?').run(customer.id, o.id);
+      h.preorderCredit?.(bk, o.id);
       audit(null, 'booking.preorder_held', `#${o.number} for ${customer.name}`, null); notifyStaff('orders');
     } catch (e) { audit(null, 'booking.preorder_failed', `${customer.name}: ${e.message}`, null); }
   };

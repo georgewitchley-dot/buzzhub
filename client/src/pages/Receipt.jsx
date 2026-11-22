@@ -13,7 +13,7 @@ export default function Receipt() {
   return (
     <div className="receipt-page">
       <div className="stack" style={{ width: '100%', maxWidth: 360 }}>
-        <ReceiptBody r={r} />
+        <ReceiptBody r={{ ...r, token }} />
         <button className="btn no-print" onClick={() => window.print()}>Print or save as PDF</button>
       </div>
     </div>

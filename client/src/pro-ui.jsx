@@ -78,6 +78,7 @@ export function ReceiptBody({ r }) {
         <tr className="grand"><td>Total</td><td>{money(r.totalCents, cur)}</td></tr>
       </tbody></table>
       <p className="receipt-meta">{r.paid ? `Paid${r.method ? ` by ${r.method.replace('+', ' and ')}` : ''}` : 'Not paid yet'}</p>
+      {r.proof && r.token && <div className="receipt-proof"><b>Delivered</b>{r.proof.photo && <img src={`/api/r/${r.token}/proof/photo`} alt="Where the order was left" />}{r.proof.signature && <><img className="sig" src={`/api/r/${r.token}/proof/signature`} alt="Customer signature" />{r.proof.signedBy && <span className="receipt-meta">Signed by {r.proof.signedBy}</span>}</>}</div>}
       <p className="receipt-meta">Thank you!</p>
     </div>
   );

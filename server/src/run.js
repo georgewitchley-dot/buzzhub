@@ -113,9 +113,17 @@ export function registerRun({ app, staff, io, h }) {
     const keep = (i) => all || stationFor(meta[i.id] || i, list) === w.area;
     const items = h.applyPars ? h.applyPars(p.items.filter(keep), keep) : p.items.filter(keep);
     const ingIds = new Set(db.prepare(`SELECT ingredient_id FROM item_recipes WHERE item_id IN (${items.map((i) => i.id).join(',') || 0})`).all().map((r) => r.ingredient_id));
-    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
+    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, leftovers: h.prepLeftoversToday ? h.prepLeftoversToday() : {}, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
   });
 
+  app.get('/api/kds/done-list', (req, res) => {
+    const w = who(req); const all = ['All areas', 'Expo', 'Packing', 'Runner'].includes(w.area);
+    res.json(h.recentDone ? h.recentDone(w.area, all) : []);
+  });
+  app.post('/api/kds/leftovers', (req, res) => {
+    const w = who(req); const b = parse(z.object({ lines: z.array(z.object({ itemId: z.number().int(), qty: z.number().int().min(0).max(9999) })).max(200), by: z.string().trim().max(30).optional() }), req.body);
+    res.json(h.prepLeftovers(b.lines, w.user ? w.user.name : b.by || label(w), w.user));
+  });
   app.post('/api/kds/prep-count', (req, res) => {
     const w = who(req); const b = parse(z.object({ itemId: z.number().int(), qty: z.number().int().min(0).max(9999).nullable(), by: z.string().trim().max(30).optional() }), req.body);
     h.prepCount(b.itemId, b.qty, w.user ? w.user.name : b.by || label(w)); res.json({ ok: true });

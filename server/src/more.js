@@ -261,24 +261,29 @@ export function registerMore({ app, staff, io, h }) {
   staff.post('/waste', (req, res) => {
     const b = parse(z.object({ itemId: z.number().int().optional(), ingredientId: z.number().int().optional(), qty: z.number().positive().max(10000), reason: z.enum(REASONS), note: z.string().trim().max(120).optional() }), req.body);
     if (!b.itemId === !b.ingredientId) throw err('Pick a menu item or an ingredient');
+    const cost = logWaste(b, req.user);
+    audit(req.user, 'waste.log', `${b.qty} ${b.itemId ? 'item ' + b.itemId : 'ingredient ' + b.ingredientId} (${b.reason})`, clientIp(req)); notifyStaff('waste'); notifyStaff('menu');
+    res.json({ ok: true, costCents: cost });
+  });
+  function logWaste(b, user) {
     let name; let unit = null; let cost;
     if (b.itemId) {
       const m = db.prepare('SELECT id, name, stock FROM menu_items WHERE id = ?').get(b.itemId); if (!m) throw err('Item not found', 404);
       name = m.name; cost = Math.round(itemCost(m.id) * b.qty);
-      if (m.stock !== null) { db.prepare('UPDATE menu_items SET stock = MAX(0, stock - ?) WHERE id = ?').run(Math.round(b.qty), m.id); db.prepare('INSERT INTO stock_moves (item_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(m.id, -Math.round(b.qty), `waste: ${b.reason}`, req.user.id); }
+      if (m.stock !== null) { db.prepare('UPDATE menu_items SET stock = MAX(0, stock - ?) WHERE id = ?').run(Math.round(b.qty), m.id); db.prepare('INSERT INTO stock_moves (item_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(m.id, -Math.round(b.qty), `waste: ${b.reason}`, user?.id || null); }
       for (const r of db.prepare('SELECT ingredient_id, qty FROM item_recipes WHERE item_id = ?').all(m.id)) {
         const g = db.prepare('SELECT stock FROM ingredients WHERE id = ?').get(r.ingredient_id);
-        if (g?.stock !== null && g?.stock !== undefined) { db.prepare('UPDATE ingredients SET stock = stock - ? WHERE id = ?').run(r.qty * b.qty, r.ingredient_id); db.prepare('INSERT INTO ingredient_moves (ingredient_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(r.ingredient_id, -r.qty * b.qty, 'waste', req.user.id); }
+        if (g?.stock !== null && g?.stock !== undefined) { db.prepare('UPDATE ingredients SET stock = stock - ? WHERE id = ?').run(r.qty * b.qty, r.ingredient_id); db.prepare('INSERT INTO ingredient_moves (ingredient_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(r.ingredient_id, -r.qty * b.qty, 'waste', user?.id || null); }
       }
     } else {
       const g = db.prepare('SELECT * FROM ingredients WHERE id = ?').get(b.ingredientId); if (!g) throw err('Ingredient not found', 404);
       name = g.name; unit = g.unit; cost = Math.round(g.cost_cents * b.qty);
-      if (g.stock !== null) { db.prepare('UPDATE ingredients SET stock = stock - ? WHERE id = ?').run(b.qty, g.id); db.prepare('INSERT INTO ingredient_moves (ingredient_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(g.id, -b.qty, 'waste', req.user.id); }
+      if (g.stock !== null) { db.prepare('UPDATE ingredients SET stock = stock - ? WHERE id = ?').run(b.qty, g.id); db.prepare('INSERT INTO ingredient_moves (ingredient_id, delta, reason, user_id) VALUES (?, ?, ?, ?)').run(g.id, -b.qty, 'waste', user?.id || null); }
     }
-    db.prepare('INSERT INTO waste_log (item_id, ingredient_id, name, qty, unit, reason, cost_cents, note, user_id) VALUES (?,?,?,?,?,?,?,?,?)').run(b.itemId || null, b.ingredientId || null, name, b.qty, unit, b.reason, cost, b.note || null, req.user.id);
-    audit(req.user, 'waste.log', `${b.qty} ${name} (${b.reason})`, clientIp(req)); notifyStaff('waste'); notifyStaff('menu');
-    res.json({ ok: true, costCents: cost });
-  });
+    db.prepare('INSERT INTO waste_log (item_id, ingredient_id, name, qty, unit, reason, cost_cents, note, user_id) VALUES (?,?,?,?,?,?,?,?,?)').run(b.itemId || null, b.ingredientId || null, name, b.qty, unit, b.reason, cost, b.note || null, user?.id || null);
+    return cost;
+  }
+  h.logWaste = logWaste;
   staff.get('/waste/options', (req, res) => res.json({ items: db.prepare('SELECT id, name, category FROM menu_items ORDER BY category, name').all(), ingredients: db.prepare('SELECT id, name, unit FROM ingredients WHERE active = 1 ORDER BY name').all(), reasons: REASONS }));
   staff.get('/waste', (req, res) => {
     const days = Math.min(365, Math.max(1, Number(req.query.days) || 7));
