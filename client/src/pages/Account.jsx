@@ -126,6 +126,7 @@ export default function Account() {
     if (!confirm(`Cancel this booking?${warn}`)) return;
     try { const r = await api(`/c/bookings/${b.id}/cancel`, { method: 'POST' }); if (r.note) setMsg(r.note); loadBookings(); } catch (e) { setMsg(e.message); }
   };
+  const late = async (b) => { const v = prompt('How many minutes late? (5 to 60)', '10'); const m = Number(v); if (!m) return; try { await api(`/c/bookings/${b.id}/late`, { method: 'POST', body: { minutes: Math.min(60, Math.max(5, Math.round(m))) } }); setMsg("Thanks, we'll hold your table."); loadBookings(); } catch (e) { setMsg(e.message); } };
   const payDeposit = async (b) => { try { const r = await api(`/c/bookings/${b.id}/deposit`, { method: 'POST' }); location.href = r.url; } catch (e) { setMsg(e.message); } };
   const saveBirthday = async (v) => { try { await api('/c/profile', { method: 'PUT', body: { birthday: v || null } }); setBday(v); } catch (e) { setMsg(e.message); } };
   const signOut = async () => { await api('/c/logout', { method: 'POST' }); setMe(null); setBookings([]); };
@@ -197,8 +198,8 @@ export default function Account() {
                   <div key={b.id} className="booking-row">
                     <div className="grow"><b>{f.day}, {f.time}</b><div className="muted" style={{ fontSize: 14 }}>{b.service || `Party of ${b.partySize}`}{b.deposit && ` · ${b.deposit.status === 'paid' ? `${money(b.deposit.cents, info?.currency)} deposit paid` : b.deposit.status === 'applied' ? `${money(b.deposit.cents, info?.currency)} deposit off your bill, code ${b.deposit.code}` : b.deposit.status === 'pending' ? 'Deposit not paid yet' : `Deposit ${b.deposit.status}`}`}</div></div>
                     {b.deposit?.status === 'pending' ? <button className="btn primary sm" onClick={() => payDeposit(b)}>Pay deposit</button> : b.buzzer ? <button className="btn primary sm" onClick={() => nav(b.buzzer)}>Open my buzzer</button>
-                      : b.canCheckIn ? <button className="btn primary sm" onClick={() => checkIn(b)}>I'm here</button>
-                      : <button className="btn ghost sm danger" onClick={() => cancel(b)}>Cancel</button>}
+                      : b.canCheckIn ? <><button className="btn primary sm" onClick={() => checkIn(b)}>I'm here</button>{b.status === 'booked' && (b.lateMinutes ? <span className="chip amber">Running {b.lateMinutes} min late</span> : <button className="btn sm" onClick={() => late(b)}>Running late</button>)}</>
+                      : <>{b.lateMinutes ? <span className="chip amber">Running {b.lateMinutes} min late</span> : <button className="btn sm" onClick={() => late(b)}>Running late</button>}<button className="btn ghost sm danger" onClick={() => cancel(b)}>Cancel</button></>}
                   </div>
                 ); })}
                 <span className="dim" style={{ fontSize: 13 }}>"I'm here" appears an hour before your time. Tap it when you arrive and we'll buzz you when we're ready.</span>

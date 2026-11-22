@@ -4,6 +4,7 @@ import { Icon, Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { forgetReaders } from '../pro-ui.jsx';
 import { DeliveryBatches } from './Run.jsx';
+import { DeliveryRoute } from './Table.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 
@@ -81,6 +82,7 @@ export function Deliveries() {
         {d.mine.some((o) => o.out_at) && <span className={`chip ${sharing === 'on' ? 'teal' : 'rose'}`}>{sharing === 'on' ? 'Sharing your location' : sharing === 'denied' ? 'Location blocked: allow it in your browser' : 'Finding your location…'}</span>}
       </PageHead>
       <DeliveryBatches />
+      <DeliveryRoute />
       {d.isDriver && d.mine.length > 0 && <><h3 style={{ margin: '0 0 10px' }}>My deliveries</h3><div className="dlv-grid" style={{ marginBottom: 22 }}>{d.mine.map((o) => card(o, true))}</div></>}
       {d.canDispatch && (
         <>

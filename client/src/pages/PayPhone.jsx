@@ -10,9 +10,9 @@ export default function PayPhone() {
   const [params] = useSearchParams();
   const [b, setB] = useState(null);
   const [err, setErr] = useState('');
-  const [mode, setMode] = useState('full');
+  const [mode, setMode] = useState(() => (params.get('items') ? 'items' : 'full'));
   const [ways, setWays] = useState(2);
-  const [picked, setPicked] = useState([]);
+  const [picked, setPicked] = useState(() => (params.get('items') || '').split(',').map(Number).filter(Boolean));
   const [pct, setPct] = useState(18);
   const [custom, setCustom] = useState('');
   const [busy, setBusy] = useState(false);

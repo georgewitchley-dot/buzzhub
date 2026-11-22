@@ -163,6 +163,17 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 18: table to till
+- **Split a tab** with friends.
+- **My tables** and **pay at the table** on the order pad.
+- **Kitchen screens keep working offline.**
+- **Table timeline** on expo and the floor.
+- **Prep log** that feeds Use first.
+- **Delivery route order** with a Google Maps link.
+- **"Running late"** for bookings.
+- **Server coaching.**
+- **Expo photo check.**
+
 ## Round 17: front to back
 - **Order pad** for servers, by seat.
 - **Auto-fire courses.**

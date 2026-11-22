@@ -6,6 +6,7 @@ import { KdsCard, KdsEightySix, KdsRemake, KdsTemps, RushBar } from './Line.jsx'
 import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
 import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.jsx';
+import { PlatePhoto, TimelineStrip, kdsOffline } from './Table.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -34,13 +35,17 @@ export function KdsScreen() {
   const area = qsArea();
   const hdr = () => (token && !area ? { 'X-Kds': token } : {});
   const q = area ? `?area=${encodeURIComponent(area)}` : '';
-  const load = () => api(`/kds${q}`, { headers: hdr() }).then((x) => {
+  const [offline, setOffline] = useState(false); const [photoFor, setPhotoFor] = useState(null);
+  const cacheKey = area || 'device';
+  const load = () => api(`/kds${q}`, { headers: hdr() }).then(async (x) => {
+    if (offline || kdsOffline.queue().length) { const n = await kdsOffline.flush((it) => api(it.path, { method: 'POST', body: it.body, headers: hdr() })); if (n) setMsg(`Back online: sent ${n} saved change${n === 1 ? '' : 's'}`); }
+    setOffline(false); kdsOffline.save(cacheKey, x);
     setD(x); setErr(''); applyAccent(x.business.accent);
     const ids = new Set(x.orders.map((o) => o.id));
     const fresh = seen.current ? x.orders.filter((o) => !seen.current.has(o.id)) : [];
     if (fresh.length) { playChime(); if (speakRef.current && window.speechSynthesis) for (const o of fresh) say(o, x); if (printRef.current) { setToPrint(fresh.map((o) => ({ ...o, allergy_note: o.allergy, items: (x.kind === 'station' ? o.mine : o.items).filter((i) => !i.held) }))); setTimeout(() => printPart('printing-ticket'), 150); } }
     seen.current = ids; dRef.current = x;
-  }).catch((e) => setErr(e.message));
+  }).catch((e) => { if (!e.status) { setOffline(true); if (!dRef.current) { const c = kdsOffline.load(cacheKey); if (c) { setD(c.data); dRef.current = c.data; } } } else setErr(e.message); });
   useEffect(() => { api(`/kds/remake-reasons${q}`, { headers: hdr() }).then(setReasons).catch(() => {}); const lt = () => api(`/kds/temps${q}`, { headers: hdr() }).then((t) => setTempCount(t.length)).catch(() => {}); lt(); const c = setInterval(lt, 120000); return () => clearInterval(c); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); const a = setInterval(load, 4000); const b = setInterval(() => setNow(new Date()), 15000); navigator.wakeLock?.request('screen').catch(() => {}); return () => { clearInterval(a); clearInterval(b); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const say = (o, x) => {
@@ -49,10 +54,20 @@ export function KdsScreen() {
     u.rate = 1.02; window.speechSynthesis.speak(u);
   };
   const flash = (t) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
-  const call = async (path, body, ok) => { setBusy((x) => x + 1); try { const r = await api(path, { method: 'POST', body: { ...body, ...(area ? { area } : {}) }, headers: hdr() }); ok?.(r); await load(); } catch (e) { flash(e.message); } setBusy((x) => x - 1); };
+  const call = async (path, body, ok) => {
+    setBusy((x) => x + 1);
+    try { const r = await api(path, { method: 'POST', body: { ...body, ...(area ? { area } : {}) }, headers: hdr() }); ok?.(r); await load(); }
+    catch (e) {
+      if (!e.status && /\/kds\/(bump|complete|packed|served|recall|msg|timers|list-check|handed)/.test(path)) { kdsOffline.push({ path, body: { ...body, ...(area ? { area } : {}) } }); setOffline(true); flash('Offline: saved, it will send when the connection is back'); }
+      else if (e.data?.needsPhoto) { const o = dRef.current?.orders.find((x) => x.id === body.orderId); if (o) setPhotoFor(o); }
+      else flash(e.message);
+    }
+    setBusy((x) => x - 1);
+  };
   const tap = (o, i) => setStruck((s) => { const set = new Set(s[o.id] || []); if (set.has(i.id)) set.delete(i.id); else set.add(i.id); return { ...s, [o.id]: set }; });
   const bump = (o, all) => { const ids = all ? undefined : [...(struck[o.id] || [])]; call('/kds/bump', { orderId: o.id, ...(ids?.length ? { itemIds: ids } : {}), ...(cook ? { cookId: Number(cook) } : {}) }, (r) => { setStruck((s) => ({ ...s, [o.id]: new Set() })); if (r.needsAllergyCheck) { setAllergy({ order: o, text: r.allergy }); return; } flash(r.ready ? `#${o.number} ready${r.buzz ? ', customer buzzed' : ''}` : r.waitingForExpo ? `#${o.number} done, sent to expo` : `#${o.number} updated`); }); };
   const complete = (o, confirmed) => {
+    if (o.photoNeeded && !confirmed && !photoFor) { setPhotoFor(o); return; }
     if (o.allergy && dRef.current?.allergyCheck && !confirmed) { setAllergy({ order: o, text: o.allergy }); return; }
     call('/kds/complete', { orderId: o.id, ...(confirmed ? { allergyConfirmed: true } : {}) }, (r) => { setAllergy(null); flash(`#${o.number} complete${r.buzz ? ', customer buzzed' : ''}`); });
   };
@@ -119,6 +134,8 @@ export function KdsScreen() {
         <button className="btn sm" onClick={full} aria-label="Full screen"><Icon name="expand" size={16} /></button>
       </header>
       {msg && <div className="kds-msg" role="status">{msg}</div>}
+      {offline && <div className="kds-banner here"><b>Offline.</b> Showing the last tickets this screen saw. Taps are saved and sent when the connection is back{kdsOffline.queue().length ? ` (${kdsOffline.queue().length} waiting)` : ''}.</div>}
+      {d.timeline?.length > 0 && <TimelineStrip list={d.timeline} unit={d.unit} />}
       {d.rush && (d.rush.level !== 'normal' || d.kind === 'expo' || d.kind === 'all') && <RushBar rush={d.rush} quote={d.quote} canPause={d.kind === 'expo' || d.kind === 'all'} onPause={(m) => call('/kds/pause', { minutes: m }, () => flash(m ? `Online orders paused for ${m} minutes` : 'Online orders back on'))} />}
       {d.arrivals.length > 0 && <div className="kds-banner here">{d.arrivals.map((a) => <span key={a.id} className="row" style={{ gap: 8 }}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''} is here</b>{a.note && <span>{a.note}</span>}<span className="dim">{a.ready ? 'ready' : 'still cooking'}</span><button className="btn sm" onClick={() => call('/kds/handed', { orderId: a.id }, () => flash(`#${a.number} brought out`))}>Brought out</button></span>)}</div>}
       {d.enRoute?.length > 0 && <div className="kds-banner">{d.enRoute.map((a) => <span key={a.id}><b>#{a.number} {a.name ? a.name.split(' ')[0] : ''}</b> is about {a.etaMinutes} min away ({a.km} km){a.ready ? ', order ready' : ', still cooking'}</span>)}</div>}
@@ -172,6 +189,7 @@ export function KdsScreen() {
         </Modal>
       )}
       {prep && <KdsPrep hdr={hdr()} q={q} onClose={() => setPrep(false)} />}
+      {photoFor && <PlatePhoto order={photoFor} hdr={hdr()} onClose={() => setPhotoFor(null)} onDone={() => { const o = photoFor; setPhotoFor(null); complete(o, Boolean(o.allergy && d.allergyCheck)); }} />}
       {shelfFor && <ShelfPicker d={d} order={shelfFor} onClose={() => setShelfFor(null)} onPick={(s) => { const o = shelfFor; setShelfFor(null); call('/kds/packed', { orderId: o.id, ...(s ? { shelf: s } : {}) }, () => flash(`#${o.number} bagged${s ? ` on shelf ${s}` : ''}`)); }} />}
       {card && <KdsCard itemId={card} hdr={hdr()} q={q} onClose={() => setCard(null)} />}
       {eightySix && <KdsEightySix hdr={hdr()} q={q} flash={flash} onClose={() => setEightySix(false)} />}

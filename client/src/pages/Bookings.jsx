@@ -58,7 +58,7 @@ export default function Bookings() {
                         <td className="num" style={{ width: 90 }}><b>{fmtSlot(b.start_local).time}</b></td>
                         <td><button className="linkish" onClick={() => openCustomer(b.customer_id)}><b>{b.name}</b></button>{b.deposit_cents > 0 && <span className={`chip ${b.deposit_status === 'paid' || b.deposit_status === 'applied' ? 'teal' : b.deposit_status === 'pending' ? 'amber' : ''}`} style={{ marginLeft: 6 }}>Deposit {b.deposit_status}</span>}<div className="muted" style={{ fontSize: 13 }}>{b.service_name || `Party of ${b.party_size}`}{b.notes ? `. ${b.notes}` : ''}</div></td>
                         <td className="muted" style={{ fontSize: 13 }}>{b.phone || b.email}</td>
-                        <td><span className={`chip ${tone}`}>{label}</span></td>
+                        <td><span className={`chip ${tone}`}>{label}</span>{b.late_minutes && b.status === 'booked' ? <span className="chip amber" style={{ marginLeft: 4 }}>{b.late_minutes} min late</span> : null}</td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {b.status === 'booked' && <>
                             <button className="btn sm primary" onClick={() => act(`/staff/bookings/${b.id}/checkin`, undefined, `${b.name} checked in`)}>Check in</button>

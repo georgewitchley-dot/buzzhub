@@ -6,6 +6,7 @@ import { TableQrModal } from './Commerce.jsx';
 import { SplitModal } from './Register.jsx';
 import { NextUp } from './Desk.jsx';
 import { RoomsToday } from './Crew.jsx';
+import { FloorTimeline } from './Table.jsx';
 
 let LONG = 90;
 const isLong = (t) => t.status === 'seated' && t.seated_at && LONG > 0 && minutesSince(t.seated_at) >= LONG;
@@ -167,6 +168,7 @@ export default function Floor() {
       </PageHead>
       <NextUp />
       <RoomsToday />
+      <FloorTimeline />
       <div className="row wrap" style={{ marginBottom: 14 }}>
         {zones.length > 1 && <div className="seg">{zones.map((x) => <button key={x} aria-pressed={x === z} onClick={() => setZone(x)}>{x}</button>)}</div>}
         <div className="grow" />

@@ -116,14 +116,15 @@ export function TableOrder() {
   const cart = useCart();
   const combos = useCombos(true);
   const [busy, setBusy] = useState(false);
-  const [tabToken, setTabToken] = useState(null);
+  const [tabToken, setTabTokenRaw] = useState(null); const [tabMember, setTabMember] = useState(null);
+  const setTabToken = (t, m) => { setTabTokenRaw(t); setTabMember(m || null); };
   const load = () => api(`/t/${token}`).then((x) => { setD(x); applyAccent(x.business.accent); document.title = `${x.business.name}, table ${x.table}`; }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
   if (err && !d) return <div className="guest"><main className="guest-in"><h1>Table code not found</h1><p>{err}</p></main></div>;
   if (!d) return <div className="guest" />;
   const send = async () => {
     setBusy(true); setErr('');
-    try { const r = await api(`/t/${token}/order`, { method: 'POST', body: { items: cart.payload, ...(tabToken ? { tab: tabToken } : {}) } }); cart.clear(); setMsg(`Order #${r.number} is in. We'll bring it to your table.`); load(); }
+    try { const r = await api(`/t/${token}/order`, { method: 'POST', body: { items: cart.payload, ...(tabToken ? { tab: tabToken, ...(tabMember ? { member: tabMember } : {}) } : {}) } }); cart.clear(); setMsg(`Order #${r.number} is in. We'll bring it to your table.`); load(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const help = (kind) => api(`/t/${token}/call`, { method: 'POST', body: { kind } }).then(() => setMsg(tr(getLang(), kind === 'water' ? 'Water is on the way.' : kind === 'check' ? 'The check is on the way.' : 'Your server is on the way.'))).catch(() => api(`/t/${token}/help`, { method: 'POST', body: { reason: kind } }).then(() => setMsg(tr(getLang(), 'Your server is on the way.'))).catch((e) => setErr(e.message)));

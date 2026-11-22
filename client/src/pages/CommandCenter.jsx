@@ -35,6 +35,7 @@ import { Rooms, TableTurns, UseFirst } from './Crew.jsx';
 import { KitchenSpeed } from './Pace.jsx';
 import { LaborByArea } from './Line.jsx';
 import { OrderPad } from './Run.jsx';
+import { Coaching } from './Table.jsx';
 import { AllergenChart, CashFlow, Certificates, DeliveryZones, SalesTax } from './Desk.jsx';
 
 const Ctx = createContext(null);
@@ -106,6 +107,7 @@ const NAV = [
   { to: '/supplier-bills', icon: 'bag', label: 'Supplier bills', min: 'owner' },
   { to: '/report', icon: 'chart', label: 'Weekly report', min: 'owner' },
   { to: '/labor-areas', icon: 'chart', label: 'Labor by area', min: 'owner', when: (s) => s?.business_type !== 'service' },
+  { to: '/coaching', icon: 'star', label: 'Server coaching', min: 'manager' },
   { to: '/kitchen-speed', icon: 'flame', label: 'Kitchen speed', min: 'manager', when: (s) => s?.business_type !== 'service' },
   { to: '/table-turns', icon: 'floor', label: 'Table turns', min: 'manager', when: (s) => s?.business_type !== 'service' },
   { to: '/rooms', icon: 'calendar', label: 'Private rooms', min: 'manager' },
@@ -256,6 +258,7 @@ function Shell({ user, business, onLock, reloadBusiness }) {
                   <Route path="bookings" element={<Bookings />} />
                   <Route path="kitchen" element={<Kitchen />} />
                   <Route path="pad" element={<OrderPad />} />
+                  {can('manager') && <Route path="coaching" element={<Coaching />} />}
                   <Route path="cash" element={<Cash />} />
                   <Route path="shifts" element={<Shifts />} />
                   {can('manager') && <Route path="reports" element={<Reports />} />}

@@ -612,12 +612,12 @@ export function registerCommerce({ app, staff, io, h }) {
   app.post('/api/t/:token/order', orderLimiter, (req, res) => {
     const t = tableByToken(req.params.token); if (!t) return res.status(404).json({ error: 'This table code is not valid.' });
     if (getSettings().table_ordering !== '1') return res.status(403).json({ error: 'Ordering from the table is off. Please ask your server.' });
-    const b = parse(z.object({ items: z.array(lineSchema).min(1).max(40), name: z.string().trim().max(30).optional(), tab: z.string().max(40).optional() }), req.body);
+    const b = parse(z.object({ items: z.array(lineSchema).min(1).max(40), name: z.string().trim().max(30).optional(), tab: z.string().max(40).optional(), member: z.string().trim().max(30).optional() }), req.body);
     const tab = h.tabForOrder ? h.tabForOrder(b.tab, t.id) : null;
     const lines = priceLines(b.items);
     if (lines.reduce((a, l) => a + l.qty, 0) > 40) return res.status(400).json({ error: 'That is a big order. Please ask your server.' });
     const o = insertOrder({ lines, status: 'sent', source: 'table', tableId: t.id, customerName: tab ? tab.name : b.name || null });
-    if (tab) db.prepare('UPDATE orders SET tab_id = ? WHERE id = ?').run(tab.id, o.id);
+    if (tab) db.prepare('UPDATE orders SET tab_id = ?, tab_member = ? WHERE id = ?').run(tab.id, h.tabMemberFor?.(req.body) || tab.name, o.id);
     if (t.status === 'open' || t.status === 'reserved') db.prepare("UPDATE tables SET status='seated', seated_at=COALESCE(seated_at, ?) WHERE id=?").run(now(), t.id);
     audit(null, 'table.order', `${t.label}: #${o.number}`, clientIp(req));
     io.to('staff').emit('online:new', { number: o.number, name: `${getSettings().unit_label} ${t.label}`, fulfillment: 'table' });

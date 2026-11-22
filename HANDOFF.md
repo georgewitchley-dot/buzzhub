@@ -237,6 +237,19 @@ Server: `server/src/run.js` plus hooks in `kds.js` (Runner area, fireIn, makegoo
 - **Bar tabs** (`bar_tabs`): `tabs` table; `POST /api/t/:token/tab {name}`, `GET .../tab/:tab`, table orders with `tab` set `orders.tab_id`; closing makes a bill of the tab's unpaid orders (`/api/t/:token/tab/:tab/close`, `/staff/tabs/:id/close`); a sweep closes paid tabs. The client keeps the tab token per table in `localStorage`.
 - **Area staffing alerts** (`area_alerts`, `area_alert_high`, `area_alert_quiet_minutes`): `areaLoad()` = waiting items vs. on-clock cooks per area (`users.area`); `/staff/area-load` chips on Kitchen; 5-minute job pushes "needs help" / "is quiet" (once per 45 / 120 minutes, `area_alerts`).
 
+## 3r. Round 18 (2026-11-21)
+Server: `server/src/table.js` plus hooks in `run.js` (tab code/members, close with `member`), `commerce.js` (`orders.tab_member`), `kds.js` (timeline, photo check), `index.js` (`/api/c/bookings/:id/late`). Client: `client/src/pages/Table.jsx`, changes in `Run.jsx`, `Areas.jsx`, `PayPhone.jsx`, `Account.jsx`.
+- **Split a tab**: each tab gets a 4-letter `tabs.code`; `POST /api/t/:token/tab/join {code, name}`; table orders carry `member` → `orders.tab_member`; tab view lists members; closing with `member` returns that member's `items`, and `/p/:token?items=1,2` opens the pay page on "My items".
+- **My tables on the pad**: `/staff/pad/tables` (server section `tables.server_id`, seated minutes, open checks and totals, food ready); pad shows mine first with "Show all".
+- **Pay at the table from the pad** (client): `POST /staff/bills {tableId}` → summary; "Took cash" / "Paid on card reader" → `/staff/bills/:id/payments`; or the bill QR for the guest's phone.
+- **Area screens offline** (client): last `/api/kds` response cached per area in `localStorage`; network failures queue bump/complete/packed/served/recall/msg/timers/list/handed calls in `bh_kds_queue`, flushed in order on the next successful load (server rejections are dropped).
+- **Table timeline**: `h.tableTimeline()` = seated tables with course states (held/cooking/ready/served); on expo, all and runner screens and the Floor page (`/staff/table-timeline`).
+- **Prep log**: `prep_log` per day/area shared across screens (`/api/kds/prep-log`); ticking an ingredient with `shelf_days` adds an `ingredient_lots` batch (removed if unticked).
+- **Delivery route order**: `/staff/deliveries/route?driver=` nearest-neighbour from the business location; Google Maps multi-stop link.
+- **Running late**: `bookings.late_minutes/late_at`; customers tap "Running late" on their account; staff pushed; Bookings shows the chip.
+- **Server coaching** `/staff/coaching`: check average, items per check, add-on rate (categories matching drink/dessert/side/starter…), tip %, against the team, with coaching hints after 5 checks.
+- **Expo photo check** (`photo_check` off|allergy|special|all): `/api/kds/complete` returns `needsPhoto` until `POST /api/kds/plate-photo`; `plate_photos` kept 60 days; `/staff/plate-photos` on Kitchen speed.
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

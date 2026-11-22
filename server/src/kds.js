@@ -56,7 +56,7 @@ function board() {
     const areas = {}; for (const i of its) if (!i.held) { const a = (areas[i.area] = areas[i.area] || { total: 0, done: 0 }); a.total += 1; if (i.done) a.done += 1; }
     const { customer_tags, ...rest } = x; // eslint-disable-line no-unused-vars
     const live2 = its.filter((i) => !i.held); const passSince = ['open', 'sent'].includes(x.status) && live2.length && live2.every((i) => i.done) ? live2.map((i) => i.doneAt).sort().pop() : null;
-    return { ...rest, allergy, items: its, areas, passSince, makegood: H.makegoodDue ? H.makegoodDue(x) : false, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
+    return { ...rest, allergy, items: its, areas, passSince, photoNeeded: H.photoNeeded ? H.photoNeeded({ ...x, allergy }) && !H.hasPlatePhoto(x.id) : false, makegood: H.makegoodDue ? H.makegoodDue(x) : false, cooking: ['open', 'sent'].includes(x.status), arrived: Boolean(x.arrived_at && !x.handed_at) };
   });
 }
 /** How many of each item are still to make, for one area or all. */
@@ -134,7 +134,7 @@ export function registerKds({ app, staff, h }) {
     const today = localToday();
     const lists = db.prepare('SELECT * FROM checklist_templates WHERE active = 1 AND area = ? ORDER BY sort, id').all(w.area).map((t) => { const run = db.prepare('SELECT * FROM checklist_runs WHERE template_id = ? AND day = ?').get(t.id, today); const done = pj(run?.done || '{}', {}); const items = pj(t.items, []); return { id: t.id, name: t.name, kind: t.kind, dueTime: t.due_time, items: items.map((it, i) => ({ text: it.text, needsValue: Boolean(it.needsValue), done: done[i] || null })), count: items.filter((_, i) => done[i]).length, total: items.length }; });
     const events = (h.eventsToday?.() || []).map((e) => ({ ...e, items: kind === 'station' ? e.items.filter((i) => stationFor(i) === w.area) : e.items })).filter((e) => e.items.length);
-    res.json({ ...(h.kdsExtra?.(w.area) || {}), enRoute: kind === 'pack' || kind === 'expo' || kind === 'all' ? (h.enRoute?.() || []) : [], rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
+    res.json({ ...(h.kdsExtra?.(w.area) || {}), timeline: kind === 'expo' || kind === 'all' || kind === 'runner' ? (h.tableTimeline?.() || []) : [], enRoute: kind === 'pack' || kind === 'expo' || kind === 'all' ? (h.enRoute?.() || []) : [], rush: h.rushState?.() || null, quote: h.quoteMinutes?.() || null, business: { name: s.business_name, accent: s.accent }, area: w.area, kind, device: w.device, expo, pack: s.kds_pack === '1', unit: s.unit_label, allergyCheck: s.kds_allergy_check === '1', pacing: s.kds_pacing === '1', lists, events,
       arrivals: kind === 'pack' || kind === 'expo' || kind === 'all' ? all.filter((o) => o.arrived).map((o) => ({ id: o.id, number: o.number, name: o.customer_name || o.guest_name, note: o.arrival_note, ready: !o.cooking })) : [],
       stations: stationList(), areas: areaNames(), lateMinutes: Number(s.kds_late_minutes || 12), orders, recent,
       allDay: allDay(all, kind === 'station' ? w.area : null), held: db.prepare("SELECT COUNT(*) c FROM orders WHERE status = 'held'").get().c });
@@ -168,6 +168,7 @@ export function registerKds({ app, staff, h }) {
     const w = who(req); const { orderId, allergyConfirmed } = parse(z.object({ orderId: z.number().int(), allergyConfirmed: z.boolean().optional() }), req.body);
     if (![EXPO, ALL].includes(w.area) && getSettings().kds_expo === '1') throw err('Only the expo screen completes orders');
     const o = order(orderId); if (!['open', 'sent'].includes(o.status)) throw err('This order is already done', 409);
+    if (h.photoNeeded?.({ ...o, allergy: allergyOf(o) }) && !h.hasPlatePhoto(o.id)) throw Object.assign(err('Take a photo of the plate first'), { status: 409, needsPhoto: true });
     if (allergyOf(o) && getSettings().kds_allergy_check === '1') { if (!allergyConfirmed) throw Object.assign(err(`Check the allergy first: ${allergyOf(o)}`, 409), { needsAllergyCheck: true }); checkAllergy(o, w, req); }
     db.prepare("UPDATE order_items SET done_at = COALESCE(done_at, datetime('now')) WHERE order_id = ? AND (course <= 1 OR fired_at IS NOT NULL)").run(o.id);
     db.prepare("UPDATE orders SET expo_at = datetime('now') WHERE id = ?").run(o.id);

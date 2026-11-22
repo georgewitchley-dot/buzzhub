@@ -186,7 +186,7 @@ export function registerRun({ app, staff, io, h }) {
   const tabView = (tab) => {
     const orders = db.prepare("SELECT id, number, status, total_cents, created_at FROM orders WHERE tab_id = ? AND status <> 'void' ORDER BY id").all(tab.id);
     const items = orders.length ? db.prepare(`SELECT name, SUM(qty) qty, SUM(qty * price_cents) cents FROM order_items WHERE order_id IN (${orders.map((o) => o.id).join(',')}) GROUP BY name ORDER BY MIN(id)`).all() : [];
-    return { token: tab.token, name: tab.name, status: tab.status, openedAt: tab.opened_at, rounds: orders.length, totalCents: orders.reduce((a, o) => a + o.total_cents, 0), items, billToken: tab.bill_id ? db.prepare('SELECT token FROM bills WHERE id = ?').get(tab.bill_id)?.token : null };
+    return { token: tab.token, name: tab.name, code: h.tabCode ? h.tabCode(tab.id) : null, members: h.tabMembers ? h.tabMembers(tab) : [], status: tab.status, openedAt: tab.opened_at, rounds: orders.length, totalCents: orders.reduce((a, o) => a + o.total_cents, 0), items, billToken: tab.bill_id ? db.prepare('SELECT token FROM bills WHERE id = ?').get(tab.bill_id)?.token : null };
   };
   h.tabForOrder = (tabToken, tableId) => {
     if (!tabToken) return null; const tab = tabByToken(tabToken);
@@ -215,7 +215,7 @@ export function registerRun({ app, staff, io, h }) {
   app.post('/api/t/:token/tab/:tab/close', publicLimiter, (req, res) => {
     const tab = tabByToken(req.params.tab); if (!tab) throw err('Tab not found', 404);
     if (!db.prepare("SELECT 1 FROM orders WHERE tab_id = ? AND status <> 'void'").get(tab.id)) { db.prepare("UPDATE tabs SET status = 'closed', closed_at = datetime('now') WHERE id = ?").run(tab.id); return res.json({ closed: true }); }
-    const token = closeTab(tab); notifyStaff('tabs'); res.json({ billToken: token });
+    const token = closeTab(tab); notifyStaff('tabs'); const member = typeof req.body?.member === 'string' ? req.body.member.slice(0, 30) : null; res.json({ billToken: token, items: h.memberItems ? h.memberItems(tab, member) : [] });
   });
   staff.get('/tabs', (req, res) => res.json(db.prepare("SELECT t.*, tb.label table_label FROM tabs t LEFT JOIN tables tb ON tb.id = t.table_id WHERE t.status <> 'closed' AND t.opened_at > datetime('now','-24 hours') ORDER BY t.opened_at").all().map((t) => ({ ...tabView(t), id: t.id, table: t.table_label }))));
   staff.post('/tabs/:id/close', (req, res) => {

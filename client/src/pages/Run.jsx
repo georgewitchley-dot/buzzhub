@@ -3,13 +3,14 @@ import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { PadPay, PadTables } from './Table.jsx';
 
 /* ================= Server order pad (/pad) ================= */
 export function OrderPad() {
   const { settings } = useCC(); const toast = useToast(); const cur = settings.currency;
   const [menu, setMenu] = useState(null); const [tables] = useLive(['tables'], () => api('/staff/tables'));
   const [tableId, setTableId] = useState(() => localStorage.getItem('bh_pad_table') || '');
-  const [seat, setSeat] = useState(1); const [hold, setHold] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
+  const [seat, setSeat] = useState(1); const [hold, setHold] = useState(false); const [paying, setPaying] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
   const cart = useCart();
   useEffect(() => { api('/o/menu').then(setMenu).catch(() => api('/staff/menu').then((m) => setMenu({ items: Array.isArray(m) ? m : m.items }))); }, []);
   if (!menu || !tables) return null;
@@ -24,7 +25,9 @@ export function OrderPad() {
   return (
     <div className="pad">
       <PageHead title="Order pad" sub="Take the order at the table. Each dish goes to its area screen with the seat number." />
+      <PadTables tableId={tableId} onPick={(x) => { setTableId(String(x.id)); localStorage.setItem('bh_pad_table', String(x.id)); setSeat(1); }} />
       <div className="row wrap" style={{ gap: 8, marginBottom: 10 }}>
+        {t && <button className="btn" onClick={() => setPaying(true)}>Check</button>}
         <select className="input" style={{ width: 160 }} value={tableId} onChange={(e) => { setTableId(e.target.value); localStorage.setItem('bh_pad_table', e.target.value); setSeat(1); }} aria-label={settings.unit_label}>
           <option value="">Pick a {settings.unit_label.toLowerCase()}</option>{tables.map((x) => <option key={x.id} value={x.id}>{settings.unit_label} {x.label}{x.guest_name ? ` · ${x.guest_name}` : ''}</option>)}
         </select>
@@ -34,7 +37,9 @@ export function OrderPad() {
         <div className="row wrap" style={{ gap: 8, marginBottom: 10 }}><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />Hold as the next course</label><input className="input grow" style={{ minWidth: 160 }} placeholder="Note for the next dish (no onions…)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></div>
         <div className="card"><GuestMenu items={menu.items} currency={cur} onAdd={add} /></div>
         {cart.count > 0 && <div className="pad-cart"><div className="grow"><CartLines cart={cart} currency={cur} /></div><button className="btn primary lg" disabled={busy} onClick={send}>Send {cart.count} to kitchen · {money(cart.subtotal, cur)}</button></div>}
-      </> : <div className="panel empty"><b>Pick a {settings.unit_label.toLowerCase()}</b><span>Then tap a seat and add each guest's dishes.</span></div>}
+      </> : null}
+      {paying && t && <PadPay tableId={t.id} label={t.label} onClose={() => setPaying(false)} />}
+      {!tableId ? <div className="panel empty"><b>Pick a {settings.unit_label.toLowerCase()}</b><span>Then tap a seat and add each guest's dishes.</span></div> : null}
     </div>
   );
 }
@@ -49,15 +54,17 @@ export function KdsIngredients({ hdr, q, flash }) {
   return (<><b>Ingredients</b><table className="list"><tbody>{list.map((g) => <tr key={g.id}><td><b>{g.name}</b><div className="dim" style={{ fontSize: 12 }}>Used in {g.dishes.join(', ')}</div></td><td style={{ textAlign: 'right' }}>{g.out ? <button className="btn sm primary" onClick={() => set(g, false)}>Back in</button> : <button className="btn sm" onClick={() => set(g, true)}>Out of it</button>}</td></tr>)}</tbody></table></>);
 }
 export function KdsPrep({ hdr, q, onClose }) {
-  const [d, setD] = useState(null); const key = `bh_prep_${new Date().toLocaleDateString('en-CA')}_${q}`;
-  const [done, setDone] = useState(() => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } });
-  useEffect(() => { api(`/kds/prep${q}`, { headers: hdr }).then(setD); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const tick = (k) => { const n = { ...done, [k]: !done[k] }; setDone(n); localStorage.setItem(key, JSON.stringify(n)); };
+  const [d, setD] = useState(null); const [done, setDone] = useState({}); const [note, setNote] = useState('');
+  const loadLog = () => api(`/kds/prep-log${q}`, { headers: hdr }).then((rows) => setDone(Object.fromEntries(rows.map((r) => [`${r.kind === 'item' ? 'i' : 'g'}${r.ref_id}`, r]))));
+  useEffect(() => { api(`/kds/prep${q}`, { headers: hdr }).then(setD); loadLog(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const tick = (k) => { const kind = k[0] === 'i' ? 'item' : 'ingredient'; const id = Number(k.slice(1)); const row = kind === 'item' ? d.items.find((x) => x.id === id) : d.ingredients.find((x) => x.id === id);
+    api(`/kds/prep-log${q}`, { method: 'POST', headers: hdr, body: { kind, refId: id, qty: kind === 'item' ? row.prep : row.need, done: !done[k], by: localStorage.getItem('bh_kds_name') || undefined } }).then((r) => { if (r.lot) setNote(`${row.name} added to Use first`); loadLog(); }); };
   return (
     <Modal title={d ? `Prep for ${d.weekday}` : 'Prep'} onClose={onClose} width={520}>
       {d && <>
-        <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra.</span>
-        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}</span><b className="num">{i.prep}</b></label>)}
+        <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra. Ticks show on every screen; prepped ingredients with a shelf life go into Use first.</span>
+        {note && <span className="chip teal">{note}</span>}
+        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}</span><b className="num">{i.prep}</b></label>)}
         {d.ingredients.length > 0 && <><b>Ingredients</b>{d.ingredients.map((g) => <label key={g.id} className="row" style={{ fontSize: 15 }}><input type="checkbox" checked={Boolean(done[`g${g.id}`])} onChange={() => tick(`g${g.id}`)} /><span className="grow">{g.name}</span><span className="num">{g.need} {g.unit}</span>{g.short > 0 && <span className="chip rose">short {g.short}</span>}</label>)}</>}
       </>}
     </Modal>
@@ -117,22 +124,28 @@ export function DeliveryBatches() {
 
 /* ================= Customer: bar tab on the table QR page ================= */
 export function TabCard({ token, info, onTab, nav }) {
-  const key = `bh_tab_${token}`;
-  const [tab, setTab] = useState(null); const [name, setName] = useState(''); const [err, setErr] = useState('');
+  const key = `bh_tab_${token}`; const mkey = `bh_tab_member_${token}`;
+  const [tab, setTab] = useState(null); const [name, setName] = useState(''); const [err, setErr] = useState(''); const [join, setJoin] = useState(null);
+  const member = localStorage.getItem(mkey) || '';
   const saved = localStorage.getItem(key);
-  useEffect(() => { if (saved) api(`/t/${token}/tab/${saved}`).then((t) => { if (t.status === 'closed') { localStorage.removeItem(key); onTab(null); } else { setTab(t); onTab(t.token); } }).catch(() => { localStorage.removeItem(key); onTab(null); }); }, [info?.rounds?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (saved) api(`/t/${token}/tab/${saved}`).then((t) => { if (t.status === 'closed') { localStorage.removeItem(key); onTab(null); } else { setTab(t); onTab(t.token, localStorage.getItem(mkey) || t.name); } }).catch(() => { localStorage.removeItem(key); onTab(null); }); }, [info?.rounds?.length]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!info.tabs) return null;
-  const open = () => api(`/t/${token}/tab`, { method: 'POST', body: { name } }).then((t) => { localStorage.setItem(key, t.token); setTab(t); onTab(t.token); }).catch((e) => setErr(e.message));
-  const close = () => api(`/t/${token}/tab/${tab.token}/close`, { method: 'POST' }).then((r) => { if (r.billToken) nav(`/p/${r.billToken}`); else { localStorage.removeItem(key); setTab(null); onTab(null); } }).catch((e) => setErr(e.message));
+  const open = () => api(`/t/${token}/tab`, { method: 'POST', body: { name } }).then((t) => { localStorage.setItem(key, t.token); localStorage.setItem(mkey, name); setTab(t); onTab(t.token, name); }).catch((e) => setErr(e.message));
+  const joinTab = () => api(`/t/${token}/tab/join`, { method: 'POST', body: join }).then((r) => { localStorage.setItem(key, r.token); localStorage.setItem(mkey, r.member); setJoin(null); api(`/t/${token}/tab/${r.token}`).then((t) => { setTab(t); onTab(t.token, r.member); }); }).catch((e) => setErr(e.message));
+  const close = (mine) => api(`/t/${token}/tab/${tab.token}/close`, { method: 'POST', body: mine ? { member: member || tab.name } : {} }).then((r) => { if (r.billToken) nav(`/p/${r.billToken}${mine && r.items?.length ? `?items=${r.items.join(',')}` : ''}`); else { localStorage.removeItem(key); setTab(null); onTab(null); } }).catch((e) => setErr(e.message));
   return (
     <div className="card stack">
       {tab ? <>
         <div className="row"><b className="grow">{tab.name}'s tab</b><b className="num">{money(tab.totalCents, info.currency)}</b></div>
         {tab.items.length > 0 ? <span className="muted" style={{ fontSize: 14 }}>{tab.items.map((i) => `${i.qty} ${i.name}`).join(', ')}</span> : <span className="muted" style={{ fontSize: 14 }}>Order below; everything goes on your tab.</span>}
-        <button className="btn block" onClick={close}>Close my tab and pay</button>
+        {tab.members.length > 1 && <span className="muted" style={{ fontSize: 13 }}>{tab.members.map((m) => `${m.name} ${money(m.cents, info.currency)}`).join(' · ')}</span>}
+        {tab.code && <span className="dim" style={{ fontSize: 13 }}>Friends can join this tab with code <b style={{ letterSpacing: 2 }}>{tab.code}</b></span>}
+        <div className="row">{tab.members.length > 1 && <button className="btn grow" onClick={() => close(true)}>Pay my part</button>}<button className="btn grow" onClick={() => close(false)}>{tab.members.length > 1 ? 'Pay the whole tab' : 'Close my tab and pay'}</button></div>
       </> : <>
         <b>Start a tab</b><span className="muted" style={{ fontSize: 14 }}>Order rounds all night and pay once at the end.</span>
         <div className="row"><input className="input grow" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={30} /><button className="btn primary" disabled={!name.trim()} onClick={open}>Start</button></div>
+        {join ? <div className="row"><input className="input" style={{ width: 90, textTransform: 'uppercase', letterSpacing: 2 }} placeholder="CODE" value={join.code} onChange={(e) => setJoin({ ...join, code: e.target.value.toUpperCase().slice(0, 4) })} /><input className="input grow" placeholder="Your name" value={join.name} onChange={(e) => setJoin({ ...join, name: e.target.value })} maxLength={30} /><button className="btn" disabled={join.code.length !== 4 || !join.name.trim()} onClick={joinTab}>Join</button></div>
+          : <button className="btn ghost sm" onClick={() => setJoin({ code: '', name })}>Join a friend's tab</button>}
       </>}
       {err && <div className="lock-msg">{err}</div>}
     </div>
