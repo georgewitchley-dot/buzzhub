@@ -208,6 +208,7 @@ export default function Guest() {
           {sub && <p>{sub}</p>}
         </div>
         {dv?.status === 'out' && dv.driver && <DeliveryMap driver={dv.driver} drop={dv.drop} />}
+        {g.dropPhoto && <figure className="drop-photo"><img src={`/api/g/${token}/drop-photo`} alt={t('Where your order was left')} /><figcaption>{t('Where your order was left')}</figcaption></figure>}
         {banner && g.status === 'waiting' && <div className="card banner" role="status">{banner}</div>}
 
         {g.status === 'buzzed' && <button className="btn primary lg block" onClick={ack} style={{ height: 64, fontSize: 19 }}>{t("I'm on my way")}</button>}

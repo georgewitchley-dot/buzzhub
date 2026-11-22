@@ -250,6 +250,17 @@ Server: `server/src/table.js` plus hooks in `run.js` (tab code/members, close wi
 - **Server coaching** `/staff/coaching`: check average, items per check, add-on rate (categories matching drink/dessert/side/starter…), tip %, against the team, with coaching hints after 5 checks.
 - **Expo photo check** (`photo_check` off|allergy|special|all): `/api/kds/complete` returns `needsPhoto` until `POST /api/kds/plate-photo`; `plate_photos` kept 60 days; `/staff/plate-photos` on Kitchen speed.
 
+## 3s. Round 19 (2026-11-22)
+
+New module `server/src/station.js` (`registerStation`, after `registerTable`) and client `pages/Station.jsx`.
+- Station layout lives in `OrderPad` (Run.jsx): CSS grid `.station-grid`, three columns at 1000px and up. The nav label is now "Server station".
+- Schema: `orders.priority` (0 normal, 1 rush, 2 VIP), `bookings.preorder` (JSON lines), `delivery_photos (order_id, data)`.
+- KDS sort is `o.priority DESC` first (kds.js). Area screen toggle `bh_kds_big` adds `.kds-big`.
+- Booking pre-order chains `h.onBookingCheckin` (keeps the pro.js hook) and inserts a held `source='guest'` order for the booking's guest, so the existing `fireHeldPreorder` fires it on seat. Setting `booking_preorder`.
+- Gift on checks uses the new `h.applyGift(order, code, user)` in commerce.js (shared with the order route's logic).
+- Checkout: cash to hand in = cash collected − cash tips − card tips. Tip-outs come from `shiftTipout`.
+- Staff customer lookup is `/staff/customer-find` (not `/customers/find`, which `/customers/:id` would catch).
+
 ## 4. Architecture
 ```
 package.json        root: postinstall installs server+client; build → client; start → server

@@ -112,7 +112,7 @@ export function registerRun({ app, staff, io, h }) {
     const meta = Object.fromEntries(db.prepare('SELECT id, category, station FROM menu_items').all().map((m) => [m.id, m]));
     const items = p.items.filter((i) => all || stationFor(meta[i.id] || i, list) === w.area);
     const ingIds = new Set(db.prepare(`SELECT ingredient_id FROM item_recipes WHERE item_id IN (${items.map((i) => i.id).join(',') || 0})`).all().map((r) => r.ingredient_id));
-    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, items, ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
+    res.json({ date: p.date, weekday: p.weekday, weeksOfData: p.weeksOfData, bufferPct: p.bufferPct, items: items.map((i) => ({ ...i, recipe: h.prepRecipe ? h.prepRecipe(i.id, i.prep) : [] })), ingredients: p.ingredients.filter((g) => ingIds.has(g.id)) });
   });
 
   /* ===== runner screen ===== */

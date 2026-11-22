@@ -3,6 +3,7 @@ import { api, applyAccent } from '../lib.js';
 import { Puck, useToast } from '../ui.jsx';
 import { useCC, useLive } from './CommandCenter.jsx';
 import { PulseButtons } from './Line.jsx';
+import { Checkouts, MyCheckout } from './Station.jsx';
 
 const since = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${sql.replace(' ', 'T')}Z`)) / 60000));
 const dur = (min) => (min >= 60 ? `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m` : `${min}m`);
@@ -174,12 +175,13 @@ export function OnClockChip() {
 
 /* ================= My time card (My shifts) ================= */
 export function MyTimeCard() {
-  const { settings } = useCC(); const toast = useToast();
+  const { settings, can } = useCC(); const toast = useToast();
   const [c, reload] = useLive(['shifts'], () => api('/staff/me/timecard'));
   if (!c) return null;
   const where = () => new Promise((ok) => { if (settings.punch_geofence !== '1' || !navigator.geolocation) return ok({}); navigator.geolocation.getCurrentPosition((p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => ok({}), { enableHighAccuracy: true, timeout: 10000 }); });
   const punch = async (action) => { let tipsCents; if (action === 'out' && settings.declare_tips === '1') { const v = prompt('Cash tips this shift (0 if none)', ''); if (v === null) return; tipsCents = Math.round(Number(String(v).replace(/[^\d.]/g, '') || 0) * 100); } try { const r = await api('/staff/me/punch', { method: 'POST', body: { action, ...(tipsCents !== undefined ? { tipsCents } : {}), ...(await where()) } }); if (r.notes?.length) toast(`Note from ${r.notes[0].name.split(' ')[0]}: ${r.notes[0].body}`, 'ok'); reload(); } catch (e) { toast(e.message, 'err'); } };
   return (
+    <><MyCheckout />{can?.('manager') && <Checkouts />}
     <section className="panel" style={{ marginBottom: 18 }}>
       <div className="panel-h"><h3 className="grow">My time card</h3>{c.clockedIn ? <span className={`chip ${c.onBreak ? 'amber' : 'teal'}`}>{c.onBreak ? 'On break' : `Clocked in at ${at(c.since)}`}</span> : <span className="chip">Clocked out</span>}</div>
       <div className="panel-b stack">
@@ -188,6 +190,6 @@ export function MyTimeCard() {
         {settings.app_punch === '1' && <div className="row">{c.clockedIn ? <>{c.onBreak ? <button className="btn" onClick={() => punch('break_end')}>End break</button> : <button className="btn" onClick={() => punch('break_start')}>Start break</button>}<button className="btn primary" onClick={() => punch('out')}>Clock out</button></> : <button className="btn primary" onClick={() => punch('in')}>Clock in</button>}</div>}
         {c.recent.length > 0 && <table className="list"><tbody>{c.recent.map((r, i) => <tr key={i}><td>{new Date(`${r.in.replace(' ', 'T')}Z`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</td><td className="muted">{at(r.in)} – {at(r.out)}</td><td className="num">{hhmm(r.hours)}</td></tr>)}</tbody></table>}
       </div>
-    </section>
+    </section></>
   );
 }

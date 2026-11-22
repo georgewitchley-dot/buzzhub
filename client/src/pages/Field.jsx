@@ -5,6 +5,7 @@ import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { forgetReaders } from '../pro-ui.jsx';
 import { DeliveryBatches } from './Run.jsx';
 import { DeliveryRoute } from './Table.jsx';
+import { DropPhoto } from './Station.jsx';
 
 const dollars = (v) => Math.round(Number(String(v).replace(/[^\d.-]/g, '') || 0) * 100);
 
@@ -39,6 +40,7 @@ function DeliveredModal({ o, currency, onClose }) {
           <input className="input" inputMode="decimal" placeholder="Tip they gave (optional)" value={tip} onChange={(e) => setTip(e.target.value)} aria-label="Tip" />
         </>
       ) : <p className="muted" style={{ margin: 0 }}>Already paid. Just hand it over.</p>}
+      <DropPhoto orderId={o.id} />
       <button className="btn primary lg block" onClick={done}>Mark delivered</button>
     </Modal>
   );

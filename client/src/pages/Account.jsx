@@ -7,6 +7,7 @@ import { AccountClub } from './Club.jsx';
 import { ReferralCard } from './House.jsx';
 import { AccountPunches } from './More.jsx';
 import { AccountOrders, AccountTier } from './Owner.jsx';
+import { BookingPreorder } from './Station.jsx';
 
 function AuthForm({ onIn }) {
   const [mode, setMode] = useState('register');
@@ -102,7 +103,7 @@ export default function Account() {
   const [biz, setBiz] = useState(null);
   const [me, setMe] = useState(undefined);
   const [info, setInfo] = useState(null);
-  const [bookings, setBookings] = useState([]);
+  const [bookings, setBookings] = useState([]); const [preorderFor, setPreorderFor] = useState(null);
   const [alerts, setAlerts] = useState('off');
   const [msg, setMsg] = useState('');
   const [loyal, setLoyal] = useState(null);
@@ -137,6 +138,7 @@ export default function Account() {
 
   return (
     <div className="guest">
+      {preorderFor && <BookingPreorder booking={preorderFor} onClose={(saved) => { setPreorderFor(null); if (saved) loadBookings(); }} />}
       <div className="guest-bg"><Aurora colorStops={[biz.accent, '#2a1f55', biz.accent]} amplitude={0.6} speed={0.35} mouseInteraction={false} /></div>
       <main className="guest-in" style={{ alignContent: 'start' }}>
         {biz.logo ? <img className="guest-logo" src={biz.logo} alt={biz.name} /> : <Puck state="buzzed" size={48} />}
@@ -199,7 +201,7 @@ export default function Account() {
                     <div className="grow"><b>{f.day}, {f.time}</b><div className="muted" style={{ fontSize: 14 }}>{b.service || `Party of ${b.partySize}`}{b.deposit && ` · ${b.deposit.status === 'paid' ? `${money(b.deposit.cents, info?.currency)} deposit paid` : b.deposit.status === 'applied' ? `${money(b.deposit.cents, info?.currency)} deposit off your bill, code ${b.deposit.code}` : b.deposit.status === 'pending' ? 'Deposit not paid yet' : `Deposit ${b.deposit.status}`}`}</div></div>
                     {b.deposit?.status === 'pending' ? <button className="btn primary sm" onClick={() => payDeposit(b)}>Pay deposit</button> : b.buzzer ? <button className="btn primary sm" onClick={() => nav(b.buzzer)}>Open my buzzer</button>
                       : b.canCheckIn ? <><button className="btn primary sm" onClick={() => checkIn(b)}>I'm here</button>{b.status === 'booked' && (b.lateMinutes ? <span className="chip amber">Running {b.lateMinutes} min late</span> : <button className="btn sm" onClick={() => late(b)}>Running late</button>)}</>
-                      : <>{b.lateMinutes ? <span className="chip amber">Running {b.lateMinutes} min late</span> : <button className="btn sm" onClick={() => late(b)}>Running late</button>}<button className="btn ghost sm danger" onClick={() => cancel(b)}>Cancel</button></>}
+                      : <>{b.lateMinutes ? <span className="chip amber">Running {b.lateMinutes} min late</span> : <button className="btn sm" onClick={() => late(b)}>Running late</button>}{b.canPreorder && <button className="btn sm" onClick={() => setPreorderFor(b)}>{b.preorder?.length ? 'Change pre-order' : 'Order ahead'}</button>}<button className="btn ghost sm danger" onClick={() => cancel(b)}>Cancel</button></>}
                   </div>
                 ); })}
                 <span className="dim" style={{ fontSize: 13 }}>"I'm here" appears an hour before your time. Tap it when you arrive and we'll buzz you when we're ready.</span>

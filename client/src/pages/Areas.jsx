@@ -7,6 +7,7 @@ import { TicketPrint, printPart } from '../pro-ui.jsx';
 import { CookPicker, KdsMessages, KdsTimers, ShelfPicker } from './Pass.jsx';
 import { KdsIngredients, KdsPrep, MakeGoodButtons, RunnerTicket } from './Run.jsx';
 import { PlatePhoto, TimelineStrip, kdsOffline } from './Table.jsx';
+import { PriorityChip } from './Station.jsx';
 
 const ago = (sql) => Math.max(0, Math.round((Date.now() - Date.parse(`${String(sql).replace(' ', 'T')}Z`)) / 60000));
 const pj = (v, d) => { try { return JSON.parse(v); } catch { return d; } };
@@ -23,6 +24,7 @@ export function KdsScreen() {
   const seen = useRef(null);
   const [sel, setSel] = useState(0); // bump bar / keyboard selection
   const [speak, setSpeak] = useState(() => localStorage.getItem('bh_kds_speak') === '1');
+  const [big, setBig] = useState(() => localStorage.getItem('bh_kds_big') === '1');
   const speakRef = useRef(speak); speakRef.current = speak;
   const [allergy, setAllergy] = useState(null); // { order, text } waiting for an allergy check
   const [lists, setLists] = useState(false);
@@ -113,7 +115,7 @@ export function KdsScreen() {
     </li>
   );
   return (
-    <div className="kds-screen">
+    <div className={`kds-screen ${big ? 'kds-big' : ''}`}>
       <header className="kds-top">
         <Puck state="buzzed" size={30} />
         <div className="grow"><b className="kds-area">{d.area}</b><span className="dim">{kindLabel}</span></div>
@@ -131,6 +133,7 @@ export function KdsScreen() {
         <button className="btn sm" aria-pressed={speak} title="Read new tickets out loud" onClick={() => { const v = !speak; setSpeak(v); localStorage.setItem('bh_kds_speak', v ? '1' : '0'); if (v && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Talking tickets on')); }}>{speak ? 'Talking' : 'Silent'}</button>
         {d.kind !== 'pack' && d.kind !== 'runner' && <button className="btn sm" aria-pressed={showAll} onClick={() => { setShowAll(!showAll); localStorage.setItem('bh_kds_allday', showAll ? '0' : '1'); }}>All day</button>}
         {!d.device && <select className="input" style={{ width: 150, height: 34 }} value={d.area} onChange={(e) => { location.href = withLoc(`/kds?area=${encodeURIComponent(e.target.value)}`, new URLSearchParams(location.search).get('l')); }} aria-label="Area">{d.areas.map((a) => <option key={a}>{a}</option>)}</select>}
+        <button className="btn sm" aria-pressed={big} title="Bigger text for screens across the kitchen" onClick={() => { setBig(!big); localStorage.setItem('bh_kds_big', big ? '0' : '1'); }}>{big ? 'Big text' : 'Aa'}</button>
         <button className="btn sm" onClick={full} aria-label="Full screen"><Icon name="expand" size={16} /></button>
       </header>
       {msg && <div className="kds-msg" role="status">{msg}</div>}
@@ -147,8 +150,8 @@ export function KdsScreen() {
             const areas = Object.entries(o.areas);
             const allDone = areas.every(([, a]) => a.done >= a.total);
             return (
-              <article key={o.id} className={`ticket-card ${tone(o)} ${o.passSince && d.passMinutes && Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`) >= d.passMinutes * 60000 ? 'pass-late' : ''} ${idx === Math.min(sel, d.orders.length - 1) ? 'kds-sel' : ''}`} onClick={() => setSel(idx)}>
-                <header>{idx < 9 && <span className="kds-key" aria-hidden="true">{idx + 1}</span>}<b>#{o.number}</b><span className="grow">{who(o)}</span><span className="age num">{(() => { const m = ago(o.sent_at || o.created_at); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; })()}</span></header>
+              <article key={o.id} className={`ticket-card ${tone(o)} ${o.passSince && d.passMinutes && Date.now() - Date.parse(`${o.passSince.replace(' ', 'T')}Z`) >= d.passMinutes * 60000 ? 'pass-late' : ''} ${idx === Math.min(sel, d.orders.length - 1) ? 'kds-sel' : ''} ${o.priority ? 'prio' : ''}`} onClick={() => setSel(idx)}>
+                <header>{idx < 9 && <span className="kds-key" aria-hidden="true">{idx + 1}</span>}<b>#{o.number}</b><PriorityChip p={o.priority} /><span className="grow">{who(o)}</span><span className="age num">{(() => { const m = ago(o.sent_at || o.created_at); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; })()}</span></header>
                 <div className="row wrap" style={{ gap: 6 }}>
                   {o.fulfillment === 'delivery' && <span className="chip rose">Delivery{o.driver_name ? `: ${o.driver_name.split(' ')[0]}` : ''}</span>}
                   {o.fulfillment === 'pickup' && o.source !== 'staff' && <span className="chip amber">Pickup</span>}

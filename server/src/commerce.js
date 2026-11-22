@@ -265,6 +265,24 @@ export function registerCommerce({ app, staff, io, h }) {
     audit(req.user, 'gift.disable', `#${req.params.id}`, clientIp(req)); res.json({ ok: true });
   });
   /** Apply a gift card to an order: takes up to the balance and up to what's still owed. */
+  /** Take a gift card off one order (used by checks at the table too). Returns null when nothing is owed. */
+  h.applyGift = (o, code, user) => {
+    if (dueOf(o) <= 0) return null;
+    const r = db.transaction(() => {
+      const c = db.prepare("SELECT * FROM gift_cards WHERE code = ? AND status = 'active'").get(normCode(code));
+      if (!c) throw err('That gift card code is not valid', 404);
+      if (c.balance_cents <= 0) throw err('That gift card is empty', 409);
+      h.giftUsable?.(c);
+      const use = Math.min(c.balance_cents, dueOf(o));
+      db.prepare('UPDATE gift_cards SET balance_cents = balance_cents - ? WHERE id = ?').run(use, c.id);
+      db.prepare('INSERT INTO gift_txns (card_id, delta_cents, order_id, method, user_id) VALUES (?, ?, ?, ?, ?)').run(c.id, -use, o.id, 'redeem', user?.id || null);
+      db.prepare('UPDATE orders SET gift_cents = gift_cents + ? WHERE id = ?').run(use, o.id);
+      return { used: use, balance: c.balance_cents - use };
+    })();
+    const after = db.prepare('SELECT * FROM orders WHERE id = ?').get(o.id);
+    if (dueOf(after) <= 0) db.prepare("UPDATE orders SET status='paid', payment_method='gift', paid_at=?, total_cents=? WHERE id=?").run(now(), after.subtotal_cents - after.discount_cents + after.tax_cents + after.fee_cents, o.id);
+    return r;
+  };
   staff.post('/orders/:id/gift', (req, res) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(idParam(req));
     if (!o || ['paid', 'void'].includes(o.status) || o.prepaid) return res.status(409).json({ error: 'This order is already closed' });

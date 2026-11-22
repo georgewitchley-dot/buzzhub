@@ -70,7 +70,7 @@ const NAV = [
   { to: '/register', icon: 'register', label: 'Register' },
   { to: '/orders', icon: 'ticket', label: 'Orders' },
   { to: '/kitchen', icon: 'flame', label: 'Kitchen', when: (s) => s?.business_type !== 'service' },
-  { to: '/pad', icon: 'register', label: 'Order pad', when: (s) => s?.business_type === 'restaurant' },
+  { to: '/pad', icon: 'register', label: 'Server station', when: (s) => s?.business_type === 'restaurant' },
   { to: '/deliveries', icon: 'pin', label: 'Deliveries', when: (s) => s?.online_enabled === '1' && s?.online_delivery === '1' },
   { to: '/cash', icon: 'cash', label: 'Cash drawer' },
   { to: '/safe', icon: 'lock', label: 'Safe', min: 'manager', when: (s) => s?.safe_log_enabled === '1' },

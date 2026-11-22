@@ -163,6 +163,20 @@ Guests scan a QR code and their own phone becomes the buzzer, so there's no app 
 - **Review themes**: what guests praise and complain about.
 - **Safe log (optional)** with two-person counts.
 
+## Round 19: the server station
+
+- **Server station (/pad, was "Order pad")** is now a workstation layout: tables and the waitlist on the left, the menu in the middle, the new round on the right. It stacks on narrower screens.
+- **Fire the next course** from the station: one button per held course on the selected table (`POST /api/staff/tables/:id/fire-course`, `GET /api/staff/tables/:id/held`).
+- **Host from the station**: add a party, buzz them, seat them at the selected table.
+- **Rush and VIP tickets**: pick Normal, Rush or VIP before sending. Kitchen screens sort these to the top with a chip (`orders.priority`, `POST /api/staff/orders/:id/priority`, `POST /api/kds/priority`).
+- **Big text** button on kitchen screens (saved per screen).
+- **Prep batch recipes**: the Prep list shows the ingredient totals for each batch, from the dish's recipe.
+- **Delivery photo**: drivers take a drop-off photo in the Deliver window; the customer sees it on their buzzer page (`delivery_photos`, `POST /api/staff/orders/:id/drop-photo`, `GET /api/g/:token/drop-photo`).
+- **Order ahead with a booking** (Settings > Bookings): guests pick dishes from their account; it becomes a held order at check-in and fires when seated (`bookings.preorder`, `PUT /api/c/bookings/:id/preorder`). Staff see it on Bookings.
+- **Same again** on the table QR page re-adds the last round, per tab member when on a tab (`GET /api/t/:token/last-round`).
+- **Gift cards and member perks on a table check** (`POST /api/staff/bills/:id/gift`, `POST /api/staff/bills/:id/member`, `GET /api/staff/customer-find`).
+- **Server checkout** on My shifts: sales, cash taken, card and cash tips, tip-outs, cash to hand in. Managers see everyone's (`GET /api/staff/me/checkout`, `GET /api/staff/checkouts`).
+
 ## Round 18: table to till
 - **Split a tab** with friends.
 - **My tables** and **pay at the table** on the order pad.

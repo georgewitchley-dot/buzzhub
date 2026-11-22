@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, money } from '../lib.js';
 import { Modal, useToast } from '../ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
+import { PayExtras } from './Station.jsx';
 
 /* ================= Pad: my tables + pay at the table ================= */
 export function PadTables({ tableId, onPick }) {
@@ -36,6 +37,7 @@ export function PadPay({ tableId, label, onClose }) {
         <div className="stack" style={{ gap: 4, maxHeight: 220, overflow: 'auto' }}>{b.items.map((i) => <div key={i.id} className="row" style={{ fontSize: 14 }}><span className="grow">{i.qty} {i.name}</span><span className="num">{money(i.shareCents ?? i.price_cents * i.qty, cur)}</span></div>)}</div>
         <div className="row"><b className="grow">Due</b><b className="num" style={{ fontSize: 22 }}>{money(b.remainingCents, cur)}</b></div>
         {b.remainingCents > 0 && <>
+          <PayExtras bill={b} onChange={load} />
           <label className="field"><span>Tip (optional)</span><input className="input" inputMode="decimal" value={tip} onChange={(e) => setTip(e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></label>
           <div className="row"><button className="btn primary lg grow" onClick={() => take('cash')}>Took cash</button><button className="btn lg grow" onClick={() => take('card')}>Paid on card reader</button></div>
           {qr ? <div className="pad-qr" dangerouslySetInnerHTML={{ __html: qr.svg }} /> : <button className="btn block" onClick={() => api(`/staff/bills/${b.id}/qr`).then(setQr)}>Guest pays on their phone (show QR)</button>}

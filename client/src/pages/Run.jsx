@@ -4,6 +4,7 @@ import { Modal, useToast } from '../ui.jsx';
 import { CartLines, GuestMenu, useCart } from '../order-ui.jsx';
 import { PageHead, useCC, useLive } from './CommandCenter.jsx';
 import { PadPay, PadTables } from './Table.jsx';
+import { PriorityPick, StationFire, StationHost } from './Station.jsx';
 
 /* ================= Server order pad (/pad) ================= */
 export function OrderPad() {
@@ -11,35 +12,54 @@ export function OrderPad() {
   const [menu, setMenu] = useState(null); const [tables] = useLive(['tables'], () => api('/staff/tables'));
   const [tableId, setTableId] = useState(() => localStorage.getItem('bh_pad_table') || '');
   const [seat, setSeat] = useState(1); const [hold, setHold] = useState(false); const [paying, setPaying] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
+  const [priority, setPriority] = useState(0); const [host, setHost] = useState(() => localStorage.getItem('bh_station_host') !== '0');
   const cart = useCart();
   useEffect(() => { api('/o/menu').then(setMenu).catch(() => api('/staff/menu').then((m) => setMenu({ items: Array.isArray(m) ? m : m.items }))); }, []);
   if (!menu || !tables) return null;
   const t = tables.find((x) => String(x.id) === String(tableId));
+  const pick = (id) => { setTableId(String(id)); localStorage.setItem('bh_pad_table', String(id)); setSeat(1); };
   const add = (l) => cart.add({ ...l, seat: seat || undefined, course: hold ? 2 : 1, note: note || l.note });
   const send = async () => {
     setBusy(true);
-    try { const r = await api('/staff/orders', { method: 'POST', body: { items: cart.payload, tableId: Number(tableId) } }); toast(`#${r.number} sent to the kitchen`, 'ok'); cart.clear(); setHold(false); setNote(''); }
+    try { const r = await api('/staff/orders', { method: 'POST', body: { items: cart.payload, tableId: Number(tableId), ...(priority ? { priority } : {}) } }); toast(`#${r.number} sent to the kitchen${priority ? ` as ${priority === 2 ? 'VIP' : 'a rush'}` : ''}`, 'ok'); cart.clear(); setHold(false); setNote(''); setPriority(0); }
     catch (e) { toast(e.message, 'err'); }
     setBusy(false);
   };
+  const toggleHost = () => { setHost(!host); localStorage.setItem('bh_station_host', host ? '0' : '1'); };
   return (
-    <div className="pad">
-      <PageHead title="Order pad" sub="Take the order at the table. Each dish goes to its area screen with the seat number." />
-      <PadTables tableId={tableId} onPick={(x) => { setTableId(String(x.id)); localStorage.setItem('bh_pad_table', String(x.id)); setSeat(1); }} />
-      <div className="row wrap" style={{ gap: 8, marginBottom: 10 }}>
-        {t && <button className="btn" onClick={() => setPaying(true)}>Check</button>}
-        <select className="input" style={{ width: 160 }} value={tableId} onChange={(e) => { setTableId(e.target.value); localStorage.setItem('bh_pad_table', e.target.value); setSeat(1); }} aria-label={settings.unit_label}>
-          <option value="">Pick a {settings.unit_label.toLowerCase()}</option>{tables.map((x) => <option key={x.id} value={x.id}>{settings.unit_label} {x.label}{x.guest_name ? ` · ${x.guest_name}` : ''}</option>)}
-        </select>
-        {t && <div className="row wrap" style={{ gap: 4 }}>{Array.from({ length: Math.min(20, t.seats || 4) }, (_, i) => i + 1).map((n) => <button key={n} className={`btn ${seat === n ? 'primary' : ''}`} style={{ minWidth: 44 }} onClick={() => setSeat(n)}>Seat {n}</button>)}<button className={`btn ${seat === 0 ? 'primary' : ''}`} onClick={() => setSeat(0)}>Share</button></div>}
+    <div className={`station ${host ? 'with-host' : ''}`}>
+      <PageHead title="Server station" sub="Pick a table, tap a seat, add dishes, send. Fire the next course and run the waitlist from here.">
+        <button className="btn" aria-pressed={host} onClick={toggleHost}>{host ? 'Hide waitlist' : 'Waitlist'}</button>
+      </PageHead>
+      <div className="station-grid">
+        <aside className="station-col station-tables">
+          <PadTables tableId={tableId} onPick={(x) => pick(x.id)} />
+          {host && <StationHost tableId={tableId} tableLabel={t?.label} />}
+        </aside>
+        <main className="station-col station-menu">
+          {t ? <>
+            <div className="station-bar">
+              <b className="station-t">{settings.unit_label} {t.label}</b>
+              <div className="row wrap" style={{ gap: 4 }}>{Array.from({ length: Math.min(20, t.seats || 4) }, (_, i) => i + 1).map((n) => <button key={n} className={`btn sm ${seat === n ? 'primary' : ''}`} style={{ minWidth: 40 }} onClick={() => setSeat(n)}>S{n}</button>)}<button className={`btn sm ${seat === 0 ? 'primary' : ''}`} onClick={() => setSeat(0)}>Share</button></div>
+              <span className="grow" />
+              <StationFire tableId={t.id} />
+              <button className="btn" onClick={() => setPaying(true)}>Check</button>
+            </div>
+            <div className="row wrap" style={{ gap: 8 }}><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />Hold as the next course</label><input className="input grow" style={{ minWidth: 160 }} placeholder="Note for the next dish (no onions…)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></div>
+            <div className="card"><GuestMenu items={menu.items} currency={cur} onAdd={add} /></div>
+          </> : <div className="panel empty"><b>Pick a {settings.unit_label.toLowerCase()}</b><span>Tap one on the left, then a seat, then add each guest's dishes.</span></div>}
+        </main>
+        <aside className="station-col station-check">
+          <b>New round{t ? ` for ${t.label}` : ''}</b>
+          {cart.count === 0 ? <span className="dim" style={{ fontSize: 13.5 }}>Dishes you add show here with their seat.</span> : <>
+            <div className="grow" style={{ overflow: 'auto' }}><CartLines cart={cart} currency={cur} /></div>
+            <PriorityPick value={priority} onChange={setPriority} />
+            <button className="btn primary lg block" disabled={busy || !t} onClick={send}>Send {cart.count} to kitchen · {money(cart.subtotal, cur)}</button>
+            <button className="btn ghost sm" onClick={cart.clear}>Clear</button>
+          </>}
+        </aside>
       </div>
-      {tableId ? <>
-        <div className="row wrap" style={{ gap: 8, marginBottom: 10 }}><label className="row" style={{ fontSize: 14 }}><input type="checkbox" checked={hold} onChange={(e) => setHold(e.target.checked)} />Hold as the next course</label><input className="input grow" style={{ minWidth: 160 }} placeholder="Note for the next dish (no onions…)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} /></div>
-        <div className="card"><GuestMenu items={menu.items} currency={cur} onAdd={add} /></div>
-        {cart.count > 0 && <div className="pad-cart"><div className="grow"><CartLines cart={cart} currency={cur} /></div><button className="btn primary lg" disabled={busy} onClick={send}>Send {cart.count} to kitchen · {money(cart.subtotal, cur)}</button></div>}
-      </> : null}
       {paying && t && <PadPay tableId={t.id} label={t.label} onClose={() => setPaying(false)} />}
-      {!tableId ? <div className="panel empty"><b>Pick a {settings.unit_label.toLowerCase()}</b><span>Then tap a seat and add each guest's dishes.</span></div> : null}
     </div>
   );
 }
@@ -64,7 +84,7 @@ export function KdsPrep({ hdr, q, onClose }) {
       {d && <>
         <span className="muted" style={{ fontSize: 13.5 }}>From the last {d.weeksOfData} {d.weekday}s plus {d.bufferPct}% extra. Ticks show on every screen; prepped ingredients with a shelf life go into Use first.</span>
         {note && <span className="chip teal">{note}</span>}
-        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}</span><b className="num">{i.prep}</b></label>)}
+        {d.items.length === 0 ? <span className="muted">Not enough history yet.</span> : d.items.map((i) => <label key={i.id} className="row" style={{ fontSize: 16 }}><input type="checkbox" checked={Boolean(done[`i${i.id}`])} onChange={() => tick(`i${i.id}`)} /><span className="grow" style={{ textDecoration: done[`i${i.id}`] ? 'line-through' : 'none' }}>{i.name}{done[`i${i.id}`]?.by_label && <span className="dim" style={{ fontSize: 12 }}> · {done[`i${i.id}`].by_label}</span>}{i.recipe?.length > 0 && <span className="prep-recipe">{i.recipe.map((r) => `${r.total} ${r.unit === 'each' ? '' : `${r.unit} `}${r.name}`).join(' · ')}</span>}</span><b className="num">{i.prep}</b></label>)}
         {d.ingredients.length > 0 && <><b>Ingredients</b>{d.ingredients.map((g) => <label key={g.id} className="row" style={{ fontSize: 15 }}><input type="checkbox" checked={Boolean(done[`g${g.id}`])} onChange={() => tick(`g${g.id}`)} /><span className="grow">{g.name}</span><span className="num">{g.need} {g.unit}</span>{g.short > 0 && <span className="chip rose">short {g.short}</span>}</label>)}</>}
       </>}
     </Modal>

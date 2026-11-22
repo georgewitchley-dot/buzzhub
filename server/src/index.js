@@ -42,6 +42,7 @@ import { registerLine } from './line.js';
 import { registerPass } from './pass.js';
 import { registerRun } from './run.js';
 import { registerTable } from './table.js';
+import { registerStation } from './station.js';
 import { registerGuard } from './guard.js';
 import { locationMiddleware, scopeSockets, registerLocations } from './locations.js';
 import { registerFloorPay } from './floorpay.js';
@@ -169,6 +170,7 @@ function guestPublicView(g) {
     delivery: G.deliveryView ? G.deliveryView(g.order_id) : null,
     curbside: G.curbsideView ? G.curbsideView(g) : null,
     shelf: G.shelfView ? G.shelfView(g) : null,
+    dropPhoto: g.order_id && G.dropPhotoFor ? G.dropPhotoFor(g.order_id) : false,
     chat: s.chat_enabled === '1',
     business: { slug: currentSlug(), name: s.business_name, accent: s.accent, unitLabel: s.unit_label, type: s.business_type, welcome: s.welcome_message, booking: s.booking_enabled === '1', logo: s.logo_version !== '0' ? `/api/public/logo?l=${currentSlug()}&v=${s.logo_version}` : null },
   };
@@ -597,7 +599,7 @@ staff.put('/settings', requireAuth('manager'), (req, res) => {
     catering_followup: z.union([z.literal('0'), z.literal('1')]), app_punch: z.union([z.literal('0'), z.literal('1')]), ot_guard: z.enum(['0', '1']), punch_geofence: z.enum(['0', '1']), punch_radius_m: z.string().regex(/^\d{2,4}$/), biz_lat: z.string().regex(/^-?\d{1,2}(\.\d+)?$|^$/), biz_lng: z.string().regex(/^-?\d{1,3}(\.\d+)?$|^$/),
     punch_photo: z.enum(['0', '1']), handoff_notes: z.enum(['0', '1']), adp_company_code: z.string().trim().max(10), kds_expo: z.enum(['0', '1']), kds_pack: z.enum(['0', '1']),
     board_categories: z.string().max(2000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), board_title: z.string().trim().max(60), board_rotate_seconds: z.string().regex(/^\d{1,3}$/), board_cols: z.enum(['1', '2', '3', '4']), board_photos: z.enum(['0', '1']),
-    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), photo_check: z.enum(['off', 'allergy', 'special', 'all']), course_gap_minutes: z.string().regex(/^\d{1,2}$/), ingredient_86: z.enum(['0', '1']), makegood_minutes: z.string().regex(/^\d{1,3}$/), makegood_item_id: z.string().regex(/^\d*$/), makegood_pct: z.string().regex(/^\d{1,3}$/), batch_radius_km: z.string().regex(/^\d{1,2}(\.\d)?$/), batch_window_minutes: z.string().regex(/^\d{1,3}$/), bar_tabs: z.enum(['0', '1']), area_alerts: z.enum(['0', '1']), area_alert_high: z.string().regex(/^\d{1,3}$/), area_alert_quiet_minutes: z.string().regex(/^\d{1,3}$/), pass_alert_minutes: z.string().regex(/^\d{1,2}$/), slot_capacity: z.string().regex(/^\d{1,3}$/), pickup_shelves: z.string().trim().max(200), kds_quick_messages: z.string().max(1000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), dish_ratings: z.enum(['0', '1']), schedule_by_area: z.enum(['0', '1']), area_sales_per_hour_cents: z.string().regex(/^\d{3,7}$/), smart_quotes: z.enum(['0', '1']), kitchen_parallel: z.string().regex(/^\d{1,2}$/), rush_mode: z.enum(['off', 'auto']), rush_busy_tickets: z.string().regex(/^\d{1,3}$/), rush_busy_late: z.string().regex(/^\d{1,3}$/), rush_pause_tickets: z.string().regex(/^\d{1,3}$/), rush_pause_late: z.string().regex(/^\d{1,3}$/), rush_extra_minutes: z.string().regex(/^\d{1,3}$/), shift_pulse: z.enum(['0', '1']), pulse_anonymous: z.enum(['0', '1']), tipout_at_clockout: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
+    rooms_online: z.enum(['0', '1']), curbside: z.enum(['0', '1']), booking_preorder: z.enum(['0', '1']), photo_check: z.enum(['off', 'allergy', 'special', 'all']), course_gap_minutes: z.string().regex(/^\d{1,2}$/), ingredient_86: z.enum(['0', '1']), makegood_minutes: z.string().regex(/^\d{1,3}$/), makegood_item_id: z.string().regex(/^\d*$/), makegood_pct: z.string().regex(/^\d{1,3}$/), batch_radius_km: z.string().regex(/^\d{1,2}(\.\d)?$/), batch_window_minutes: z.string().regex(/^\d{1,3}$/), bar_tabs: z.enum(['0', '1']), area_alerts: z.enum(['0', '1']), area_alert_high: z.string().regex(/^\d{1,3}$/), area_alert_quiet_minutes: z.string().regex(/^\d{1,3}$/), pass_alert_minutes: z.string().regex(/^\d{1,2}$/), slot_capacity: z.string().regex(/^\d{1,3}$/), pickup_shelves: z.string().trim().max(200), kds_quick_messages: z.string().max(1000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), dish_ratings: z.enum(['0', '1']), schedule_by_area: z.enum(['0', '1']), area_sales_per_hour_cents: z.string().regex(/^\d{3,7}$/), smart_quotes: z.enum(['0', '1']), kitchen_parallel: z.string().regex(/^\d{1,2}$/), rush_mode: z.enum(['off', 'auto']), rush_busy_tickets: z.string().regex(/^\d{1,3}$/), rush_busy_late: z.string().regex(/^\d{1,3}$/), rush_pause_tickets: z.string().regex(/^\d{1,3}$/), rush_pause_late: z.string().regex(/^\d{1,3}$/), rush_extra_minutes: z.string().regex(/^\d{1,3}$/), shift_pulse: z.enum(['0', '1']), pulse_anonymous: z.enum(['0', '1']), tipout_at_clockout: z.enum(['0', '1']), curbside_prompt: z.string().trim().max(60), kds_allergy_check: z.enum(['0', '1']), kds_pacing: z.enum(['0', '1']), declare_tips: z.enum(['0', '1']), break_minutes_planned: z.string().regex(/^\d{1,3}$/), rooms_lead_days: z.string().regex(/^\d{1,2}$/), clock_message: z.string().trim().max(120), required_certs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'), fixed_costs: z.string().max(4000).refine((v) => { try { return Array.isArray(JSON.parse(v)); } catch { return false; } }, 'Must be a list'),
     cash_balance_cents: z.coerce.number().int().min(-100_000_000).max(1_000_000_000), cash_balance_on: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), payroll_dow: z.coerce.number().int().min(0).max(6), payroll_every: z.enum(['weekly', 'biweekly']),
     show_calories: z.union([z.literal('0'), z.literal('1')]), pay_bank_enabled: z.union([z.literal('0'), z.literal('1')]), menu_photos: z.union([z.literal('0'), z.literal('1')]), catering_online: z.union([z.literal('0'), z.literal('1')]), safe_log_enabled: z.union([z.literal('0'), z.literal('1')]), safe_two_person: z.union([z.literal('0'), z.literal('1')]),
     pay_bank_min_cents: z.coerce.number().int().min(1000).max(10_000_000), catering_lead_hours: z.coerce.number().int().min(1).max(720), catering_deposit_pct: z.coerce.number().int().min(0).max(100),
@@ -843,6 +845,7 @@ staff.delete('/menu/:id', requireAuth('manager'), (req, res) => {
 /* ---- orders / POS ---- */
 const orderSchema = z.object({
   items: z.array(lineSchema).min(1).max(100),
+  priority: z.number().int().min(0).max(2).optional(),
   clientKey: z.string().regex(/^[A-Za-z0-9_-]{8,40}$/).optional(),
   promoCode: z.string().trim().max(30).optional(),
   tableId: z.number().int().nullable().optional(),
@@ -868,6 +871,7 @@ staff.post('/orders', wrap(async (req, res) => {
   const made = insertOrder({ lines, status: 'sent', source: 'staff', tableId: b.tableId || null, customerName: b.customerName || null, createdBy: req.user.id, discountCents: discount, promoCode: promo?.code || null, clientKey: b.clientKey || null });
   if (made.duplicate) return res.json({ id: made.id, number: made.number, duplicate: true });
   const orderId = made.id; const number = made.number;
+  if (b.priority) db.prepare('UPDATE orders SET priority = ? WHERE id = ?').run(b.priority, orderId);
   if (b.customerId || b.allergies?.length) db.prepare('UPDATE orders SET customer_id = ?, allergy_note = ? WHERE id = ?').run(b.customerId || null, b.allergies?.length ? b.allergies.join(', ') : null, orderId);
   let buzzer = null;
   if (b.attachBuzzer) {
@@ -1122,7 +1126,7 @@ app.get('/api/c/bookings', requireCustomer, (req, res) => {
   const rows = db.prepare("SELECT b.*, g.token FROM bookings b LEFT JOIN guests g ON g.id = b.guest_id WHERE b.customer_id = ? AND (b.status IN ('booked','checked_in') OR b.created_at > datetime('now','-30 days')) ORDER BY b.start_local DESC LIMIT 30").all(req.customer.id);
   res.json(rows.map((b) => {
     const until = minutesUntil(b.start_local, s.timezone);
-    return { id: b.id, start: b.start_local, service: b.service_name, partySize: b.party_size, notes: b.notes, status: b.status, lateMinutes: b.late_minutes || null,
+    return { id: b.id, start: b.start_local, service: b.service_name, partySize: b.party_size, notes: b.notes, status: b.status, lateMinutes: b.late_minutes || null, preorder: (() => { try { return JSON.parse(b.preorder || '[]'); } catch { return []; } })(), preorderText: G.preorderSummary ? G.preorderSummary(b) : null, canPreorder: getSettings().booking_preorder === '1' && b.status === 'booked',
       buzzer: b.status === 'checked_in' && b.token ? `/b/${b.token}` : null,
       canCheckIn: b.status === 'booked' && until <= 60 && until >= -60 && b.deposit_status !== 'pending', minutesUntil: Math.round(until),
       deposit: b.deposit_cents ? { cents: b.deposit_cents, status: b.deposit_status, code: b.deposit_code } : null };
@@ -1218,7 +1222,7 @@ staff.get('/bookings', (req, res) => {
   const from = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.from || '')) ? req.query.from : date;
   const rows = db.prepare(`SELECT b.*, c.name, c.email, c.phone FROM bookings b JOIN customers c ON c.id = b.customer_id
     WHERE substr(b.start_local,1,10) BETWEEN ? AND ? ORDER BY b.start_local`).all(from, addDays(from, 6));
-  res.json({ today: date, from, bookings: rows, capacity: Number(s.booking_capacity) });
+  res.json({ today: date, from, bookings: rows.map((r) => ({ ...r, preorderText: G.preorderSummary ? G.preorderSummary(r) : null })), capacity: Number(s.booking_capacity) });
 });
 staff.post('/bookings/:id/checkin', (req, res) => {
   const bk = db.prepare('SELECT * FROM bookings WHERE id = ?').get(idParam(req));
@@ -1272,6 +1276,8 @@ registerLine({ app, staff, io, h: G });
 registerPass({ app, staff, io, h: G });
 registerRun({ app, staff, io, h: G });
 registerTable({ app, staff, io, h: G });
+G.requireCustomer = requireCustomer;
+registerStation({ app, staff, io, h: G });
 registerDelivery({ app, staff, io, h: Object.assign(G, { createGuest, pushGuest, findUserByPin }) });
 registerTeam({ app, staff, h: Object.assign(G, { wrap, parse, idParam, clientIp, requireAuth, requireCustomer, publicBase, publicLimiter, notifyStaff }) });
 registerOps({ app, staff, io, h: { managerOr: G.managerOr, shiftConflicts: (...a) => (G.shiftConflicts ? G.shiftConflicts(...a) : []), wrap, parse, idParam, now, notifyStaff, clientIp, requireAuth, authLimiter, findUserByPin, loginBlocked, recordLoginFail, clearLoginFails } });

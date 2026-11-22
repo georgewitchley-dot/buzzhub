@@ -9,6 +9,7 @@ import { useReorder } from './Owner.jsx';
 import { LangSwitch, getLang, tr, useLang } from '../i18n.jsx';
 import { useDeliveryQuote } from './Desk.jsx';
 import { TabCard } from './Run.jsx';
+import { SameAgain } from './Station.jsx';
 
 function Shell({ biz, children, lang, setLang }) {
   return (
@@ -136,6 +137,7 @@ export function TableOrder() {
       {msg && <div className="card banner" role="status">{msg}</div>}
       {d.rounds.length > 0 && <div className="card"><b>On its way</b>{d.rounds.map((r) => <div key={r.number} className="row muted" style={{ fontSize: 14 }}><span className="grow">Order #{r.number}</span><span>{{ sent: 'Being made', open: 'Being made', ready: 'Ready', held: 'Waiting' }[r.status]}</span></div>)}</div>}
       <TabCard token={token} info={d} onTab={setTabToken} nav={nav} />
+      {d.tableOrdering && <SameAgain token={token} tab={tabToken} member={tabMember} onAdd={cart.add} currency={d.currency} />}
       {d.tableOrdering && <div className="card"><GuestMenu items={d.items} currency={d.currency} onAdd={cart.add} lang={getLang()} combos={combos} /></div>}
       {cart.count > 0 && (
         <div className="card">
