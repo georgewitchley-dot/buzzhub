@@ -49,10 +49,10 @@ func deskDayBounds(date, tz string) (string, string) {
 	return start.Format(f), end.Format(f)
 }
 
-func (c *C) deskTZ() string     { return c.S()["timezone"] }
-func (c *C) deskToday() string  { return localNow(c.deskTZ()).Date }
-func (c *C) deskHM() string     { return time.Now().In(loadTZ(c.deskTZ())).Format("15:04") }
-func deskDowOf(d string) int    { return dow(d) }
+func (c *C) deskTZ() string      { return c.S()["timezone"] }
+func (c *C) deskToday() string   { return localNow(c.deskTZ()).Date }
+func (c *C) deskHM() string      { return time.Now().In(loadTZ(c.deskTZ())).Format("15:04") }
+func deskDowOf(d string) int     { return dow(d) }
 func deskFmt(cents int64) string { return "$" + dollars(cents) }
 
 func deskDaysBetween(a, b string) int {
