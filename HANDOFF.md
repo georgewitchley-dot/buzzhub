@@ -2,6 +2,33 @@
 
 Read this first, then `README.md`. Everything you need to continue is in this repo.
 
+## 0. Rebuild in progress: Go + Postgres + React/TypeScript + Docker Compose (decided 2026-11-23)
+The owner asked to rebuild BuzzHub on a Go backend, a React + TypeScript front end and Postgres, all in Docker with a compose file. It should run locally with `docker compose up`, and on Railway as the same container with Railway Postgres. The current Node/SQLite app stays live on Railway until the Go version matches it, then traffic switches over.
+
+Approach: **keep the API contract identical** (same routes, JSON shapes, cookies, headers and Socket.IO events), so the React client works against either backend. Each area is moved by running the existing tests and crawls against both backends.
+
+Status:
+- [x] Stage 1: front end is TypeScript (`client/tsconfig.json`; `npm run build` runs `tsc` first). The API client, toasts, modal and app context are typed. Page props are loosely typed for now (`?: any`) and get tightened as each area moves to Go.
+- [x] Postgres schema: `backend/migrations/0001_schema.sql`, generated from the SQLite schema with every migration applied (121 tables, 24 indexes). It loads into Postgres 16 and all test data copies in.
+  - Timestamps stay as UTC text so JSON is unchanged.
+  - Foreign keys aren't added yet.
+  - After copying data, reset each identity sequence (`setval`).
+- [ ] Go backend skeleton.
+  - Chosen packages: pgx (Postgres), a Socket.IO v4 server, golang.org/x/crypto/bcrypt (existing PIN hashes are bcrypt), golang-jwt.
+  - Multi-location: one Postgres schema per location (`search_path` per request), mirroring one SQLite file per location.
+- [ ] Data migration tool (SQLite → Postgres, per location).
+- [ ] Areas ported in order:
+  1. auth/security
+  2. settings
+  3. waitlist/buzzer
+  4. menu/orders/register
+  5. kitchen
+  6. payments
+  7. the rest by module
+- [ ] Dockerfile (multi-stage: Node builds the client, Go builds the server, small runtime image) + docker-compose.yml (app + postgres + volume) + Railway switch.
+
+Blocker found 2026-11-23: in the Claude cloud workspace, Go module downloads fail. proxy.golang.org and sum.golang.org are blocked by the network allowlist. GitHub works, but checksum verification needs sum.golang.org, and switching verification off is not acceptable. Next step: the owner allows those hosts, or the Go build moves somewhere with normal network access.
+
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.
 
