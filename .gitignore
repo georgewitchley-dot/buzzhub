@@ -5,3 +5,4 @@ data/
 *.db-*
 .env
 .jwt_secret
+__pycache__/
