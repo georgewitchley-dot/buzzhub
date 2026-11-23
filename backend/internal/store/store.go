@@ -162,8 +162,12 @@ func (s *Store) LocationExists(ctx context.Context, slug string) bool {
 // Tx is the transaction a unit of work runs in, scoped to one location.
 type Tx struct {
 	pgx.Tx
-	Slug string
+	Slug  string
+	after []func()
 }
+
+// AfterCommit queues fn to run once the transaction commits (live updates, background work).
+func (t *Tx) AfterCommit(fn func()) { t.after = append(t.after, fn) }
 
 // In runs fn in a transaction scoped to the location. It commits if fn returns nil.
 func (s *Store) In(ctx context.Context, slug string, fn func(tx *Tx) error) error {
@@ -182,10 +186,17 @@ func (s *Store) In(ctx context.Context, slug string, fn func(tx *Tx) error) erro
 	if _, err := ptx.Exec(ctx, `SELECT set_config('search_path', $1, true), set_config('buzzhub.tz', COALESCE((SELECT value FROM `+pgx.Identifier{schema, "settings"}.Sanitize()+` WHERE key = 'timezone'), $2), true)`, schema+", public", Defaults["timezone"]); err != nil {
 		return err
 	}
-	if err := fn(&Tx{Tx: ptx, Slug: slug}); err != nil {
+	tx := &Tx{Tx: ptx, Slug: slug}
+	if err := fn(tx); err != nil {
 		return err
 	}
-	return ptx.Commit(ctx)
+	if err := ptx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, f := range tx.after {
+		f()
+	}
+	return nil
 }
 
 /* ---------- small helpers used everywhere ---------- */

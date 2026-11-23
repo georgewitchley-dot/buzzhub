@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/zishang520/socket.io/v2/socket"
 	"log/slog"
 	"net"
 	"net/http"
@@ -55,11 +56,18 @@ type App struct {
 	setup    string // first-run setup code (cleared once claimed)
 	authRate *limiter
 	pubRate  *limiter
+	io       *socket.Server
+	vapid    vapidKeys
+	G        map[string]hookFn
+	lims     limits
+	jobs     []job
+	menu     menuHookSet
+	orders   orderHookSet
 }
 
 // New connects to Postgres and returns the root handler.
 func New(ctx context.Context, cfg Config, log *slog.Logger) (http.Handler, error) {
-	a := &App{cfg: cfg, log: log, lockout: auth.NewLockout(), authRate: newLimiter(15, time.Minute), pubRate: newLimiter(240, time.Minute)}
+	a := &App{cfg: cfg, log: log, lockout: auth.NewLockout(), G: map[string]hookFn{}, lims: newLimits(), authRate: newLimiter(15, time.Minute), pubRate: newLimiter(240, time.Minute)}
 	if cfg.DatabaseURL == "" {
 		return nil, errors.New("DATABASE_URL is not set")
 	}
@@ -76,6 +84,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (http.Handler, error
 	}
 	a.sess = &auth.Sessions{Secret: []byte(secret), Secure: cfg.Production}
 	if err := a.prepareSetup(ctx); err != nil {
+		return nil, err
+	}
+	if err := a.loadVapid(ctx); err != nil {
 		return nil, err
 	}
 	return a.routes(), nil
@@ -97,10 +108,17 @@ func (a *App) routes() http.Handler {
 	mux.Handle("GET /api/public/logo", a.h(a.publicLogo))
 	// staff
 	mux.Handle("GET /api/staff/settings", a.staff("staff", a.getSettings))
+	rt := &router{a: a, mux: mux}
+	a.registerGuard(rt)
+	for _, m := range modules {
+		m(a, rt)
+	}
+	a.startJobs(context.Background())
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "This part of BuzzHub hasn't moved to the new server yet"})
 	})
+	mux.Handle("/socket.io/", a.setupRealtime())
 	mux.Handle("/", spa(a.cfg.StaticDir))
 	return securityHeaders(a.csrf(a.withLocation(mux)))
 }
@@ -117,8 +135,12 @@ var tokenPath = regexp.MustCompile(`^/api/(g|f|p|t|r|i|w|e|v)/([A-Za-z0-9_-]{16,
 // (Token-addressed guest routes such as /api/g/:token are resolved when those routes move over.)
 func (a *App) withLocation(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slug := "main"
-		if !tokenPath.MatchString(r.URL.Path) {
+		slug := ""
+		if m := tokenPath.FindStringSubmatch(r.URL.Path); m != nil {
+			slug = a.slugForTokenPath(r.Context(), m[1], m[2])
+		}
+		if slug == "" {
+			slug = "main"
 			picks := []string{r.Header.Get("X-Location"), r.URL.Query().Get("l"), a.sess.LocOf(cookie(r, auth.SessionCookie)), a.sess.LocOf(cookie(r, auth.CustomerCookie)), cookie(r, "bh_loc")}
 			for _, p := range picks {
 				if p != "" && a.db.LocationExists(r.Context(), p) {
@@ -184,8 +206,10 @@ type handler func(w http.ResponseWriter, r *http.Request, tx *store.Tx) error
 func (a *App) h(fn handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var after error // an error answer whose database changes (like an audit entry) should still be kept
+		var buf *bufWriter
 		err := a.db.In(r.Context(), slugOf(r), func(tx *store.Tx) error {
-			e := fn(w, r, tx)
+			buf = newBuf() // reset on retry; nothing reaches the client before commit
+			e := fn(buf, r, tx)
 			var ce *committedError
 			if errors.As(e, &ce) {
 				after = &ce.HTTPError
@@ -197,6 +221,7 @@ func (a *App) h(fn handler) http.Handler {
 			err = after
 		}
 		if err == nil {
+			buf.flush(w)
 			return
 		}
 		var he *HTTPError

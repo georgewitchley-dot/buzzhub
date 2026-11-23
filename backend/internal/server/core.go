@@ -144,6 +144,9 @@ func (a *App) login(w http.ResponseWriter, r *http.Request, tx *store.Tx) error 
 		if err := tx.Audit(ctx, nil, nil, "auth.fail", fmt.Sprintf("bad PIN (%d left)", remaining), ip); err != nil {
 			return err
 		}
+		c := &C{a: a, W: w, R: r, Tx: tx, Ctx: ctx}
+		c.Emit("owners", "security", map[string]any{"type": "bad_pin", "ip": ip, "at": nowMs()})
+		c.onBadPin(ip)
 		msg := "Wrong PIN"
 		if locked > 0 {
 			msg = fmt.Sprintf("Too many wrong PINs. Locked for %ds.", locked)
@@ -152,10 +155,13 @@ func (a *App) login(w http.ResponseWriter, r *http.Request, tx *store.Tx) error 
 		return &committedError{HTTPError{Status: http.StatusUnauthorized, Msg: msg, Extra: map[string]any{"remaining": remaining, "lockedFor": locked}}}
 	}
 	a.lockout.Clear(ip)
-	if gate, err := a.gateNotPorted(ctx, tx, u); err != nil {
+	c := &C{a: a, W: w, R: r, Tx: tx, Ctx: ctx}
+	row, err := c.Get(`SELECT * FROM users WHERE id = ?`, u.ID)
+	if err != nil {
 		return err
-	} else if gate != "" {
-		return fail(http.StatusServiceUnavailable, gate)
+	}
+	if ok, err := c.authGate(row, ""); !ok || err != nil {
+		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE users SET last_login_at = $1 WHERE id = $2`, store.Now(), u.ID); err != nil {
 		return err
@@ -180,27 +186,6 @@ func pinOK(p string) bool {
 		}
 	}
 	return true
-}
-
-// gateNotPorted fails closed: two-step codes and approved-device rules move over with the
-// security area. Until then the Go server won't sign in anyone those rules could apply to.
-func (a *App) gateNotPorted(ctx context.Context, tx *store.Tx, u *auth.User) (string, error) {
-	var totp int64
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(totp_enabled, 0) FROM users WHERE id = $1`, u.ID).Scan(&totp); err != nil {
-		return "", err
-	}
-	s, err := tx.Settings(ctx)
-	if err != nil {
-		return "", err
-	}
-	blocked, err := tx.Int(ctx, `SELECT COUNT(*) FROM devices WHERE status = 'blocked'`)
-	if err != nil {
-		return "", err
-	}
-	if (totp == 1 && auth.RoleRank[u.Role] >= auth.RoleRank["manager"]) || s["require_approved_devices"] == "1" || blocked > 0 {
-		return "Two-step sign-in and device approval aren't on the new server yet. Sign in on the main server.", nil
-	}
-	return "", nil
 }
 
 func (a *App) logout(w http.ResponseWriter, r *http.Request, tx *store.Tx) error {
