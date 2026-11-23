@@ -74,6 +74,9 @@ func Open(ctx context.Context, url, migrationsDir string) (*Store, error) {
 	if err := s.Migrate(ctx, "main"); err != nil {
 		return nil, err
 	}
+	if err := s.LoadSchemaInfo(ctx); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
