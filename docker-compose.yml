@@ -1,0 +1,36 @@
+# Run BuzzHub locally:   docker compose up --build   then open http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: buzzhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buzzhub-local}
+      POSTGRES_DB: buzzhub
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buzzhub -d buzzhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.go   # becomes the main Dockerfile when Railway switches to Go
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://buzzhub:${POSTGRES_PASSWORD:-buzzhub-local}@db:5432/buzzhub?sslmode=disable
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+      SETUP_CODE: ${SETUP_CODE:-123456}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

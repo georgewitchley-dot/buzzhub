@@ -13,7 +13,10 @@ Status:
   - Timestamps stay as UTC text so JSON is unchanged.
   - Foreign keys aren't added yet.
   - After copying data, reset each identity sequence (`setval`).
-- [ ] Go backend skeleton.
+- [x] Go server skeleton (built-in library only): `backend/` with health check, front-end serving, security headers and graceful shutdown; `go test` passes. `Dockerfile.go` (Node build, then Go build, then a small Alpine runtime as a non-root user) and `docker-compose.yml` (app + postgres:16 + volume) are in place.
+  - The Dockerfile is named `Dockerfile.go` on purpose: Railway would use a root `Dockerfile` automatically and replace the live Node app. Rename it on switch-over day.
+  - Docker itself couldn't be run in Claude's workspace (no daemon).
+- [ ] Go backend: database and auth.
   - Chosen packages: pgx (Postgres), a Socket.IO v4 server, golang.org/x/crypto/bcrypt (existing PIN hashes are bcrypt), golang-jwt.
   - Multi-location: one Postgres schema per location (`search_path` per request), mirroring one SQLite file per location.
 - [ ] Data migration tool (SQLite → Postgres, per location).
