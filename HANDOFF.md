@@ -16,7 +16,15 @@ Status:
 - [x] Go server skeleton (built-in library only): `backend/` with health check, front-end serving, security headers and graceful shutdown; `go test` passes. `Dockerfile.go` (Node build, then Go build, then a small Alpine runtime as a non-root user) and `docker-compose.yml` (app + postgres:16 + volume) are in place.
   - The Dockerfile is named `Dockerfile.go` on purpose: Railway would use a root `Dockerfile` automatically and replace the live Node app. Rename it on switch-over day.
   - Docker itself couldn't be run in Claude's workspace (no daemon).
-- [ ] Go backend: database and auth.
+- [x] Go backend: database and sign-in (2026-11-23).
+  - `internal/store`: pgx pool, one schema per location (`public` for main, `loc_<slug>` for the others). Migrations in `backend/migrations/*.sql` are applied per schema under an advisory lock and tracked in `schema_migrations`. Each request is one transaction with `search_path` and `buzzhub.tz` set. Settings defaults are shared with Node via `internal/store/defaults.json` (220 keys, exported from db.js). `localdate()`/`localtoday()` SQL functions are in 0002.
+  - `internal/auth`: bcrypt PINs (accepts Node's hashes), the same weak-PIN rules, per-IP escalating lockout, and HS256 JWT sessions with the same claims and cookie. **Node and Go sessions work in both directions.**
+  - Routes so far: `/healthz`, `GET /api/setup/status`, `POST /api/setup` (no demo data yet), `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/public/business`, `GET /api/public/logo`, `GET /api/staff/settings`. Every other `/api` path returns 501.
+  - CSRF header check, auth (15/min) and public (240/min) rate limits, first proxy hop trusted.
+  - Two-step codes and device approval are **not ported yet**. Go login fails closed (503) when they could apply.
+  - Tests: `go test ./...`, plus `tests/contract_auth.py`, which runs the same requests against Node (:8099) and Go (:8097) and compares them (18 checks pass).
+  - After copying SQLite data into Postgres, reset identity sequences (see the DO block in the contract notes) before inserting.
+- [ ] Next: guard.js (two-step codes, devices, approvals), settings PUT, users/staff admin, locations, then the waitlist/buzzer with Socket.IO.
   - Chosen packages: pgx (Postgres), a Socket.IO v4 server, golang.org/x/crypto/bcrypt (existing PIN hashes are bcrypt), golang-jwt.
   - Multi-location: one Postgres schema per location (`search_path` per request), mirroring one SQLite file per location.
 - [ ] Data migration tool (SQLite → Postgres, per location).
@@ -30,7 +38,7 @@ Status:
   7. the rest by module
 - [ ] Dockerfile (multi-stage: Node builds the client, Go builds the server, small runtime image) + docker-compose.yml (app + postgres + volume) + Railway switch.
 
-Blocker found 2026-11-23: in the Claude cloud workspace, Go module downloads fail. proxy.golang.org and sum.golang.org are blocked by the network allowlist. GitHub works, but checksum verification needs sum.golang.org, and switching verification off is not acceptable. Next step: the owner allows those hosts, or the Go build moves somewhere with normal network access.
+Go module downloads: the owner allowed proxy.golang.org and sum.golang.org on 2026-11-23. Downloads work with checksum verification on. If they fail in a new session, check those two hosts are still allowed (claude.ai → Settings → Capabilities).
 
 ## 1. What the owner asked for
 "A badass POS command center and a table-buzzing app for any business I plug it into, with security on both the app and the command center, PIN login for the command center, and neat features." Use GSAP, Lenis and React Bits, keep it in a GitHub repo, and host it on Railway.

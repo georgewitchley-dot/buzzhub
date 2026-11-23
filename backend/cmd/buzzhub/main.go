@@ -17,7 +17,12 @@ import (
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := server.ConfigFromEnv()
-	srv := &http.Server{Addr: ":" + cfg.Port, Handler: server.New(cfg, log), ReadHeaderTimeout: 10 * time.Second}
+	handler, err := server.New(context.Background(), cfg, log)
+	if err != nil {
+		log.Error("can't start", "err", err)
+		os.Exit(1)
+	}
+	srv := &http.Server{Addr: ":" + cfg.Port, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		log.Info("BuzzHub listening", "port", cfg.Port)
