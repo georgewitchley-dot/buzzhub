@@ -215,7 +215,7 @@ func (c *C) careDriverCheckout(userID any, date string) (M, error) {
 		return nil, err
 	}
 	// SQLite's CAST reads the leading number of the text after '$'; take the same digits here.
-	door, err := c.Val(`SELECT COALESCE(SUM(CAST(NULLIF(substring(replace(substr(detail, instr(detail, '$') + 1), ',', '') from '^[0-9]*\.?[0-9]*'), '') AS DOUBLE PRECISION)),0) d FROM audit WHERE action = 'delivery.door_tip' AND user_id = ? AND ts >= ? AND ts < ?`, userID, start, end)
+	door, err := c.Val(`SELECT COALESCE(SUM(CAST(NULLIF(substring(replace(substr(detail, strpos(detail, '$') + 1), ',', '') from '^[0-9]*\.?[0-9]*'), '') AS DOUBLE PRECISION)),0) d FROM audit WHERE action = 'delivery.door_tip' AND user_id = ? AND ts >= ? AND ts < ?`, userID, start, end)
 	if err != nil {
 		return nil, err
 	}
