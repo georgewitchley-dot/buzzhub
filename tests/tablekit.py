@@ -54,3 +54,11 @@ def raw(base, path, jar=None):
     r = subprocess.run(cmd, capture_output=True, text=True).stdout.split(' ', 1)
     data = open(out, 'rb').read(); os.remove(out)
     return int(r[0]), (r[1] if len(r) > 1 else '').split(';')[0], data
+
+
+def setting(key, value):
+    """Set (or with None, delete) a setting on both servers' databases."""
+    if value is None:
+        both(f"DELETE FROM settings WHERE key = {lit(key)}"); return
+    sqlite(f"INSERT OR REPLACE INTO settings (key, value) VALUES ({lit(key)}, {lit(value)})")
+    pg(f"INSERT INTO settings (key, value) VALUES ({lit(key)}, {lit(value)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
