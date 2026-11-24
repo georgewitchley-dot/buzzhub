@@ -710,10 +710,10 @@ func (a *App) registerLine(rt *router) {
 		list := c.kdsStationList()
 		mp := c.kdsStationMap()
 		type agg struct {
-			area          string
-			hours         float64
-			labor, sales  int64
-			people        []string
+			area         string
+			hours        float64
+			labor, sales int64
+			people       []string
 		}
 		names := append(append([]string{}, list...), lineFOH)
 		areas := map[string]*agg{}
@@ -768,7 +768,7 @@ func (a *App) registerLine(rt *router) {
 		for _, x := range order {
 			var p any
 			if x.sales != 0 {
-				p =float64(roundJS(float64(x.labor)/float64(x.sales)*1000)) / 10
+				p = float64(roundJS(float64(x.labor)/float64(x.sales)*1000)) / 10
 			}
 			rows = append(rows, M{"area": x.area, "hours": kdsR1(x.hours), "laborCents": x.labor, "salesCents": x.sales, "pct": p, "people": x.people})
 			labor += x.labor

@@ -680,10 +680,12 @@ func (a *App) registerPass(rt *router) {
 			}
 			id, ok := allowed[name]
 			lk := d["liked"]
-			if !ok || !(kdsNum(lk) == 0 || kdsNum(lk) == 1) || (lk != nil && fmt.Sprint(lk) != "0" && fmt.Sprint(lk) != "1") || lk == nil {
-				continue
+			isNum := false
+			switch lk.(type) {
+			case float64, int64, int:
+				isNum = true
 			}
-			if _, isNum := lk.(string); isNum {
+			if !ok || !isNum || (kdsNum(lk) != 0 && kdsNum(lk) != 1) {
 				continue
 			}
 			if _, err := c.Run(`INSERT INTO dish_ratings (feedback_id, item_id, name, liked) VALUES (?,?,?,?) ON CONFLICT (feedback_id, name) DO UPDATE SET liked = excluded.liked`, f["id"], id, name, i64(lk)); err != nil {
@@ -723,10 +725,10 @@ func (a *App) registerPass(rt *router) {
 			rm[i64(r["u"])] = i64(r["n"])
 		}
 		type agg struct {
-			id        int64
-			name      any
-			items, n  int64
-			minutes   float64
+			id       int64
+			name     any
+			items, n int64
+			minutes  float64
 		}
 		by := map[int64]*agg{}
 		order := []*agg{}

@@ -955,10 +955,10 @@ func (a *App) registerKds(rt *router) {
 		if kind == "station" {
 			dayArea = w.area
 		}
-		for k, v := range M{"business": M{"name": s["business_name"], "accent": s["accent"]}, "area": w.area, "kind": kind, "device": w.device, "expo": s["kds_expo"] == "1",
+		for k, v := range (M{"business": M{"name": s["business_name"], "accent": s["accent"]}, "area": w.area, "kind": kind, "device": w.device, "expo": s["kds_expo"] == "1",
 			"pack": s["kds_pack"] == "1", "unit": s["unit_label"], "allergyCheck": s["kds_allergy_check"] == "1", "pacing": s["kds_pacing"] == "1", "lists": lists, "events": events,
 			"stations": c.kdsStationList(), "areas": c.kdsAreaNames(), "lateMinutes": kdsOut(kdsSetNum(s["kds_late_minutes"], 12)), "orders": orders, "recent": recent,
-			"allDay": kdsAllDay(all, dayArea), "held": held} {
+			"allDay": kdsAllDay(all, dayArea), "held": held}) {
 			out[k] = v
 		}
 		return c.JSON(out)
