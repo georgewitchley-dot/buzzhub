@@ -131,15 +131,48 @@ func commerceLAmp(c *C) string {
 	return "l=" + c.Slug() + "&"
 }
 
+type commerceRefine struct {
+	fn  func(map[string]any) bool
+	msg string
+}
+
+type commercePart struct {
+	s       *valid.ObjectS
+	refines []commerceRefine
+}
+
 // commerceParse validates the body against several schemas (zod's a.and(b)), joining their errors.
-func commerceParse(c *C, schemas ...*valid.ObjectS) (valid.M, error) {
+// Object-level refines run like zod's: on the parsed value, or on the raw input when a field failed.
+func commerceParse(c *C, parts ...commercePart) (valid.M, error) {
 	raw := c.Raw()
+	rawM, isObj := raw.(map[string]any)
 	out := valid.M{}
 	errs := []string{}
-	for _, s := range schemas {
-		m, err := valid.Obj(s, raw)
+	for _, p := range parts {
+		m, err := valid.Obj(p.s, raw)
+		var errText string
 		if err != nil {
-			errs = append(errs, err.Error())
+			errText = err.Error()
+		}
+		if isObj || raw == nil {
+			val := map[string]any(m)
+			if err != nil {
+				val = rawM
+				if val == nil {
+					val = map[string]any{}
+				}
+			}
+			for _, r := range p.refines {
+				if !r.fn(val) {
+					if errText != "" {
+						errText += "; "
+					}
+					errText += "input: " + r.msg
+				}
+			}
+		}
+		if errText != "" {
+			errs = append(errs, errText)
 			continue
 		}
 		for k, v := range m {
@@ -591,14 +624,17 @@ var commerceShareSchema = valid.Ordered(
 	"ways", valid.Int().Min(2).Max(20).Optional(),
 	"itemIds", valid.Array(valid.Int()).Max(200).Optional(),
 	"tipCents", valid.Int().Min(0).Max(1_000_000).Default(0),
-).Refine(func(b valid.M) bool {
-	_, ok := b["ways"]
-	return str(b["split"]) != "even" || (ok && i64(b["ways"]) != 0)
-}, "Pick how many ways to split").
-	Refine(func(b valid.M) bool {
-		ids, _ := b["itemIds"].([]any)
-		return str(b["split"]) != "items" || len(ids) > 0
-	}, "Pick your items")
+)
+
+// commerceShareRefines are zod's .refine()s on shareSchema. zod runs them even when a field has
+// an issue, so they are checked by commerceParse rather than by the schema.
+var commerceShareRefines = []commerceRefine{
+	{func(b map[string]any) bool { return str(b["split"]) != "even" || truthy(b["ways"]) }, "Pick how many ways to split"},
+	{func(b map[string]any) bool {
+		ids, ok := b["itemIds"].([]any)
+		return str(b["split"]) != "items" || (ok && len(ids) > 0)
+	}, "Pick your items"},
+}
 
 var commerceBillTokenRE = regexp.MustCompile(`^[A-Za-z0-9_-]{20,30}$`)
 
@@ -806,10 +842,12 @@ var commerceGroupSchema = valid.Ordered(
 	"max_pick", valid.Int().Min(1).Max(20),
 	"options", valid.Array(valid.Ordered("name", valid.String().Trim().Min(1).Max(40), "price_cents", valid.Int().Min(-100000).Max(100000))).Min(1).Max(30),
 	"itemIds", valid.Array(valid.Int()).Max(500),
-).Refine(func(g valid.M) bool {
+)
+
+var commerceGroupRefines = []commerceRefine{{func(g map[string]any) bool {
 	opts, _ := g["options"].([]any)
-	return i64(g["min_pick"]) <= i64(g["max_pick"]) && i64(g["min_pick"]) <= int64(len(opts))
-}, "The minimum must be no more than the maximum and the number of options")
+	return valid.ToFloat(g["min_pick"]) <= valid.ToFloat(g["max_pick"]) && valid.ToFloat(g["min_pick"]) <= float64(len(opts))
+}, "The minimum must be no more than the maximum and the number of options"}}
 
 func (c *C) commerceSaveGroup(id int64, g valid.M) (int64, error) {
 	if id > 0 {
@@ -926,8 +964,10 @@ func (a *App) registerCommerce(rt *router) {
 	a.G["shareAmount"] = func(c *C, args ...any) (any, error) {
 		return commerceShareAmount(commerceRow(args[0]), commerceRow(args[1]))
 	}
-	// shareSchema() returns the *valid.ObjectS (combine with commerceParse-style validation).
-	a.G["shareSchema"] = func(c *C, args ...any) (any, error) { return commerceShareSchema, nil }
+	// shareSchema() returns a commercePart; validate with commerceParse(c, part, commercePart{s: extra}).
+	a.G["shareSchema"] = func(c *C, args ...any) (any, error) {
+		return commercePart{commerceShareSchema, commerceShareRefines}, nil
+	}
 	a.G["completePayment"] = func(c *C, args ...any) (any, error) {
 		ref := ""
 		if len(args) > 1 {
@@ -971,7 +1011,7 @@ func (a *App) registerCommerce(rt *router) {
 		return c.JSON(out)
 	})
 	rt.staff("POST /mods", "manager", func(c *C) error {
-		g, err := c.Body(commerceGroupSchema)
+		g, err := commerceParse(c, commercePart{commerceGroupSchema, commerceGroupRefines})
 		if err != nil {
 			return err
 		}
@@ -986,7 +1026,7 @@ func (a *App) registerCommerce(rt *router) {
 		return c.JSON(M{"id": id})
 	})
 	rt.staff("PUT /mods/{id}", "manager", func(c *C) error {
-		g, err := c.Body(commerceGroupSchema)
+		g, err := commerceParse(c, commercePart{commerceGroupSchema, commerceGroupRefines})
 		if err != nil {
 			return err
 		}
@@ -1358,7 +1398,7 @@ func (a *App) registerCommerce(rt *router) {
 		if bill == nil || str(bill["status"]) != "open" {
 			return conflict("This check is already settled")
 		}
-		b, err := commerceParse(c, commerceShareSchema, payExtra)
+		b, err := commerceParse(c, commercePart{commerceShareSchema, commerceShareRefines}, commercePart{s: payExtra})
 		if err != nil {
 			return err
 		}
@@ -1455,7 +1495,7 @@ func (a *App) registerCommerce(rt *router) {
 		if !c.paymentsOnlinePayEnabled() {
 			return fail(http.StatusServiceUnavailable, "Paying by phone is not set up yet. Please pay your server.")
 		}
-		b, err := c.Body(commerceShareSchema)
+		b, err := commerceParse(c, commercePart{commerceShareSchema, commerceShareRefines})
 		if err != nil {
 			return err
 		}
