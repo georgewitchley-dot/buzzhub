@@ -24,19 +24,19 @@ Status:
   - Two-step codes and device approval are **not ported yet**. Go login fails closed (503) when they could apply.
   - Tests: `go test ./...`, plus `tests/contract_auth.py`, which runs the same requests against Node (:8099) and Go (:8097) and compares them (18 checks pass).
   - After copying SQLite data into Postgres, reset identity sequences (see the DO block in the contract notes) before inserting.
-- [ ] Next: guard.js (two-step codes, devices, approvals), settings PUT, users/staff admin, locations, then the waitlist/buzzer with Socket.IO.
-  - Chosen packages: pgx (Postgres), a Socket.IO v4 server, golang.org/x/crypto/bcrypt (existing PIN hashes are bcrypt), golang-jwt.
-  - Multi-location: one Postgres schema per location (`search_path` per request), mirroring one SQLite file per location.
-- [ ] Data migration tool (SQLite → Postgres, per location).
-- [ ] Areas ported in order:
-  1. auth/security
-  2. settings
-  3. waitlist/buzzer
-  4. menu/orders/register
-  5. kitchen
-  6. payments
-  7. the rest by module
-- [ ] Dockerfile (multi-stage: Node builds the client, Go builds the server, small runtime image) + docker-compose.yml (app + postgres + volume) + Railway switch.
+- [x] Foundation for every module (2026-11-23):
+  - `internal/store/sql.go` + `migrations/0003_sqlite_compat.sql`: Node's SQLite-dialect SQL runs on Postgres nearly unchanged (`?`, `datetime()`, `date()`, `julianday`, `strftime`, `group_concat`, `INSERT OR IGNORE/REPLACE`, LIKE → ILIKE). Rows come back loosely typed like SQLite.
+  - `internal/valid`: a zod-compatible validator with zod v4's exact error messages (tested against zod).
+  - Live updates: Socket.IO v4 (`realtime.go`) with the same location-prefixed rooms and events. Events go out after the transaction commits; responses are buffered until commit.
+  - Phone alerts (web push, reusing the existing VAPID keys) and SMTP email (`notify.go`); QR codes as SVG (`qr.go`).
+  - guard.js fully ported (`guard.go`): two-step codes (same sealed secrets), recovery codes, device approval, manager approvals, refunds, security alerts. The temporary 503 login block is gone.
+  - Settings PUT with all 209 fields and rules (`settings.go`).
+  - All of index.js (`core_routes.go`, `guests.go`, `orders.go`): guest pages, waitlist/buzzer, heads-ups, pre-orders, tables, menu, register orders/pay/void, users, audit, customer accounts, bookings, reminders.
+  - Modules register themselves (`module.go`); cross-module hooks use `a.G["<same name as Node's G.x>"]`; timers use `a.every`. How-to: `backend/PORTING.md`.
+  - `tests/contractlib.py` + `tests/contract_core.py` (44 checks pass, Node vs Go).
+- [x] Data migration: `server/scripts/export-to-postgres.js` copies every location's SQLite file into Postgres (schemas, rows, sequences, JWT + VAPID secrets). Runs from the Node service, which has the data volume.
+- [ ] Remaining 39 Node modules: being ported by 10 parallel agents in git worktrees `/home/claude/wt/a1..a10` (branches `port/a1..a10`), then merged and tested together.
+- [ ] Switch-over: Railway Postgres, run the export, rename `Dockerfile.go` → `Dockerfile`, deploy, verify, keep the Node service for rollback.
 
 Go module downloads: the owner allowed proxy.golang.org and sum.golang.org on 2026-11-23. Downloads work with checksum verification on. If they fail in a new session, check those two hosts are still allowed (claude.ai → Settings → Capabilities).
 
