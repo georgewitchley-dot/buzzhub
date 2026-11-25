@@ -9,10 +9,12 @@ CN, CG = '/tmp/j10_cn', '/tmp/j10_cg'
 login(N, '8642', JN); login(G, '8642', JG)
 
 for p in ['/api/staff/tables/5/seat-allergies', '/api/staff/tables/1/seat-allergies', '/api/staff/tables/abc/seat-allergies',
-          '/api/staff/me/top-items', '/api/staff/bills/999999/seats', '/api/r/nope/proof/photo', '/api/r/aaaaaaaaaaaaaaaaaaaa/proof/signature']:
+          '/api/staff/me/top-items', '/api/staff/bills/999999/seats', '/api/staff/bills/11/seats', '/api/staff/bills/abc/seats', '/api/r/nope/proof/photo', '/api/r/aaaaaaaaaaaaaaaaaaaa/proof/signature']:
     same_get(p, JN, JG)
 a, b = call(N, 'GET', '/api/staff/tables/5/seat-allergies', jar=JN), call(G, 'GET', '/api/staff/tables/5/seat-allergies', jar=JG)
 check('seat allergies same values', a == b, (a, b))
+a, b = call(N, 'GET', '/api/staff/bills/11/seats', jar=JN), call(G, 'GET', '/api/staff/bills/11/seats', jar=JG)
+check('split by seat same values', a == b, (a, b))
 
 item = int(pg("SELECT id FROM menu_items m WHERE active = 1 AND (stock IS NULL OR stock > 20) AND NOT EXISTS (SELECT 1 FROM item_mod_groups g WHERE g.item_id = m.id) ORDER BY id LIMIT 1"))
 res = {}
@@ -78,7 +80,9 @@ pair('pay ahead turned off', lambda base, jar, bid: call(base, 'POST', f'/api/c/
 setting('booking_preorder_pay', '1')
 a, b = [call(base, 'POST', f'/api/c/bookings/{bid}/preorder/pay', {}, jar=jar) for base, jar, lab, bid in both_]
 # payments.js (onlinePayEnabled/startPay) is ported by another module: until then Go answers 503
-check('pay ahead turned on', a == b or (a[0] == 200 and 'url' in a[1] and b == (503, {'error': 'Online payments are not set up. Pay at the table instead.'})), (a, b))
+check('pay ahead turned on', a[0] == b[0] == 200 and '/pay/' in a[1]['url'] and '/pay/' in b[1]['url'], (a, b))
+pn = sqlite('SELECT kind, amount_cents, label FROM payments ORDER BY id DESC LIMIT 1')[0]; pgp = pg('SELECT kind || \'|\' || amount_cents || \'|\' || label FROM payments ORDER BY id DESC LIMIT 1')
+check('pay ahead payment row', f"{pn['kind']}|{pn['amount_cents']}|{pn['label']}" == pgp, (pn, pgp))
 setting('booking_preorder_pay', None)
 pair('running late', lambda base, jar, bid: call(base, 'POST', f'/api/c/bookings/{bid}/late', {'minutes': 15}, jar=jar))
 pair('running late, bad booking', lambda base, jar, bid: call(base, 'POST', '/api/c/bookings/999999/late', {'minutes': 15}, jar=jar))
