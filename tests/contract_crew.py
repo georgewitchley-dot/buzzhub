@@ -80,7 +80,7 @@ r1, r2 = call(N, 'GET', f'/api/v/{pn_tok}'), call(G, 'GET', f'/api/v/{pg_tok}')
 check('booking page', r1[0] == r2[0] == 200 and r1[1]['booking'] == r2[1]['booking'] and set(r1[1]) == set(r2[1]), (r1, r2))
 r1, r2 = call(N, 'POST', f'/api/v/{pn_tok}/pay', {}), call(G, 'POST', f'/api/v/{pg_tok}/pay', {})
 # onlinePayEnabled/startPay come from commerce.js (not in this port): Go answers 503 until that hook exists
-check('pay deposit', r1 == r2 or (r1[0] == 200 and r2 == (503, {'error': 'Online payments are not set up. Please call us.'})), (r1, r2))
+check('pay deposit', r1[0] == r2[0] == 200 and '/pay/' in r1[1].get('url','') and '/pay/' in r2[1].get('url',''), (r1, r2))
 both('GET', '/api/v/AAAAAAAAAAAAAAAAAAAAAA', None, None, None, label='booking page unknown')
 r1, r2 = call(N, 'GET', f'/api/public/rooms/{rn}/taken?date={fut}'), call(G, 'GET', f'/api/public/rooms/{rg}/taken?date={fut}')
 check('taken slots', sorted(tuple(sorted(x.items())) for x in r1[1]) == sorted(tuple(sorted(x.items())) for x in r2[1]), (r1, r2))
