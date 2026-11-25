@@ -33,7 +33,7 @@ var tokenSlugs sync.Map // "table:token" -> slug
 
 func (a *App) allSlugs(ctx context.Context) []string {
 	out := []string{"main"}
-	rows, err := a.db.Pool.Query(ctx, `SELECT slug FROM public.locations ORDER BY id`)
+	rows, err := a.db.Pool.Query(ctx, `SELECT slug FROM public.locations ORDER BY created_at, slug`)
 	if err != nil {
 		return out
 	}
