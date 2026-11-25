@@ -3,8 +3,8 @@ fetch raw bytes. Set SQLITE (Node data dir db file) and PGDB (Postgres database)
 import base64, hashlib, hmac, json, os, subprocess, time, uuid
 from contractlib import N, G
 
-DATA = os.environ.get('DATA', '/tmp/bh10')
-PGDB = os.environ.get('PGDB', 'agent10')
+DATA = os.environ.get('DATA', '/tmp/bhm')
+PGDB = os.environ.get('PGDB', 'merged')
 NODE_DIR = '/home/claude/buzzhub/server'
 
 
